@@ -1,0 +1,14 @@
+[Unit]
+Description=RouteDNS - DNS stub resolver and router
+After=network.target
+
+[Service]
+Type=simple
+User=routedns
+WorkingDirectory=/opt/routedns
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/opt/routedns/routedns config.toml
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target

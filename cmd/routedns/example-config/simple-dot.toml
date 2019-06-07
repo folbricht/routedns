@@ -1,0 +1,23 @@
+# This config starts a UDP and a TCP resolver on the loopback interface for plain DNS.
+# All queries are forwarded to CloudFlare's DNS-over-TLS resolver. The goal is to
+# provide encrypted DNS for the machine if 127.0.0.1 is configured in /etc/resolv.conf.
+
+title = "RouteDNS configuration for providing DNS-over-TLS locally"
+
+[resolvers]
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[listeners]
+
+  [listeners.local-udp]
+  address = "127.0.0.1:53"
+  protocol = "udp"
+  resolver = "cloudflare-dot"
+
+  [listeners.local-tcp]
+  address = "127.0.0.1:53"
+  protocol = "tcp"
+  resolver = "cloudflare-dot"
