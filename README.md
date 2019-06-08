@@ -4,15 +4,16 @@ RouteDNS acts as a stub resolver that offers flexible configuration options with
 
 Features:
 
-- Support for DNS-over-TLS
+- Support for DNS-over-TLS (DoT)
+- Support for DNS-over-HTTPS (DoH)
 - Support for plain DNS, UDP and TCP for incoming and outgoing traffic
 - Connection reuse and pipelining queries for efficiency
-- Multiple failover and load-balancing algorithm
+- Multiple failover and load-balancing algorithms
 - Routing of queries based on type and/or query name
+- Written in Go - Platform independent
 
 TODO:
 
-- Support for DNS-over-HTTPS resolvers
 - Add group for failover algorithm for priority order
 - Add group for load-balancing
 - Add group for "fastest"
@@ -21,6 +22,7 @@ TODO:
 - Configurable TLS options, like keys and certs
 - Write tests
 - More use-cases/examples
+- Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 
 Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
 
@@ -51,7 +53,7 @@ The following protocols are supportes:
 - dot - DNS-over-TLS
 - doh - DNS-over-HTTP
 
-The following example defines 3 well-known resolvers, one using DNS-over-TLS while the other two use plain DNS.
+The following example defines several well-known resolvers, one using DNS-over-TLS, one DNS-over-HTTP while the other two use plain DNS.
 
 ```toml
 [resolvers]
@@ -59,6 +61,10 @@ The following example defines 3 well-known resolvers, one using DNS-over-TLS whi
   [resolvers.cloudflare-dot]
   address = "1.1.1.1:853"
   protocol = "dot"
+
+  [resolvers.cloudflare-doh]
+  address = "https://1.1.1.1/dns-query{?dns}"
+  protocol = "doh"
 
   [resolvers.google-udp-8-8-8-8]
   address = "8.8.8.8:53"
@@ -96,8 +102,8 @@ Routers are used to send queries to specific upstream resolvers, groups, or to o
 A route has the following fields:
 
 - `type` - If defined, only matches queries of this type
-- `name` - A regular expession that is applied to the query name. Note that dots in domain names need to be escaped with \
-- `resolver` - The identifier of a resolver, group, or earlier defined router
+- `name` - A regular expession that is applied to the query name. Note that dots in domain names need to be escaped
+- `resolver` - The identifier of a resolver, group, or another router that was defined earlier.
 
 Below, `router1` sends all queries for the MX record of `google.com` and all its sub-domains to a group consisting of Google's DNS servers. Anything else is sent to a DNS-over-TLS resolver.
 

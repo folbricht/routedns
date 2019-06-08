@@ -21,8 +21,9 @@ type listener struct {
 }
 
 type resolver struct {
-	Address  string
-	Protocol string
+	Address   string
+	Protocol  string
+	DOHMethod string `toml:"doh-method"`
 }
 
 type group struct {

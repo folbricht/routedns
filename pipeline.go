@@ -42,7 +42,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	select {
 	case <-r.done:
 	case <-timeout.C:
-		r.markDone(nil, QueryTimeoutError{q})
+		return nil, QueryTimeoutError{q}
 	}
 
 	return r.waitFor()

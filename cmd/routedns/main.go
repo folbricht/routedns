@@ -58,6 +58,11 @@ func start(args []string) error {
 		switch r.Protocol {
 		case "dot":
 			resolvers[id] = rdns.NewDoTClient(r.Address)
+		case "doh":
+			resolvers[id], err = rdns.NewDoHClient(r.Address, rdns.DoHClientOptions{Method: r.DOHMethod})
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		case "tcp":
 			resolvers[id] = rdns.NewDNSClient(r.Address, "tcp")
 		case "udp":
