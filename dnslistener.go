@@ -39,6 +39,7 @@ func listenHandler(r Resolver) dns.HandlerFunc {
 		Log.Printf("received query for '%s' forwarded to %s", qName(req), r.String())
 		a, err := r.Resolve(req)
 		if err != nil {
+			Log.Println("failed to resolve '%s' : %s", qName(req), err)
 			return
 		}
 		w.WriteMsg(a)

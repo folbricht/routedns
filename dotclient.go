@@ -10,7 +10,7 @@ import (
 // DoTClient is a DNS-over-TLS resolver.
 type DoTClient struct {
 	endpoint string
-	conn     *Pipeline
+	pipeline *Pipeline
 }
 
 var _ Resolver = &DoTClient{}
@@ -23,13 +23,13 @@ func NewDoTClient(endpoint string) *DoTClient {
 	}
 	return &DoTClient{
 		endpoint: endpoint,
-		conn:     NewPipeline(endpoint, client),
+		pipeline: NewPipeline(endpoint, client),
 	}
 }
 
 // Resolve a DNS query.
 func (d *DoTClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
-	return d.conn.Resolve(q)
+	return d.pipeline.Resolve(q)
 }
 
 func (d *DoTClient) String() string {
