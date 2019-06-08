@@ -6,7 +6,7 @@ Features:
 
 - Support for DNS-over-TLS (DoT)
 - Support for DNS-over-HTTPS (DoH)
-- Support for plain DNS, UDP and TCP for incoming and outgoing traffic
+- Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
 - Routing of queries based on type and/or query name

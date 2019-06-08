@@ -27,5 +27,13 @@ Listeners
 While resolvers handle outgoing queries to upstream servers, listeners are the receivers
 of queries. Multiple listeners can be started for different protocols and on different ports.
 Each listener forwards received queries to one resolver, group, or router.
+
+This example starts a stub resolver on the local machine which will forward all queries
+via DNS-over-TLS to provide privacy.
+
+	r := rdns.NewDoTClient("1.1.1.1:853")
+	l := rdns.NewDNSListener("127.0.0.1:53", "udp", r)
+	panic(l.Start())
+
 */
 package rdns

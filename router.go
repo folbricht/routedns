@@ -44,7 +44,8 @@ func (r *Router) Resolve(q *dns.Msg) (*dns.Msg, error) {
 // Add a new route to the router. New routes are appended to the existing
 // ones and are evaluated in the same order they're added. The default
 // route (no name, no type) should be added last since subsequently added
-// routes won't have any impact.
+// routes won't have any impact. Name is a regular expression that is
+// applied to the name in the first question section of the DNS message.
 func (r *Router) Add(name, typ string, resolver Resolver) error {
 	t, err := stringToType(typ)
 	if err != nil {
