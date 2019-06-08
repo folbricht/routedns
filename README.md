@@ -19,7 +19,6 @@ TODO:
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
 - Configurable TLS options, like keys and certs
-- Make plain resolvers (TCP & UDP) reuse connections and pipeline queries
 - Write tests
 - More use-cases/examples
 

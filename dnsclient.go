@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"github.com/miekg/dns"
@@ -8,27 +9,32 @@ import (
 
 // DNSClient represents a simple DNS resolver for UDP or TCP.
 type DNSClient struct {
-	*dns.Client
 	endpoint string
+	net      string
+	pipeline *Pipeline
 }
 
 var _ Resolver = &DNSClient{}
 
-// NewDNSClient returns a new instance of DNSClient which is a simple DNS resolver.
+// NewDNSClient returns a new instance of DNSClient which is a plain DNS resolver
+// that supports pipelining over a single connection.
 func NewDNSClient(endpoint, net string) *DNSClient {
-	return &DNSClient{
-		Client: &dns.Client{
-			Net: net,
-		},
-		endpoint: endpoint,
+	client := &dns.Client{
+		Net:       net,
+		TLSConfig: &tls.Config{},
 	}
+	return &DNSClient{
+		net:      net,
+		endpoint: endpoint,
+		pipeline: NewPipeline(endpoint, client),
+	}
+
 }
 
 // Resolve a DNS query.
 func (d *DNSClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
-	Log.Printf("sending query for '%s' to %s/%s", qName(q), d.endpoint, d.Net)
-	a, _, err := d.Exchange(q, d.endpoint)
-	return a, err
+	Log.Printf("sending query for '%s' to %s/%s", qName(q), d.endpoint, d.net)
+	return d.pipeline.Resolve(q)
 }
 
 func (d *DNSClient) String() string {
