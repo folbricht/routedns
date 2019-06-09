@@ -1,0 +1,95 @@
+# This file shows a selection of well-known DNS resolvers and supported protocols to
+# help build RoutedDNS configs. It isn't intended to be used directly but can for testing.
+
+title = "RouteDNS configuration for providing DNS-over-HTTP locally"
+
+[resolvers]
+
+  # Cloudflare DNS-over-TLS
+  [resolvers.cloudflare-dot-1-1-1-1]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+  [resolvers.cloudflare-dot-1-0-0-1]
+  address = "1.0.0.1:853"
+  protocol = "dot"
+
+  # Cloudflare DNS-over-HTTP using the POST method
+  [resolvers.cloudflare-doh-1-1-1-1-post]
+  address = "https://1.1.1.1/dns-query{?dns}"
+  protocol = "doh"
+
+  [resolvers.cloudflare-doh-1-0-0-1-post]
+  address = "https://1.0.0.1/dns-query{?dns}"
+  protocol = "doh"
+
+  # Cloudflare DNS-over-HTTP using the GET method
+  [resolvers.cloudflare-doh-1-1-1-1-get]
+  address = "https://1.1.1.1/dns-query{?dns}"
+  protocol = "doh"
+  doh-method = "GET"
+
+  [resolvers.cloudflare-doh-1-0-0-1-get]
+  address = "https://1.0.0.1/dns-query{?dns}"
+  protocol = "doh"
+  doh-method = "GET"
+
+  # Cloudflare plain DNS
+  [resolvers.cloudflare-udp-1-1-1-1]
+  address = "1.1.1.1:53"
+  protocol = "udp"
+
+  [resolvers.cloudflare-tcp-1-0-0-1]
+  address = "1.0.0.1:53"
+  protocol = "tcp"
+
+  # Google plain DNS
+  [resolvers.google-udp-8-8-8-8]
+  address = "8.8.8.8:53"
+  protocol = "udp"
+
+  [resolvers.google-tcp-8-8-4-4]
+  address = "8.8.4.4:53"
+  protocol = "udp"
+
+  # Google DNS-over-TLS
+  [resolvers.google-dot-8-8-8-8]
+  address = "8.8.8.8:853"
+  protocol = "dot"
+
+  [resolvers.google-dot-8-8-4-4]
+  address = "8.8.4.4:853"
+  protocol = "dot"
+
+  # Google DNS-over-HTTP using the POST method
+  [resolvers.google-doh-post]
+  address = "https://dns.google.com/experimental{?dns}"
+  protocol = "doh"
+
+  # Google DNS-over-HTTP using the GET method
+  [resolvers.google-doh-get]
+  address = "https://dns.google.com/experimental{?dns}"
+  protocol = "doh"
+  doh-method = "GET"
+
+  # Quad9 DNS-over-TLS
+  [resolvers.quad9-dot]
+  address = "9.9.9.9:853"
+  protocol = "dot"
+
+  # Quad9 DNS-over-HTTP using the POST method
+  [resolvers.quad9-doh-post]
+  address = "https://9.9.9.9/dns-query{?dns}"
+  protocol = "doh"
+
+[listeners]
+
+  [listeners.local-udp]
+  address = "127.0.0.1:53"
+  protocol = "udp"
+  resolver = "cloudflare-doh-1-1-1-1-post"
+
+  [listeners.local-tcp]
+  address = "127.0.0.1:53"
+  protocol = "tcp"
+  resolver = "cloudflare-doh-1-1-1-1-post"
