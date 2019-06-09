@@ -78,17 +78,19 @@ func start(args []string) error {
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("group defined with duplicate id '%s", id)
 		}
+		var gr []rdns.Resolver
+		for _, rid := range g.Resolvers {
+			resolver, ok := resolvers[rid]
+			if !ok {
+				return fmt.Errorf("group '%s' references non-existant resolver or group '%s", id, rid)
+			}
+			gr = append(gr, resolver)
+		}
 		switch g.Type {
 		case "round-robin":
-			var gr []rdns.Resolver
-			for _, rid := range g.Resolvers {
-				resolver, ok := resolvers[rid]
-				if !ok {
-					return fmt.Errorf("group '%s' references non-existant resolver or group '%s", id, rid)
-				}
-				gr = append(gr, resolver)
-			}
 			resolvers[id] = rdns.NewRoundRobin(gr...)
+		case "fail-rotate":
+			resolvers[id] = rdns.NewFailRotate(gr...)
 		default:
 			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
 		}

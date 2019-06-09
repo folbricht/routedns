@@ -15,12 +15,10 @@ Features:
 TODO:
 
 - Add group for failover algorithm for priority order
-- Add group for load-balancing
 - Add group for "fastest"
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
 - Configurable TLS options, like keys and certs
-- Write tests
 - More use-cases/examples
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 
@@ -84,6 +82,7 @@ Each group has `resolvers` which is and array of one or more resolver-identifier
 The `type` determines which algorithm is being used. Available types:
 
 - `round-robin` - Each resolver in the group receives an equal number of queries. There is no failover.
+- `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
 
