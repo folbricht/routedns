@@ -27,12 +27,12 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   [resolvers.cloudflare-doh-1-1-1-1-get]
   address = "https://1.1.1.1/dns-query{?dns}"
   protocol = "doh"
-  doh-method = "GET"
+  doh = { method = "GET" }
 
   [resolvers.cloudflare-doh-1-0-0-1-get]
   address = "https://1.0.0.1/dns-query{?dns}"
   protocol = "doh"
-  doh-method = "GET"
+  doh = { method = "GET" }
 
   # Cloudflare plain DNS
   [resolvers.cloudflare-udp-1-1-1-1]
@@ -70,7 +70,7 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   [resolvers.google-doh-get]
   address = "https://dns.google.com/experimental{?dns}"
   protocol = "doh"
-  doh-method = "GET"
+  doh = { method = "GET" }
 
   # Quad9 DNS-over-TLS
   [resolvers.quad9-dot]

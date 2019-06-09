@@ -142,7 +142,7 @@ Listers specify how queries are received and how they should be handled. Listene
 
 ### User case 1: Use DNS-over-TLS for all queries locally
 
-In this example, the goal is to send all DNS queries on the local machine encrypted via DNS-over-TLS to CloudFlare's DSN server `1.1.1.1`. For this, the `nameserver` IP in /etc/resolv.conf is changed to `127.0.0.1`. Since there is only one upstream resolver, and everything should be sent there, no group or router is needed. Both listeners are using the loopback device as only the local machine should be able to use RouteDNS. The config file would look like this:
+In this example, the goal is to send all DNS queries on the local machine encrypted via DNS-over-TLS to Cloudflare's DNS server `1.1.1.1`. For this, the `nameserver` IP in /etc/resolv.conf is changed to `127.0.0.1`. Since there is only one upstream resolver, and everything should be sent there, no group or router is needed. Both listeners are using the loopback device as only the local machine should be able to use RouteDNS. The config file would look like this:
 
 ```toml
 [resolvers]

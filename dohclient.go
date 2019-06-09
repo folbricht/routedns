@@ -67,8 +67,9 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 
 // Resolve a DNS query.
 func (d *DoHClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
-	switch d.opt.Method {
-	case "", "POST":
+	Log.Printf("resolving query for '%s' via  %s", qName(q), d.String())
+	switch d.method() {
+	case "POST":
 		return d.ResolvePOST(q)
 	case "GET":
 		return d.ResolveGET(q)
@@ -78,7 +79,6 @@ func (d *DoHClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
 
 // ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
 func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
-	Log.Printf("resolving query for '%s' via POST %s", qName(q), d.String())
 	// Pack the DNS query into wire format
 	b, err := q.Pack()
 	if err != nil {
@@ -105,7 +105,6 @@ func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 
 // ResolveGET resolves a DNS query via DNS-over-HTTP using the GET method.
 func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
-	Log.Printf("resolving query for '%s' via GET %s", qName(q), d.String())
 	// Pack the DNS query into wire format
 	b, err := q.Pack()
 	if err != nil {
@@ -133,10 +132,17 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 }
 
 func (d *DoHClient) String() string {
-	return fmt.Sprintf("DoH(%s)", d.endpoint)
+	return fmt.Sprintf("DoH-%s(%s)", d.method(), d.endpoint)
 }
 
-// Check the HTTP response and parse out the response DNS message.
+func (d *DoHClient) method() string {
+	if d.opt.Method != "" {
+		return d.opt.Method
+	}
+	return "POST"
+}
+
+// Check the HTTP response status code and parse out the response DNS message.
 func responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
