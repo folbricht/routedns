@@ -14,7 +14,6 @@ Features:
 
 TODO:
 
-- Add group for failover algorithm for priority order
 - Add group for "fastest"
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
@@ -83,6 +82,7 @@ The `type` determines which algorithm is being used. Available types:
 
 - `round-robin` - Each resolver in the group receives an equal number of queries. There is no failover.
 - `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
+- `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
 
@@ -162,6 +162,61 @@ In this example, the goal is to send all DNS queries on the local machine encryp
   address = "127.0.0.1:53"
   protocol = "tcp"
   resolver = "cloudflare-dot"
+```
+
+### User case 2: Prefer secure DNS in a corporate environment
+
+In a corporate environment it's necessary to use the potentially slow and insecure company DNS servers. Only these servers are able to resolve some resources hosted in the corporate network. A router can be used to secure DNS whenever possible while still being able to resolve internal hosts.
+
+```toml
+[resolvers]
+
+  # Define the two company DNS servers. Both use plain (insecure) DNS over UDP
+  [resolvers.mycompany-dns-a]
+  address = "10.0.0.1:53"
+  protocol = "udp"
+
+  [resolvers.mycompany-dns-b]
+  address = "10.0.0.2:53"
+  protocol = "udp"
+
+  # Define the Cloudflare DNS-over-HTTPS resolver (GET methods) since that is most likely allowed outbound
+  [resolvers.cloudflare-doh-1-1-1-1-get]
+  address = "https://1.1.1.1/dns-query{?dns}"
+  protocol = "doh"
+  doh = { method = "GET" }
+
+[groups]
+
+  # Since the company DNS servers have a habit of failing, group them into a group that switches on failure
+  [groups.mycompany-dns]
+  resolvers = ["mycompany-dns-a", "mycompany-dns-b"]
+  type = "fail-rotate"
+
+[routers]
+
+  [routers.router1]
+
+    # Send all queries for '*.mycomany.com.' to the company's DNS, possibly through a VPN tunnel
+    [[routers.router1.routes]]
+    name = '(^|\.)mycompany\.com\.$'
+    resolver="mycompany-dns"
+
+    # Everything else can go securely to Cloudflare
+    [[routers.router1.routes]]
+    resolver="cloudflare-doh-1-1-1-1-get"
+
+[listeners]
+
+  [listeners.local-udp]
+  address = "127.0.0.1:53"
+  protocol = "udp"
+  resolver = "router1"
+
+  [listeners.local-tcp]
+  address = "127.0.0.1:53"
+  protocol = "tcp"
+  resolver = "router1"
 ```
 
 ## Links

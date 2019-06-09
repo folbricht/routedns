@@ -24,7 +24,7 @@ title = "RouteDNS configuration for split DNS"
     name = '\.mycompany\.com\.$'
     resolver="mycompany-dns"
  
-    # Everything else can go securely to CloudFlare
+    # Everything else can go securely to Cloudflare
     [[routers.router1.routes]]
     resolver="cloudflare-dot"
 

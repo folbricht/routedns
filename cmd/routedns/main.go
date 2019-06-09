@@ -91,6 +91,8 @@ func start(args []string) error {
 			resolvers[id] = rdns.NewRoundRobin(gr...)
 		case "fail-rotate":
 			resolvers[id] = rdns.NewFailRotate(gr...)
+		case "fail-back":
+			resolvers[id] = rdns.NewFailBack(rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
 		default:
 			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
 		}
