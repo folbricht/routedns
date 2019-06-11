@@ -9,12 +9,12 @@ Features:
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
+- Custom blocklists
 - Routing of queries based on query type, query name, or client IP
 - Written in Go - Platform independent
 
 TODO:
 
-- Add blocklist group
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
 - Configurable TLS options, like keys and certs
@@ -216,6 +216,55 @@ In a corporate environment it's necessary to use the potentially slow and insecu
 
   [listeners.local-tcp]
   address = "127.0.0.1:53"
+  protocol = "tcp"
+  resolver = "router1"
+```
+
+### Use case 3: Restrict access to potentially harmful content
+
+The goal here is to single out children's devices on the network and apply a custom blocklist to their DNS resolution. Anything on the blocklist will fail to resolve with an NXDOMAIN response. Names that aren't on the blocklist are then sent on to CleanBrowsing for any further filtering. All other devices on the network will have unfiltered access via Cloudflare's DNS server, and all queries are done using DNS-over-TLS. The config file can also be found [here](example-config/family-browsing.toml)
+
+```toml
+[resolvers]
+
+  [resolvers.cleanbrowsing-dot]
+  address = "family-filter-dns.cleanbrowsing.org:853"
+  protocol = "dot"
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[groups]
+
+  [groups.cleanbrowsing-filtered]
+  type = "blocklist"
+  resolvers = ["cleanbrowsing-dot"] # Anything that passes the filter is sent on to this resolver
+  blocklist = [                     # Define the names to be blocked
+    '(^|\.)facebook.com.$',
+    '(^|\.)twitter.com.$',
+  ]
+
+[routers]
+
+  [routers.router1]
+
+    [[routers.router1.routes]]
+    source = "192.168.1.123/32"    # The IP or network that will use the blocklist in CIDR notation
+    resolver="cleanbrowsing-filtered"
+
+    [[routers.router1.routes]]     # Default for everyone else
+    resolver="cloudflare-dot"
+
+[listeners]
+
+  [listeners.local-udp]
+  address = ":53"
+  protocol = "udp"
+  resolver = "router1"
+
+  [listeners.local-tcp]
+  address = ":53"
   protocol = "tcp"
   resolver = "router1"
 ```

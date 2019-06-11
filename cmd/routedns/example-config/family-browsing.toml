@@ -1,0 +1,51 @@
+# This example shows how to prevent children's devices from browsing to potentially
+# harmful content. These devices are identified by their IP on the network. Any
+# such device will have its request first filtered through a custom blocklist and
+# then sent on to the CleanBrowsing resolver which is performing additional
+# filtering as well. Everyone else on the network will be sent to Cloudflare's DNS 
+# for unfiltered access. All lookups are performed with DNS-over-TLS.
+
+title = "RouteDNS configuration"
+
+[resolvers]
+
+  [resolvers.cleanbrowsing-dot]
+  address = "family-filter-dns.cleanbrowsing.org:853"
+  protocol = "dot"
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[groups]
+
+  [groups.cleanbrowsing-filtered]
+  type = "blocklist"
+  resolvers = ["cleanbrowsing-dot"] # Anything that passes the filter is sent on to this resolver
+  blocklist = [                     # Define the names to be blocked
+    '(^|\.)facebook.com.$',
+    '(^|\.)twitter.com.$',
+  ]
+
+[routers]
+
+  [routers.router1]
+
+    [[routers.router1.routes]]
+    source = "192.168.1.123/32"    # The IP or network that will use the blocklist in CIDR notation
+    resolver="cleanbrowsing-filtered"
+
+    [[routers.router1.routes]]     # Default for everyone else
+    resolver="cloudflare-dot"
+
+[listeners]
+
+  [listeners.local-udp]
+  address = ":53"
+  protocol = "udp"
+  resolver = "router1"
+
+  [listeners.local-tcp]
+  address = ":53"
+  protocol = "tcp"
+  resolver = "router1"

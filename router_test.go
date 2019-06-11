@@ -65,7 +65,7 @@ func TestRouterSource(t *testing.T) {
 	q.SetQuestion("acme.test.", dns.TypeA)
 
 	router := NewRouter()
-	router.Add("", "", "192.168.1.100", r1)
+	router.Add("", "", "192.168.1.100/32", r1)
 	router.Add("", "", "", r2)
 
 	// No match, should go to r2

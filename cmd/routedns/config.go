@@ -34,6 +34,7 @@ type doh struct {
 type group struct {
 	Resolvers []string
 	Type      string
+	Blocklist []string // only used by "blocklist" type
 }
 
 type router struct {
