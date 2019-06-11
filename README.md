@@ -222,7 +222,7 @@ In a corporate environment it's necessary to use the potentially slow and insecu
 
 ### Use case 3: Restrict access to potentially harmful content
 
-The goal here is to single out children's devices on the network and apply a custom blocklist to their DNS resolution. Anything on the blocklist will fail to resolve with an NXDOMAIN response. Names that aren't on the blocklist are then sent on to CleanBrowsing for any further filtering. All other devices on the network will have unfiltered access via Cloudflare's DNS server, and all queries are done using DNS-over-TLS. The config file can also be found [here](example-config/family-browsing.toml)
+The goal here is to single out children's devices on the network and apply a custom blocklist to their DNS resolution. Anything on the blocklist will fail to resolve with an NXDOMAIN response. Names that aren't on the blocklist are then sent on to CleanBrowsing for any further filtering. All other devices on the network will have unfiltered access via Cloudflare's DNS server, and all queries are done using DNS-over-TLS. The config file can also be found [here](cmd/routedns/example-config/family-browsing.toml)
 
 ```toml
 [resolvers]
