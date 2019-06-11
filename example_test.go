@@ -16,7 +16,7 @@ func Example_resolver() {
 	q.SetQuestion("google.com.", dns.TypeA)
 
 	// Resolve the query
-	a, _ := r.Resolve(q)
+	a, _ := r.Resolve(q, rdns.ClientInfo{})
 	fmt.Println(a)
 }
 
@@ -33,7 +33,7 @@ func Example_group() {
 	q.SetQuestion("google.com.", dns.TypeA)
 
 	// Resolve the query
-	a, _ := g.Resolve(q)
+	a, _ := g.Resolve(q, rdns.ClientInfo{})
 	fmt.Println(a)
 }
 
@@ -45,14 +45,14 @@ func Example_router() {
 	// Build a router that will send all "*.cloudflare.com" to the cloudflare
 	// resolvber while everything else goes to the google resolver (default)
 	r := rdns.NewRouter()
-	r.Add(`\.cloudflare\.com\.$`, "", cloudflare)
-	r.Add("", "", google)
+	r.Add(`\.cloudflare\.com\.$`, "", "", cloudflare)
+	r.Add("", "", "", google)
 
 	// Build a query
 	q := new(dns.Msg)
 	q.SetQuestion("www.cloudflare.com.", dns.TypeA)
 
 	// Resolve the query
-	a, _ := r.Resolve(q)
+	a, _ := r.Resolve(q, rdns.ClientInfo{})
 	fmt.Println(a)
 }

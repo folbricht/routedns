@@ -3,6 +3,7 @@ package rdns
 import (
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -23,7 +24,7 @@ func NewRouter() *Router {
 }
 
 // Resolve a request by routing it to the right resolved based on the routes setup in the router.
-func (r *Router) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if len(q.Question) < 1 {
 		return nil, errors.New("no question in query")
 	}
@@ -35,8 +36,11 @@ func (r *Router) Resolve(q *dns.Msg) (*dns.Msg, error) {
 		if !route.name.MatchString(question.Name) {
 			continue
 		}
+		if route.source != nil && !route.source.Contains(ci.SourceIP) {
+			continue
+		}
 		Log.Printf("routing query for '%s' to %s", qName(q), route.resolver)
-		return route.resolver.Resolve(q)
+		return route.resolver.Resolve(q, ci)
 	}
 	return nil, fmt.Errorf("no route for %s", question.String())
 }
@@ -46,7 +50,8 @@ func (r *Router) Resolve(q *dns.Msg) (*dns.Msg, error) {
 // route (no name, no type) should be added last since subsequently added
 // routes won't have any impact. Name is a regular expression that is
 // applied to the name in the first question section of the DNS message.
-func (r *Router) Add(name, typ string, resolver Resolver) error {
+// Source is an IP or network in CIDR format.
+func (r *Router) Add(name, typ, source string, resolver Resolver) error {
 	t, err := stringToType(typ)
 	if err != nil {
 		return err
@@ -55,9 +60,17 @@ func (r *Router) Add(name, typ string, resolver Resolver) error {
 	if err != nil {
 		return err
 	}
+	var sNet *net.IPNet
+	if source != "" {
+		_, sNet, err = net.ParseCIDR(source)
+		if err != nil {
+			return err
+		}
+	}
 	newRoute := &route{
 		typ:      t,
 		name:     re,
+		source:   sNet,
 		resolver: resolver,
 	}
 
@@ -89,6 +102,7 @@ func stringToType(s string) (uint16, error) {
 type route struct {
 	typ      uint16
 	name     *regexp.Regexp
+	source   *net.IPNet
 	resolver Resolver
 }
 

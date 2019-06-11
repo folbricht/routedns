@@ -24,12 +24,12 @@ func NewRoundRobin(resolvers ...Resolver) *RoundRobin {
 }
 
 // Resolve a DNS query using a round-robin resolver group.
-func (r *RoundRobin) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (r *RoundRobin) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.mu.Lock()
 	resolver := r.resolvers[r.current]
 	r.current = (r.current + 1) % len(r.resolvers)
 	r.mu.Unlock()
-	return resolver.Resolve(q)
+	return resolver.Resolve(q, ci)
 }
 
 func (r *RoundRobin) String() string {

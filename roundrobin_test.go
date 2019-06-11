@@ -9,15 +9,8 @@ import (
 
 func TestRoundRobin(t *testing.T) {
 	// Build 2 resolvers that count the number of invocations
-	var c1, c2 int
-	r1 := TestResolver(func(q *dns.Msg) (*dns.Msg, error) {
-		c1++
-		return q, nil
-	})
-	r2 := TestResolver(func(q *dns.Msg) (*dns.Msg, error) {
-		c2++
-		return q, nil
-	})
+	r1 := new(TestResolver)
+	r2 := new(TestResolver)
 
 	g := NewRoundRobin(r1, r2)
 	q := new(dns.Msg)
@@ -25,11 +18,11 @@ func TestRoundRobin(t *testing.T) {
 
 	// Send 10 queries
 	for i := 0; i < 10; i++ {
-		_, err := g.Resolve(q)
+		_, err := g.Resolve(q, ClientInfo{})
 		require.NoError(t, err)
 	}
 
 	// Each of the resolvers should have been used 5 times
-	require.Equal(t, 5, c1)
-	require.Equal(t, 5, c2)
+	require.Equal(t, 5, r1.HitCount())
+	require.Equal(t, 5, r2.HitCount())
 }

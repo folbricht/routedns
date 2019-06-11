@@ -109,7 +109,9 @@ func start(args []string) error {
 			if !ok {
 				return fmt.Errorf("router '%s' references non-existant resolver or group '%s", id, route.Resolver)
 			}
-			router.Add(route.Name, route.Type, resolver)
+			if err := router.Add(route.Name, route.Type, route.Source, resolver); err != nil {
+				return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
+			}
 		}
 		resolvers[id] = router
 	}

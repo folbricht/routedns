@@ -28,7 +28,7 @@ func NewDoTClient(endpoint string) *DoTClient {
 }
 
 // Resolve a DNS query.
-func (d *DoTClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	return d.pipeline.Resolve(q)
 }
 

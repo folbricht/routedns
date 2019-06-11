@@ -12,7 +12,7 @@ func TestDoHClientSimplePOST(t *testing.T) {
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("cloudflare.com.", dns.TypeA)
-	r, err := d.Resolve(q)
+	r, err := d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
 	require.NotEmpty(t, r.Answer)
 }
@@ -22,7 +22,7 @@ func TestDoHClientSimpleGET(t *testing.T) {
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("cloudflare.com.", dns.TypeA)
-	r, err := d.Resolve(q)
+	r, err := d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
 	require.NotEmpty(t, r.Answer)
 }

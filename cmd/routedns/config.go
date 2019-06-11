@@ -43,6 +43,7 @@ type router struct {
 type route struct {
 	Type     string
 	Name     string
+	Source   string
 	Resolver string
 }
 

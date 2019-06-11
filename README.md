@@ -1,6 +1,6 @@
 # RouteDNS - DNS stub resolver and router
 
-RouteDNS acts as a stub resolver that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name or type. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
+RouteDNS acts as a stub resolver that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
 
 Features:
 
@@ -9,17 +9,17 @@ Features:
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
-- Routing of queries based on type and/or query name
+- Routing of queries based on query type, query name, or client IP
 - Written in Go - Platform independent
 
 TODO:
 
-- Add group for "fastest"
+- Add blocklist group
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
 - Configurable TLS options, like keys and certs
-- More use-cases/examples
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
+- Introduce logging levels
 
 Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
 
@@ -102,6 +102,7 @@ A route has the following fields:
 
 - `type` - If defined, only matches queries of this type
 - `name` - A regular expession that is applied to the query name. Note that dots in domain names need to be escaped
+- `source` - Network in CIDR notation. Used to route based on client IP.
 - `resolver` - The identifier of a resolver, group, or another router that was defined earlier.
 
 Below, `router1` sends all queries for the MX record of `google.com` and all its sub-domains to a group consisting of Google's DNS servers. Anything else is sent to a DNS-over-TLS resolver.
@@ -197,7 +198,7 @@ In a corporate environment it's necessary to use the potentially slow and insecu
 
   [routers.router1]
 
-    # Send all queries for '*.mycomany.com.' to the company's DNS, possibly through a VPN tunnel
+    # Send all queries for '*.mycompany.com.' to the company's DNS, possibly through a VPN tunnel
     [[routers.router1.routes]]
     name = '(^|\.)mycompany\.com\.$'
     resolver="mycompany-dns"

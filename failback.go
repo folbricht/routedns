@@ -43,11 +43,11 @@ func NewFailBack(opt FailBackOptions, resolvers ...Resolver) *FailBack {
 
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
-func (r *FailBack) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
-		a, err := resolver.Resolve(q)
+		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}

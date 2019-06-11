@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/miekg/dns"
 )
@@ -37,7 +38,16 @@ func (s DNSListener) String() string {
 func listenHandler(r Resolver) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		Log.Printf("received query for '%s' forwarded to %s", qName(req), r.String())
-		a, err := r.Resolve(req)
+		var ci ClientInfo
+		fmt.Printf("type=%T\n", w.RemoteAddr())
+		switch addr := w.RemoteAddr().(type) {
+		case *net.TCPAddr:
+			ci.SourceIP = addr.IP
+		case *net.UDPAddr:
+			ci.SourceIP = addr.IP
+		}
+		fmt.Println(ci)
+		a, err := r.Resolve(req, ci)
 		if err != nil {
 			Log.Printf("failed to resolve '%s' : %s", qName(req), err)
 			return

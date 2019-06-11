@@ -66,7 +66,7 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 }
 
 // Resolve a DNS query.
-func (d *DoHClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	Log.Printf("resolving query for '%s' via  %s", qName(q), d.String())
 	switch d.method() {
 	case "POST":

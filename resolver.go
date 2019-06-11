@@ -8,6 +8,6 @@ import (
 
 // Resolver is an interface to resolve DNS queries.
 type Resolver interface {
-	Resolve(*dns.Msg) (*dns.Msg, error)
+	Resolve(*dns.Msg, ClientInfo) (*dns.Msg, error)
 	fmt.Stringer
 }

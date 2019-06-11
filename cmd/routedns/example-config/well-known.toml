@@ -82,6 +82,11 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   address = "https://9.9.9.9/dns-query{?dns}"
   protocol = "doh"
 
+  # CleanBrowsing DoT resolver
+  [resolvers.cleanbrowsing-dot]
+  address = "family-filter-dns.cleanbrowsing.org:853"
+  protocol = "dot"
+
 [listeners]
 
   [listeners.local-udp]

@@ -32,7 +32,7 @@ func NewDNSClient(endpoint, net string) *DNSClient {
 }
 
 // Resolve a DNS query.
-func (d *DNSClient) Resolve(q *dns.Msg) (*dns.Msg, error) {
+func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	Log.Printf("sending query for '%s' to %s/%s", qName(q), d.endpoint, d.net)
 	return d.pipeline.Resolve(q)
 }
