@@ -9,6 +9,9 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Defines how long to wait for a response from the resolver
+const queryTimeout = time.Second
+
 // Pipeline is a DNS client that is able to use pipelining for ultiple requests over
 // one connection, handle out-of-order responses and deals with disconnects
 // gracefully. It opens a single connection on demand and uses it for all queries.
@@ -35,7 +38,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	r := newRequest(q)
 	c.requests <- r // Queue up the request
 
-	timeout := time.NewTimer(time.Second)
+	timeout := time.NewTimer(queryTimeout)
 	defer timeout.Stop()
 
 	// Wait for the request to complete or time out

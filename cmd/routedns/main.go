@@ -73,8 +73,10 @@ func start(args []string) error {
 	}
 
 	// Now the resolver groups. They reference the resolvers above and are used by routers
-	// later.
-	for id, g := range config.Groups {
+	// later. Since groups can reference other groups, we need to figure out which ones to
+	// process first. That's done by analysing the dependencies between them.
+	for _, id := range groupKeyOrder(config.Groups) {
+		g := config.Groups[id]
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("group defined with duplicate id '%s", id)
 		}
@@ -103,8 +105,9 @@ func start(args []string) error {
 		}
 	}
 
-	// Parse the routers next. These can be referenced by listeners.
-	for id, r := range config.Routers {
+	// Parse the routers next. These can be referenced by listeners and by other routers.
+	for _, id := range routerKeyOrder(config.Routers) {
+		r := config.Routers[id]
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("router defined with duplicate id '%s", id)
 		}
