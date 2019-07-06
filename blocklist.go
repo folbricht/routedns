@@ -16,11 +16,6 @@ type Blocklist struct {
 	filters  []*regexp.Regexp
 }
 
-// // BlocklistOptions contain blocklist-specific options.
-// type BlocklistOptions struct {
-// 	Blocklist []string
-// }
-
 var _ Resolver = &Blocklist{}
 
 // NewBlocklist returns a new instance of a blocklist resolver.

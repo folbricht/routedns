@@ -103,6 +103,14 @@ func start(args []string) error {
 			if err != nil {
 				return err
 			}
+		case "replace":
+			if len(gr) != 1 {
+				return fmt.Errorf("type replace only supports one resolver in '%s'", id)
+			}
+			resolvers[id], err = rdns.NewReplace(gr[0], g.Replace...)
+			if err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
 		}

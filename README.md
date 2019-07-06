@@ -83,6 +83,7 @@ The `type` determines which algorithm is being used. Available types:
 - `round-robin` - Each resolver in the group receives an equal number of queries. There is no failover.
 - `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
 - `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
+- `replace` - Applies regular expressions to query strings and replaces them before forwarding the query. Useful to map hostnames to a different domain on-the-fly or append domain names to short hostname queries.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
 
@@ -267,6 +268,36 @@ The goal here is to single out children's devices on the network and apply a cus
   address = ":53"
   protocol = "tcp"
   resolver = "router1"
+```
+
+### Use case 4: Replace queries for short names with FQDN
+
+If adding a search list to /etc/resolv.conf is not an option, a `replace` group can be used to add the correct domain based on the name in the query. It's possible to modify or expand query strings by matching on a regex and replacing it with an alternative expression. The replace string supports expansion like `$1` to refer to a match in the regex. The `replace` can be combined with routers and resolvers as with all the other groups.
+
+In this example, queries for short names starting with `my-` will have the domain `home-domain.com.` appended to them and the prefix removed. A query for `my-server.` from the client will result in a query for `server.home-domain.com.` to Cloudflare. The response to the client will reference `my-server.` with the response from Cloudflare. More than one replace rule can be defined and they are applied to the query name in order. Any other queries will pass without modification.
+
+```toml
+[resolvers]
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[groups]
+
+  [groups.append-my-domain]
+  type = "replace"
+  resolvers = ["cloudflare-dot"]
+  replace = [
+    { from = '^my-([^.]+\.)$', to = '${1}home-domain.com.' },
+  ]
+
+[listeners]
+
+  [listeners.local-udp]
+  address = ":53"
+  protocol = "udp"
+  resolver = "append-my-domain"
 ```
 
 ## Links

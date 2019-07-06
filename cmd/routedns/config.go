@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	rdns "github.com/folbricht/routedns"
 )
 
 type config struct {
@@ -34,7 +35,8 @@ type doh struct {
 type group struct {
 	Resolvers []string
 	Type      string
-	Blocklist []string // only used by "blocklist" type
+	Blocklist []string                // only used by "blocklist" type
+	Replace   []rdns.ReplaceOperation // only used by "replace" type
 }
 
 type router struct {

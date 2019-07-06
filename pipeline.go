@@ -65,10 +65,10 @@ func (c *Pipeline) start() {
 	)
 	for req := range c.requests { // Lazy connection. Only open a real connection if there's a request
 		done := make(chan struct{})
-		Log.Println("opening dot connection to", c.addr)
+		Log.Println("opening connection to", c.addr)
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
-			Log.Println("failed to open dot connection to", c.addr, ":", err)
+			Log.Println("failed to open connection to", c.addr, ":", err)
 			req.markDone(nil, err)
 			continue
 		}
