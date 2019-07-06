@@ -100,6 +100,9 @@ func start(args []string) error {
 				return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
 			}
 			resolvers[id], err = rdns.NewBlocklist(gr[0], g.Blocklist...)
+			if err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
 		}

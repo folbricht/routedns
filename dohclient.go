@@ -52,7 +52,9 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
 	// the HTTP library. Turn it on for this transport.
 	if tr.TLSClientConfig != nil {
-		http2.ConfigureTransport(tr)
+		if err := http2.ConfigureTransport(tr); err != nil {
+			return nil, err
+		}
 	}
 	client := &http.Client{
 		Transport: tr,

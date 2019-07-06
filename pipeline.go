@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -9,8 +10,11 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Defines how long to wait for a response from the resolver
+// Defines how long to wait for a response from the resolver.
 const queryTimeout = time.Second
+
+// Tear down an upstream connection if nothing has been received for this long.
+const idleTimeout = 10 * time.Second
 
 // Pipeline is a DNS client that is able to use pipelining for ultiple requests over
 // one connection, handle out-of-order responses and deals with disconnects
@@ -94,11 +98,20 @@ func (c *Pipeline) start() {
 		}()
 		go func() { // reader
 			for {
+				// Set the idle deadline on the reader, not the writer since when using UDP "connections",
+				// a network topology change wouldn't be noticed. Putting the idle timeout here ensures
+				// a reconnect in that case as well. This does create a very slight race however if the
+				// sender is using the connection right at the time of the timeout in the receiver.
+				conn.SetReadDeadline(time.Now().Add(idleTimeout))
 				a, err := conn.ReadMsg()
 				if err != nil {
 					close(done) // tell the writer to not use this connection anymore
 					wg.Done()
-					Log.Println("dot connection to", c.addr, "terminated")
+					if err, ok := err.(net.Error); ok && err.Timeout() {
+						Log.Println("connection to", c.addr, "terminated by idle timeout")
+					} else {
+						Log.Println("connection to", c.addr, "terminated by server")
+					}
 					return
 				}
 				req := inFlight.get(a) // match the answer to an in-flight query
