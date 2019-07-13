@@ -48,7 +48,8 @@ func listenHandler(r Resolver) dns.HandlerFunc {
 		a, err := r.Resolve(req, ci)
 		if err != nil {
 			Log.Printf("failed to resolve '%s' : %s", qName(req), err)
-			return
+			a = new(dns.Msg)
+			a.SetRcode(req, dns.RcodeServerFailure)
 		}
 		w.WriteMsg(a)
 	}

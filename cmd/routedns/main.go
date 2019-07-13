@@ -57,9 +57,19 @@ func start(args []string) error {
 	for id, r := range config.Resolvers {
 		switch r.Protocol {
 		case "dot":
-			resolvers[id] = rdns.NewDoTClient(r.Address)
+			opt := rdns.DoTClientOptions{
+				ClientTLSOptions: rdns.ClientTLSOptions{CAFile: r.CA, ClientCrtFile: r.ClientCrt, ClientKeyFile: r.ClientKey},
+			}
+			resolvers[id], err = rdns.NewDoTClient(r.Address, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		case "doh":
-			resolvers[id], err = rdns.NewDoHClient(r.Address, rdns.DoHClientOptions{Method: r.DoH.Method})
+			opt := rdns.DoHClientOptions{
+				Method:           r.DoH.Method,
+				ClientTLSOptions: rdns.ClientTLSOptions{CAFile: r.CA, ClientCrtFile: r.ClientCrt, ClientKeyFile: r.ClientKey},
+			}
+			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}

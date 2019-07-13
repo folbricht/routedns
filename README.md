@@ -6,10 +6,12 @@ Features:
 
 - Support for DNS-over-TLS (DoT)
 - Support for DNS-over-HTTPS (DoH)
+- Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
 - Custom blocklists
+- In-line query translation
 - Routing of queries based on query type, query name, or client IP
 - Written in Go - Platform independent
 
@@ -17,7 +19,6 @@ TODO:
 
 - DNS-over-TLS listeners
 - DNS-over-HTTP listeners
-- Configurable TLS options, like keys and certs
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 - Introduce logging levels
 
@@ -70,6 +71,26 @@ The following example defines several well-known resolvers, one using DNS-over-T
   [resolvers.google-udp-8-8-4-4]
   address = "8.8.4.4:53"
   protocol = "udp"
+```
+
+Secure resolvers (DoT and DoH) also support additional option to set the trusted CA certificates or even set client key and certificates. Certificate and key files need to be in PEM format. Specify `ca` to only trust a specific set of CAs. If not specified, the resolver will use the system trust store.
+
+```toml
+  [resolvers.cloudflare-dot-with-ca]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+  ca = "/path/to/DigiCertECCSecureServerCA.pem"
+```
+
+For full mutual TLS with a private DNS server that expects the client to present a certificate, the `client-key` and `client-crt` options can be used to specify the key and certificate files.
+
+```toml
+  [resolvers.my-mutual-tls]
+  address = "myserver:853"
+  protocol = "dot"
+  ca = "/path/to/my-ca.pem"
+  client-key = "/path/to/my-key.pem"
+  client-crt = "/path/to/my-crt.pem"
 ```
 
 ### Groups
