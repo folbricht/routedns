@@ -1,10 +1,10 @@
 # RouteDNS - DNS stub resolver and router
 
-RouteDNS acts as a stub resolver that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
+RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address as well as blocklists and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
 
 Features:
 
-- Support for DNS-over-TLS (DoT)
+- Support for DNS-over-TLS (DoT), client and server
 - Support for DNS-over-HTTPS (DoH)
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
@@ -17,7 +17,6 @@ Features:
 
 TODO:
 
-- DNS-over-TLS listeners
 - DNS-over-HTTP listeners
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 - Introduce logging levels

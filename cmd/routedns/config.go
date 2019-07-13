@@ -16,9 +16,13 @@ type config struct {
 }
 
 type listener struct {
-	Address  string
-	Protocol string
-	Resolver string
+	Address   string
+	Protocol  string
+	Resolver  string
+	CA        string
+	ServerKey string `toml:"server-key"`
+	ServerCrt string `toml:"server-crt"`
+	MutualTLS bool   `toml:"mutual-tls"`
 }
 
 type resolver struct {

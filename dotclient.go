@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"github.com/miekg/dns"
@@ -14,25 +15,21 @@ type DoTClient struct {
 
 // DoTClientOptions contains options used by the DNS-over-TLS resolver.
 type DoTClientOptions struct {
-	ClientTLSOptions
+	TLSConfig *tls.Config
 }
 
 var _ Resolver = &DoTClient{}
 
 // NewDoTClient instantiates a new DNS-over-TLS resolver.
-func NewDoTClient(endpoint string, opt DoTClientOptions) (*DoTClient, error) {
-	tlsConfig, err := opt.Config()
-	if err != nil {
-		return nil, err
-	}
+func NewDoTClient(endpoint string, opt DoTClientOptions) *DoTClient {
 	client := &dns.Client{
 		Net:       "tcp-tls",
-		TLSConfig: tlsConfig,
+		TLSConfig: opt.TLSConfig,
 	}
 	return &DoTClient{
 		endpoint: endpoint,
 		pipeline: NewPipeline(endpoint, client),
-	}, nil
+	}
 }
 
 // Resolve a DNS query.

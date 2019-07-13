@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -15,10 +16,10 @@ import (
 
 // DoHClientOptions contains options used by the DNS-over-HTTP resolver.
 type DoHClientOptions struct {
-	ClientTLSOptions
-
 	// Query method, either GET or POST. If empty, POST is used.
 	Method string
+
+	TLSConfig *tls.Config
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
@@ -33,10 +34,6 @@ var _ Resolver = &DoHClient{}
 
 // NewDoHClient instantiates a new DNS-over-HTTPS resolver.
 func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
-	tlsConfig, err := opt.Config()
-	if err != nil {
-		return nil, err
-	}
 	// Parse the URL template
 	template, err := uritemplates.Parse(endpoint)
 	if err != nil {
@@ -46,7 +43,7 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	// HTTP transport for this client
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		TLSClientConfig:       tlsConfig,
+		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
 		ResponseHeaderTimeout: time.Second,
 		IdleConnTimeout:       30 * time.Second,

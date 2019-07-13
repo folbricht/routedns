@@ -57,17 +57,19 @@ func start(args []string) error {
 	for id, r := range config.Resolvers {
 		switch r.Protocol {
 		case "dot":
-			opt := rdns.DoTClientOptions{
-				ClientTLSOptions: rdns.ClientTLSOptions{CAFile: r.CA, ClientCrtFile: r.ClientCrt, ClientKeyFile: r.ClientKey},
-			}
-			resolvers[id], err = rdns.NewDoTClient(r.Address, opt)
+			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+				return err
 			}
+			resolvers[id] = rdns.NewDoTClient(r.Address, rdns.DoTClientOptions{TLSConfig: tlsConfig})
 		case "doh":
+			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+			if err != nil {
+				return err
+			}
 			opt := rdns.DoHClientOptions{
-				Method:           r.DoH.Method,
-				ClientTLSOptions: rdns.ClientTLSOptions{CAFile: r.CA, ClientCrtFile: r.ClientCrt, ClientKeyFile: r.ClientKey},
+				Method:    r.DoH.Method,
+				TLSConfig: tlsConfig,
 			}
 			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
 			if err != nil {
@@ -157,6 +159,13 @@ func start(args []string) error {
 			listeners = append(listeners, rdns.NewDNSListener(l.Address, "tcp", resolver))
 		case "udp":
 			listeners = append(listeners, rdns.NewDNSListener(l.Address, "udp", resolver))
+		case "dot":
+			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			ln := rdns.NewDoTListener(l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig}, resolver)
+			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
 		}
