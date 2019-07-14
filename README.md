@@ -5,7 +5,7 @@ RouteDNS acts as a stub resolver and proxy that offers flexible configuration op
 Features:
 
 - Support for DNS-over-TLS (DoT), client and server
-- Support for DNS-over-HTTPS (DoH), client and server
+- Support for DNS-over-HTTPS (DoH), client and server with HTTP2
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency

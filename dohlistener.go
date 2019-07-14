@@ -42,12 +42,12 @@ func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoH
 
 // Start the DoH server.
 func (s DoHListener) Start() error {
-	ln, err := tls.Listen("tcp", s.Addr, s.TLSConfig)
+	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	return s.Serve(ln)
+	return s.ServeTLS(ln, "", "")
 }
 
 // Stop the server.
