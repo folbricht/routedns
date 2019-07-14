@@ -1,11 +1,11 @@
-# RouteDNS - DNS stub resolver and router
+# RouteDNS - DNS stub resolver, proxy and router
 
 RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address as well as blocklists and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
 
 Features:
 
 - Support for DNS-over-TLS (DoT), client and server
-- Support for DNS-over-HTTPS (DoH)
+- Support for DNS-over-HTTPS (DoH), client and server
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
@@ -17,7 +17,6 @@ Features:
 
 TODO:
 
-- DNS-over-HTTP listeners
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 - Introduce logging levels
 
@@ -158,6 +157,19 @@ Listers specify how queries are received and how they should be handled. Listene
   address = "127.0.0.1:53"
   protocol = "tcp"
   resolver = "router1"
+```
+
+Some listeners, namely DoH and DoT, can be configured with certificates and can enforce mutual-TLS. A secure listener of this type requires at least the `server-crt` and `server-key` options. Other options such as `ca` and `mutual-tls` can be used in more secure configurations. A listener using DoH and requiring client certificates would look like this:
+
+```toml
+  [listeners.local-doh]
+  address = ":443"
+  protocol = "doh"
+  resolver = "upstream-dot"
+  server-crt = "/path/to/server.crt"
+  server-key = "/path/to/server.key"
+  ca = "/path/to/ca.crt"
+  mutual-tls = true
 ```
 
 ## Use-cases / Examples
@@ -318,6 +330,51 @@ In this example, queries for short names starting with `my-` will have the domai
   address = ":53"
   protocol = "udp"
   resolver = "append-my-domain"
+```
+
+### Use case 5: Proxying out of a restricted or untrusted location
+
+In this use case the goal is to use get access to unfiltered and unmonitored DNS services in a location that does not offer it normally. Direct access to well-known public DoT or DoH providers may be blocked, forcing plain DNS. It may be possible to setup an instansce of RouteDNS in a less restricted location to act as proxy, offering DoH which is harder to detect and block. To prevent unauthorized access to the proxy, the config will enforce mutual-TLS with a client certificate signed by a custom CA.
+
+The following config on the server will accept queries over DNS-over-HTTPS from authorized clients (with valid and signed certificate), and forward all queries to Cloudflare using DNS-over-TLS.
+
+```toml
+[resolvers]
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[listeners]
+
+  [listeners.proxy-doh]
+  address = ":443"
+  protocol = "doh"
+  resolver = "cloudflare-dot"
+  server-crt = "/path/to/server.crt"
+  server-key = "/path/to/server.key"
+  ca = "/path/to/ca.crt"
+  mutual-tls = true
+```
+
+The client is configured to act as local DNS resolver, handling all queries from the local OS. Every query is then forwarded to the proxy using DoH. The client needs to have a signed certificate as the proxy is configured to require it.
+
+```toml
+[resolvers]
+
+  [resolvers.proxy-doh]
+  address = "https://<Proxy-IP>:443/dns-query"
+  protocol = "doh"
+  ca = "/path/to/ca.crt"
+  client-crt = "/path/to/client.crt"
+  client-key = "/path/to/client.crt"
+
+[listeners]
+
+  [listeners.local]
+  address = ":53"
+  protocol = "udp"
+  resolver = "proxy-doh"
 ```
 
 ## Links

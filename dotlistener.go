@@ -7,7 +7,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DoTListener is a standard DNS listener for DNS-over-TLS.
+// DoTListener is a DNS listener/server for DNS-over-TLS.
 type DoTListener struct {
 	*dns.Server
 }
@@ -31,12 +31,12 @@ func NewDoTListener(addr string, opt DoTListenerOptions, resolver Resolver) *DoT
 	}
 }
 
-// Start the DNS listener.
+// Start the Dot server.
 func (s DoTListener) Start() error {
 	return s.ListenAndServe()
 }
 
-// Stop the listener.
+// Stop the server.
 func (s DoTListener) Stop() error {
 	return s.Shutdown()
 }

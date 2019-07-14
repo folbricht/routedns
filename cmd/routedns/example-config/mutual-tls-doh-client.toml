@@ -1,0 +1,21 @@
+# This is the client-half of a fully secure DoH configuration where the
+# server is private and expects the client to present a cert by a CA it
+# trusts. All queries received locally will be forwarded over Doh to the
+# server, which then passes it on to its upstream servers.
+title = "RouteDNS configuration"
+
+[resolvers]
+
+  [resolvers.myserver-doh]
+  address = "https://<IP>:443/dns-query"
+  protocol = "doh"
+  ca = "/path/to/ca.crt"
+  client-crt = "/path/to/client.crt"
+  client-key = "/path/to/client.crt"
+
+[listeners]
+
+  [listeners.local]
+  address = ":53"
+  protocol = "udp"
+  resolver = "myserver-doh"

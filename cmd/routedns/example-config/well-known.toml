@@ -16,11 +16,11 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
 
   # Cloudflare DNS-over-HTTP using the POST method
   [resolvers.cloudflare-doh-1-1-1-1-post]
-  address = "https://1.1.1.1/dns-query{?dns}"
+  address = "https://1.1.1.1/dns-query"
   protocol = "doh"
 
   [resolvers.cloudflare-doh-1-0-0-1-post]
-  address = "https://1.0.0.1/dns-query{?dns}"
+  address = "https://1.0.0.1/dns-query"
   protocol = "doh"
 
   # Cloudflare DNS-over-HTTP using the GET method
