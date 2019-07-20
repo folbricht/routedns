@@ -6,6 +6,11 @@ import (
 	"github.com/miekg/dns"
 )
 
+func init() {
+	// Silence the logger while running tests
+	Log.SetLevel(0)
+}
+
 // TestResolver is a configurable resolver used for testing. It counts the
 // number of queries, can be set to fail, and the resolve function can be
 // defined externally.
