@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // DoTClient is a DNS-over-TLS resolver.
@@ -34,6 +35,12 @@ func NewDoTClient(endpoint string, opt DoTClientOptions) *DoTClient {
 
 // Resolve a DNS query.
 func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	Log.WithFields(logrus.Fields{
+		"client":   ci.SourceIP,
+		"qname":    qName(q),
+		"resolver": d.endpoint,
+		"protocol": "dot",
+	}).Debug("querying upstream resolver")
 	return d.pipeline.Resolve(q)
 }
 

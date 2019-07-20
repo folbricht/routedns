@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // DNSClient represents a simple DNS resolver for UDP or TCP.
@@ -33,7 +34,12 @@ func NewDNSClient(endpoint, net string) *DNSClient {
 
 // Resolve a DNS query.
 func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.Printf("sending query for '%s' to %s/%s", qName(q), d.endpoint, d.net)
+	Log.WithFields(logrus.Fields{
+		"client":   ci.SourceIP,
+		"qname":    qName(q),
+		"resolver": d.endpoint,
+		"protocol": d.net,
+	}).Debug("querying upstream resolver")
 	return d.pipeline.Resolve(q)
 }
 

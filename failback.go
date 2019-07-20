@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // FailBack is a resolver group that queries the same resolver unless that
@@ -44,13 +45,16 @@ func NewFailBack(opt FailBackOptions, resolvers ...Resolver) *FailBack {
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q)})
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
+		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
+		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
 
 		// Record the error to be returned when all requests fail
 		gErr = err
@@ -89,6 +93,7 @@ func (r *FailBack) errorFrom(i int) {
 		r.failCh = r.startResetTimer()
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
+	Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing over to resolver")
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
 
@@ -107,6 +112,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 			case <-timer.C:
 				r.mu.Lock()
 				r.active = 0
+				Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing back to resolver")
 				r.mu.Unlock()
 				// we just reset to the first resolver, let's wait for another failure before running again
 				<-failCh

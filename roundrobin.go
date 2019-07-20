@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // RoundRobin is a group of recolvers that will receive equal amounts of queries.
@@ -29,6 +30,11 @@ func (r *RoundRobin) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	resolver := r.resolvers[r.current]
 	r.current = (r.current + 1) % len(r.resolvers)
 	r.mu.Unlock()
+	Log.WithFields(logrus.Fields{
+		"client":   ci.SourceIP,
+		"qname":    qName(q),
+		"resolver": resolver.String(),
+	}).Trace("forwarding query to resolver")
 	return resolver.Resolve(q, ci)
 }
 

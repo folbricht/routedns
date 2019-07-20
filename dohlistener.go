@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
@@ -42,6 +43,7 @@ func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoH
 
 // Start the DoH server.
 func (s DoHListener) Start() error {
+	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("starting listener")
 	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
@@ -52,6 +54,7 @@ func (s DoHListener) Start() error {
 
 // Stop the server.
 func (s DoHListener) Stop() error {
+	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("stopping listener")
 	return s.Shutdown(context.Background())
 }
 
@@ -103,14 +106,16 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	Log.Printf("received query for '%s' forwarded to %s", qName(q), s.r.String())
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
 	ci := ClientInfo{
 		SourceIP: net.ParseIP(host),
 	}
+	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.Addr})
+	log.Debug("received query")
+	log.WithField("resolver", s.r.String()).Trace("forwarding query to resolver")
 	a, err := s.r.Resolve(q, ci)
 	if err != nil {
-		Log.Printf("failed to resolve '%s' : %s", qName(q), err)
+		log.WithError(err).Error("failed to resolve")
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}

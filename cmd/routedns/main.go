@@ -2,51 +2,60 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	rdns "github.com/folbricht/routedns"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
+type options struct {
+	logLevel uint32
+}
+
 func main() {
+	var opt options
 	cmd := &cobra.Command{
 		Use:   "routedns",
-		Short: "DNS router and proxy resolver",
-		Long: `DNS router and proxy resolver.
+		Short: "DNS stub resolver, proxy and router",
+		Long: `DNS stub resolver, proxy and router.
 
-It listens for incoming DNS requests and forwards
-them to upstream resolvers. Supports plain DNS over
-UDP and TCP as well as DNS-over-TLS as input and
-forwarding protocol.
+Listens for incoming DNS requests, routes, modifies and 
+forwards to upstream resolvers. Supports plain DNS over 
+UDP and TCP as well as DNS-over-TLS and DNS-over-HTTPS
+as listener and client protocols.
 
-Routes can be defined to send requests for certain
-queries (record type or query name) to different
-upstream resolvers.
+Routes can be defined to send requests for certain queries;
+by record type, query name or client-IP to different modifiers
+or upstream resolvers.
 `,
 		Example: `  routedns config.toml`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return start(args)
+			return start(opt, args)
 		},
 		SilenceUsage: true,
 	}
+	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 0=None .. 6=Trace")
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 
 }
 
-func start(args []string) error {
+func start(opt options, args []string) error {
+	// Set the log level in the library package
+	if opt.logLevel > 6 {
+		return fmt.Errorf("invalid log level: %d", opt.logLevel)
+	}
+	rdns.Log.SetLevel(logrus.Level(opt.logLevel))
+
 	configFile := args[0]
 	config, err := loadConfig(configFile)
 	if err != nil {
 		return err
 	}
-
-	// Set the logger
-	rdns.Log = log.New(os.Stderr, "", log.LstdFlags)
 
 	// Map to hold all the resolvers extracted from the config, key'ed by resolver ID. It
 	// holds configured resolvers, groups, as well as routers (since they all implement
@@ -182,9 +191,8 @@ func start(args []string) error {
 	for _, l := range listeners {
 		go func(l rdns.Listener) {
 			for {
-				log.Println("starting listener", l)
 				err := l.Start()
-				log.Println("listener", l, "failed:", err)
+				rdns.Log.WithError(err).Error("listener failed")
 				time.Sleep(time.Second)
 			}
 		}(l)

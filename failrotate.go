@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // FailRotate is a resolver group that queries the same resolver unless that
@@ -29,13 +30,16 @@ func NewFailRotate(resolvers ...Resolver) *FailRotate {
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q)})
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
+		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
+		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
 
 		// Record the error to be returned when all requests fail
 		gErr = err
@@ -71,4 +75,5 @@ func (r *FailRotate) errorFrom(i int) {
 		return
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
+	Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing over to resolver")
 }

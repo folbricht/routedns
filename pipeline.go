@@ -3,7 +3,6 @@ package rdns
 import (
 	"fmt"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -63,12 +62,13 @@ func (c *Pipeline) start() {
 		wg       sync.WaitGroup
 		inFlight inFlightQueue
 	)
+	log := Log.WithField("addr", c.addr)
 	for req := range c.requests { // Lazy connection. Only open a real connection if there's a request
 		done := make(chan struct{})
-		Log.Println("opening connection to", c.addr)
+		log.Debug("opening connection")
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
-			Log.Println("failed to open connection to", c.addr, ":", err)
+			log.WithError(err).Error("failed to open connection")
 			req.markDone(nil, err)
 			continue
 		}
@@ -81,13 +81,13 @@ func (c *Pipeline) start() {
 				select {
 				case req := <-c.requests:
 					query := inFlight.add(req)
-					Log.Printf("sending query for '%s' to %s", qName(query), c.addr)
+					log.WithField("qname", qName(query)).Trace("sending query")
 					if err := conn.WriteMsg(query); err != nil {
 						req.markDone(nil, err) // fail the request
 						inFlight.get(query)    // clean up the in-flight queue to it doesn't keep growing
 						conn.Close()           // throw away this connection, should wake up the reader as well
 						wg.Done()
-						Log.Printf("failed to send query for '%s' to %s : %s", qName(query), c.addr, err.Error())
+						log.WithField("qname", qName(query)).WithError(err).Trace("failed sending query")
 						return
 					}
 				case <-done: // the reader ran into an error and we want to stop using this connection
@@ -108,15 +108,15 @@ func (c *Pipeline) start() {
 					close(done) // tell the writer to not use this connection anymore
 					wg.Done()
 					if err, ok := err.(net.Error); ok && err.Timeout() {
-						Log.Println("connection to", c.addr, "terminated by idle timeout")
+						log.Debug("connection terminated by idle timeout")
 					} else {
-						Log.Println("connection to", c.addr, "terminated by server")
+						log.Debug("connection terminated by server")
 					}
 					return
 				}
 				req := inFlight.get(a) // match the answer to an in-flight query
 				if req == nil {
-					fmt.Fprintln(os.Stderr, "unexpected answer received:", a)
+					log.WithField("qname", qName(a)).Warn("unexpected answer received, ignoring")
 					continue
 				}
 				req.markDone(a, nil)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jtacoma/uritemplates"
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
 )
 
@@ -58,6 +60,14 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	client := &http.Client{
 		Transport: tr,
 	}
+
+	if opt.Method == "" {
+		opt.Method = "POST"
+	}
+	if opt.Method != "POST" && opt.Method != "GET" {
+		return nil, fmt.Errorf("unsupported method '%s'", opt.Method)
+	}
+
 	return &DoHClient{
 		endpoint: endpoint,
 		template: template,
@@ -68,14 +78,21 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 
 // Resolve a DNS query.
 func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.Printf("resolving query for '%s' via  %s", qName(q), d.String())
-	switch d.method() {
+	log := Log.WithFields(logrus.Fields{
+		"client":   ci.SourceIP,
+		"qname":    qName(q),
+		"resolver": d.endpoint,
+		"protocol": "doh",
+		"method":   d.opt.Method,
+	})
+	log.Debug("querying upstream resolver")
+	switch d.opt.Method {
 	case "POST":
 		return d.ResolvePOST(q)
 	case "GET":
 		return d.ResolveGET(q)
 	}
-	return nil, fmt.Errorf("unsupport method '%s' for %s, use POST or GET", d.opt.Method, d.String())
+	return nil, errors.New("unsupported method")
 }
 
 // ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
@@ -133,14 +150,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 }
 
 func (d *DoHClient) String() string {
-	return fmt.Sprintf("DoH-%s(%s)", d.method(), d.endpoint)
-}
-
-func (d *DoHClient) method() string {
-	if d.opt.Method != "" {
-		return d.opt.Method
-	}
-	return "POST"
+	return fmt.Sprintf("DoH-%s(%s)", d.opt.Method, d.endpoint)
 }
 
 // Check the HTTP response status code and parse out the response DNS message.

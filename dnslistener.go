@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // DNSListener is a standard DNS listener for UDP or TCP.
@@ -20,13 +21,14 @@ func NewDNSListener(addr, net string, resolver Resolver) *DNSListener {
 		Server: &dns.Server{
 			Addr:    addr,
 			Net:     net,
-			Handler: listenHandler(resolver),
+			Handler: listenHandler(net, addr, resolver),
 		},
 	}
 }
 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
+	Log.WithFields(logrus.Fields{"protocol": s.Net, "addr": s.Addr}).Info("starting listener")
 	return s.ListenAndServe()
 }
 
@@ -35,9 +37,8 @@ func (s DNSListener) String() string {
 }
 
 // DNS handler to forward all incoming requests to a given resolver.
-func listenHandler(r Resolver) dns.HandlerFunc {
+func listenHandler(protocol, addr string, r Resolver) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
-		Log.Printf("received query for '%s' forwarded to %s", qName(req), r.String())
 		var ci ClientInfo
 		switch addr := w.RemoteAddr().(type) {
 		case *net.TCPAddr:
@@ -45,9 +46,12 @@ func listenHandler(r Resolver) dns.HandlerFunc {
 		case *net.UDPAddr:
 			ci.SourceIP = addr.IP
 		}
+		log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
+		log.Debug("received query")
+		log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
 		a, err := r.Resolve(req, ci)
 		if err != nil {
-			Log.Printf("failed to resolve '%s' : %s", qName(req), err)
+			log.WithError(err).Error("failed to resolve")
 			a = new(dns.Msg)
 			a.SetRcode(req, dns.RcodeServerFailure)
 		}

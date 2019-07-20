@@ -11,23 +11,28 @@ Features:
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
 - Custom blocklists
-- In-line query translation
+- In-line query modification and translation
 - Routing of queries based on query type, query name, or client IP
 - Written in Go - Platform independent
 
 TODO:
 
 - Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
-- Introduce logging levels
 
 Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
 
 ## Installation
 
-Get the binary
+Get the binary, this will put it under $GOPATH/bin, ~/go/bin if $GOPATH is not set:
 
 ```text
 go get -u github.com/folbricht/routedns/cmd/routedns
+```
+
+Run it:
+
+```text
+routedns config.toml
 ```
 
 An example systemd service file is provided [here](cmd/routedns/routedns.service)
