@@ -46,6 +46,7 @@ func listenHandler(protocol, addr string, r Resolver) dns.HandlerFunc {
 		case *net.UDPAddr:
 			ci.SourceIP = addr.IP
 		}
+
 		log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
 		log.Debug("received query")
 		log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
@@ -54,6 +55,14 @@ func listenHandler(protocol, addr string, r Resolver) dns.HandlerFunc {
 			log.WithError(err).Error("failed to resolve")
 			a = new(dns.Msg)
 			a.SetRcode(req, dns.RcodeServerFailure)
+		}
+
+		// If the client asked via DoT and EDNS0 is enabled, the response should be padded for extra security.
+		// See rfc7830 and rfc8467.
+		if protocol == "dot" {
+			padAnswer(req, a)
+		} else {
+			stripPadding(a)
 		}
 		w.WriteMsg(a)
 	}

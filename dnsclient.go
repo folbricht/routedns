@@ -29,7 +29,6 @@ func NewDNSClient(endpoint, net string) *DNSClient {
 		endpoint: endpoint,
 		pipeline: NewPipeline(endpoint, client),
 	}
-
 }
 
 // Resolve a DNS query.
@@ -40,6 +39,9 @@ func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"resolver": d.endpoint,
 		"protocol": d.net,
 	}).Debug("querying upstream resolver")
+
+	// Remove padding before sending over the wire in plain
+	stripPadding(q)
 	return d.pipeline.Resolve(q)
 }
 

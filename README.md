@@ -15,10 +15,6 @@ Features:
 - Routing of queries based on query type, query name, or client IP
 - Written in Go - Platform independent
 
-TODO:
-
-- Dot and DoH listeners should support padding as per [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
-
 Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
 
 ## Installation
@@ -386,4 +382,5 @@ The client is configured to act as local DNS resolver, handling all queries from
 
 - DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
 - DNS-over-HTTPS RFC - [https://tools.ietf.org/html/rfc8484](https://tools.ietf.org/html/rfc8484)
+- EDNS0 padding [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 - GoDoc for the rdns library - [https://godoc.org/github.com/folbricht/routedns](https://godoc.org/github.com/folbricht/routedns)

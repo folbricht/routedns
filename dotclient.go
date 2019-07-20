@@ -41,6 +41,9 @@ func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"resolver": d.endpoint,
 		"protocol": "dot",
 	}).Debug("querying upstream resolver")
+
+	// Add padding to the query before sending over TLS
+	padQuery(q)
 	return d.pipeline.Resolve(q)
 }
 

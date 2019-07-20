@@ -86,6 +86,10 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"method":   d.opt.Method,
 	})
 	log.Debug("querying upstream resolver")
+
+	// Add padding before sending the query over HTTPS
+	padQuery(q)
+
 	switch d.opt.Method {
 	case "POST":
 		return d.ResolvePOST(q)

@@ -119,6 +119,10 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
+
+	// Pad the packet according to rfc8467 and rfc7830
+	padAnswer(q, a)
+
 	out, err := a.Pack()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
