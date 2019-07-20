@@ -43,6 +43,10 @@ Example configuration files for a number of use-cases can be found [here](cmd/ro
 
 RouteDNS uses a config file in [TOML](https://github.com/toml-lang/toml) format which is passed to the tool as argument in the command line. The configuration is broken up into sections, not all of which are necessary for simple uses.
 
+The config file defines listeners which represent open ports and protocols on which incoming DNS queries are received. These queries are then forwarded to routers, groups or resolvers. Routers can redirect queries based on information in the query, while groups can be be used to perform failover between upstream resolvers, or to modify/block queries. A more complex configuration could look like this.
+
+![configuration](doc/configuration.png)
+
 ### Resolvers
 
 The `[resolvers]`-section is used to define and upstream resolvers and the protocol to use when using them. Each of the resolvers requires a unique identifier which may be reference in the following sections. Only defining the resolvers will not actually mean they are used. This section can contain unused upstream resolvers.
@@ -98,7 +102,7 @@ For full mutual TLS with a private DNS server that expects the client to present
 
 ### Groups
 
-Multiple resolvers can be combined into a group to implement different failover or loadbalancing algorithms within that group. Again, each group requires a unique identifier.
+Multiple resolvers can be combined into a group to implement different failover or loadbalancing algorithms within that group. Some groups are used as query modifiers (e.g. blocklist) and only have one upstream resolver. Again, each group requires a unique identifier.
 
 Each group has `resolvers` which is and array of one or more resolver-identifiers. These can either be resolvers defined above, or other groups defined earlier.
 
@@ -108,6 +112,7 @@ The `type` determines which algorithm is being used. Available types:
 - `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
 - `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 - `replace` - Applies regular expressions to query strings and replaces them before forwarding the query. Useful to map hostnames to a different domain on-the-fly or append domain names to short hostname queries.
+- `blocklist` - A blocklist has just one upstream resolver and forwards anything that does not match its expressions unmodified. If a query matches a block expression, it'll be answered with NXDOMAIN.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
 
@@ -235,15 +240,10 @@ In a corporate environment it's necessary to use the potentially slow and insecu
 [routers]
 
   [routers.router1]
-
-    # Send all queries for '*.mycompany.com.' to the company's DNS, possibly through a VPN tunnel
-    [[routers.router1.routes]]
-    name = '(^|\.)mycompany\.com\.$'
-    resolver="mycompany-dns"
-
-    # Everything else can go securely to Cloudflare
-    [[routers.router1.routes]]
-    resolver="cloudflare-doh-1-1-1-1-get"
+  routes = [
+    { name = '(^|\.)mycompany\.com\.$', resolver="mycompany-dns" }, # Use company DNS, perhaps through a VPN tunnel
+    { resolver="cloudflare-doh-1-1-1-1-get" },                      # Everything else can go securely to Cloudflare
+  ]
 
 [listeners]
 
