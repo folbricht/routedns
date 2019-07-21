@@ -4,8 +4,8 @@ RouteDNS acts as a stub resolver and proxy that offers flexible configuration op
 
 Features:
 
-- Support for DNS-over-TLS (DoT), client and server
-- Support for DNS-over-HTTPS (DoH), client and server with HTTP2
+- Support for DNS-over-TLS (DoT, [RFC7858](https://tools.ietf.org/html/rfc7858)), client and server
+- Support for DNS-over-HTTPS (DoH, [RFC8484](https://tools.ietf.org/html/rfc8484)), client and server with HTTP2
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
@@ -13,6 +13,7 @@ Features:
 - Custom blocklists
 - In-line query modification and translation
 - Routing of queries based on query type, query name, or client IP
+- EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - Written in Go - Platform independent
 
 Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
@@ -54,7 +55,7 @@ The following protocols are supportes:
 - dot - DNS-over-TLS
 - doh - DNS-over-HTTP
 
-The following example defines several well-known resolvers, one using DNS-over-TLS, one DNS-over-HTTP while the other two use plain DNS.
+The following example defines several well-known resolvers, one using DNS-over-TLS, one DNS-over-HTTP while the other two use plain DNS. A more extensive list of configurations for public DNS services can be found [here](cmd/routedns/example-config/well-known.toml).
 
 ```toml
 [resolvers]
@@ -275,20 +276,17 @@ The goal here is to single out children's devices on the network and apply a cus
   type = "blocklist"
   resolvers = ["cleanbrowsing-dot"] # Anything that passes the filter is sent on to this resolver
   blocklist = [                     # Define the names to be blocked
-    '(^|\.)facebook.com.$',
-    '(^|\.)twitter.com.$',
+    '(^|\.)facebook\.com\.$',
+    '(^|\.)twitter\.com\.$',
   ]
 
 [routers]
 
   [routers.router1]
-
-    [[routers.router1.routes]]
-    source = "192.168.1.123/32"    # The IP or network that will use the blocklist in CIDR notation
-    resolver="cleanbrowsing-filtered"
-
-    [[routers.router1.routes]]     # Default for everyone else
-    resolver="cloudflare-dot"
+  routes = [
+    { source = "192.168.1.123/32", resolver="cleanbrowsing-filtered" }, # The IP or network that will use the blocklist in CIDR notation
+    { resolver="cloudflare-dot" }, # Default for everyone else
+  ]
 
 [listeners]
 
