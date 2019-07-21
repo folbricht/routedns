@@ -63,12 +63,12 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
 
   # Google DNS-over-HTTP using the POST method
   [resolvers.google-doh-post]
-  address = "https://dns.google.com/experimental{?dns}"
+  address = "https://dns.google/dns-query"
   protocol = "doh"
 
   # Google DNS-over-HTTP using the GET method
   [resolvers.google-doh-get]
-  address = "https://dns.google.com/experimental{?dns}"
+  address = "https://dns.google/dns-query{?dns}"
   protocol = "doh"
   doh = { method = "GET" }
 
@@ -86,6 +86,17 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   [resolvers.cleanbrowsing-dot]
   address = "family-filter-dns.cleanbrowsing.org:853"
   protocol = "dot"
+
+  # OpenDNS plain DNS (resolver1.opendns.com)
+  [resolvers.opendns-udp-1]
+  address = "208.67.222.222:53"
+  protocol = "udp"
+
+  # OpenDNS plain DNS (resolver2.opendns.com)
+  [resolvers.opendns-udp-2]
+  address = "208.67.222.220:53"
+  protocol = "udp"
+
 
 [listeners]
 
