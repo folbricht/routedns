@@ -26,12 +26,13 @@ type listener struct {
 }
 
 type resolver struct {
-	Address   string
-	Protocol  string
-	DoH       doh
-	CA        string
-	ClientKey string `toml:"client-key"`
-	ClientCrt string `toml:"client-crt"`
+	Address       string
+	Protocol      string
+	DoH           doh
+	CA            string
+	ClientKey     string `toml:"client-key"`
+	ClientCrt     string `toml:"client-crt"`
+	BootstrapAddr string `toml:"bootstrap-address"`
 }
 
 // DoH-specific resolver options

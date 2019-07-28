@@ -14,9 +14,8 @@ Features:
 - In-line query modification and translation
 - Routing of queries based on query type, query name, or client IP
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
+- Support for bootstrap addresses to avoid the initial service name lookup
 - Written in Go - Platform independent
-
-Note: **RouteDNS is under active development and interfaces as well as configuration options are likely going to change**
 
 ## Installation
 
@@ -95,6 +94,22 @@ For full mutual TLS with a private DNS server that expects the client to present
   ca = "/path/to/my-ca.pem"
   client-key = "/path/to/my-key.pem"
   client-crt = "/path/to/my-crt.pem"
+```
+
+#### Bootstrapping
+
+When upstream services are configured using their hostnames, routedns will first have to resolve the hostname of the service before establishing a secure connection with it. There are a couple of potenial issues with this:
+
+- The initial lookup is using the OS' resolver which could be using plain unencrypted DNS. This may not be desirable or fail if no other DNS is available.
+- The service does not support querying it by IP directly and a hostname is needed. Google for example does not support DoH using `https://8.8.8.8/dns-query`. The endpoint has to be configured as `https://dns.google/dns-query`.
+
+To solve these issues, it is possible to add a bootstrap IP address to the config. This will use the IP to connect to the service without first having to do a lookup while still preserving the DoH URL or DoT hostname for the TLS handshake. The `bootstrap-address` option is available on both, DoT and DoH resolvers.
+
+```toml
+  [resolvers.google-doh-post-bootstrap]
+  address = "https://dns.google/dns-query"
+  protocol = "doh"
+  bootstrap-address = "8.8.8.8"
 ```
 
 ### Groups

@@ -72,6 +72,12 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   protocol = "doh"
   doh = { method = "GET" }
 
+  # Google DNS-over-HTTP with bootstrapping to avoid initial lookup
+  [resolvers.google-doh-post-bootstrap]
+  address = "https://dns.google/dns-query"
+  protocol = "doh"
+  bootstrap-address = "8.8.8.8"
+
   # Quad9 DNS-over-TLS
   [resolvers.quad9-dot]
   address = "9.9.9.9:853"

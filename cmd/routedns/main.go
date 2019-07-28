@@ -70,15 +70,23 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			resolvers[id] = rdns.NewDoTClient(r.Address, rdns.DoTClientOptions{TLSConfig: tlsConfig})
+			opt := rdns.DoTClientOptions{
+				BootstrapAddr: r.BootstrapAddr,
+				TLSConfig:     tlsConfig,
+			}
+			resolvers[id], err = rdns.NewDoTClient(r.Address, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		case "doh":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 			if err != nil {
 				return err
 			}
 			opt := rdns.DoHClientOptions{
-				Method:    r.DoH.Method,
-				TLSConfig: tlsConfig,
+				Method:        r.DoH.Method,
+				TLSConfig:     tlsConfig,
+				BootstrapAddr: r.BootstrapAddr,
 			}
 			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
 			if err != nil {

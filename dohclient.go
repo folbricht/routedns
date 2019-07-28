@@ -2,11 +2,13 @@ package rdns
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -20,6 +22,10 @@ import (
 type DoHClientOptions struct {
 	// Query method, either GET or POST. If empty, POST is used.
 	Method string
+
+	// Bootstrap address - IP to use for the serivce instead of looking up
+	// the service's hostname with potentially plain DNS.
+	BootstrapAddr string
 
 	TLSConfig *tls.Config
 }
@@ -41,7 +47,6 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	// HTTP transport for this client
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -49,6 +54,19 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 		DisableCompression:    true,
 		ResponseHeaderTimeout: time.Second,
 		IdleConnTimeout:       30 * time.Second,
+	}
+
+	// Use a custom dialer if a bootstrap address was provided
+	if opt.BootstrapAddr != "" {
+		var d net.Dialer
+		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			addr = net.JoinHostPort(opt.BootstrapAddr, port)
+			return d.DialContext(ctx, network, addr)
+		}
 	}
 	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
 	// the HTTP library. Turn it on for this transport.

@@ -9,7 +9,7 @@ import (
 
 func Example_resolver() {
 	// Define resolver
-	r := rdns.NewDoTClient("dns.google:853", rdns.DoTClientOptions{})
+	r, _ := rdns.NewDoTClient("dns.google:853", rdns.DoTClientOptions{})
 
 	// Build a query
 	q := new(dns.Msg)
