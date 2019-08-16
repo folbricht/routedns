@@ -196,7 +196,7 @@ Some listeners, namely DoH and DoT, can be configured with certificates and can 
 
 ## Use-cases / Examples
 
-### User case 1: Use DNS-over-TLS for all queries locally
+### Use case 1: Use DNS-over-TLS for all queries locally
 
 In this example, the goal is to send all DNS queries on the local machine encrypted via DNS-over-TLS to Cloudflare's DNS server `1.1.1.1`. For this, the `nameserver` IP in /etc/resolv.conf is changed to `127.0.0.1`. Since there is only one upstream resolver, and everything should be sent there, no group or router is needed. Both listeners are using the loopback device as only the local machine should be able to use RouteDNS. The config file would look like this:
 
@@ -220,7 +220,7 @@ In this example, the goal is to send all DNS queries on the local machine encryp
   resolver = "cloudflare-dot"
 ```
 
-### User case 2: Prefer secure DNS in a corporate environment
+### Use case 2: Prefer secure DNS in a corporate environment
 
 In a corporate environment it's necessary to use the potentially slow and insecure company DNS servers. Only these servers are able to resolve some resources hosted in the corporate network. A router can be used to secure DNS whenever possible while still being able to resolve internal hosts.
 
