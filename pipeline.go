@@ -105,14 +105,28 @@ func (c *Pipeline) start() {
 				conn.SetReadDeadline(time.Now().Add(idleTimeout))
 				a, err := conn.ReadMsg()
 				if err != nil {
-					close(done) // tell the writer to not use this connection anymore
-					wg.Done()
-					if err, ok := err.(net.Error); ok && err.Timeout() {
-						log.Debug("connection terminated by idle timeout")
-					} else {
-						log.Debug("connection terminated by server")
+					switch e := err.(type) {
+					case net.Error:
+						if e.Timeout() {
+							log.Debug("connection terminated by idle timeout")
+						} else {
+							log.Debug("connection terminated by server")
+						}
+						close(done) // tell the writer to not use this connection anymore
+						wg.Done()
+						return
+					default:
+						// It's possible the response can't be correctly parsed, but we do have a response.
+						// In this case, return it and carry on, don't terminate the connection because we
+						// got a bad package (like a truncated one for example).
+						if a == nil {
+							log.Error(err)
+							close(done) // tell the writer to not use this connection anymore
+							wg.Done()
+							return
+						}
+						log.WithField("qname", qName(a)).Warn(err)
 					}
-					return
 				}
 				req := inFlight.get(a) // match the answer to an in-flight query
 				if req == nil {
