@@ -1,5 +1,7 @@
 # RouteDNS - DNS stub resolver, proxy and router
 
+[![GoDoc](https://godoc.org/github.com/folbricht/routedns)](https://godoc.org/github.com/folbricht/routedns)
+
 RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address as well as blocklists and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
 
 Features:
@@ -396,4 +398,3 @@ The client is configured to act as local DNS resolver, handling all queries from
 - DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
 - DNS-over-HTTPS RFC - [https://tools.ietf.org/html/rfc8484](https://tools.ietf.org/html/rfc8484)
 - EDNS0 padding [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
-- GoDoc for the rdns library - [https://godoc.org/github.com/folbricht/routedns](https://godoc.org/github.com/folbricht/routedns)
