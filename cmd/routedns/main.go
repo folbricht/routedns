@@ -140,6 +140,8 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
+		case "cache":
+			resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
 		default:
 			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
 		}

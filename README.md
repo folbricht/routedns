@@ -13,6 +13,7 @@ Features:
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms
 - Custom blocklists
+- Caching
 - In-line query modification and translation
 - Routing of queries based on query type, query name, or client IP
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
@@ -127,6 +128,7 @@ The `type` determines which algorithm is being used. Available types:
 - `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 - `replace` - Applies regular expressions to query strings and replaces them before forwarding the query. Useful to map hostnames to a different domain on-the-fly or append domain names to short hostname queries.
 - `blocklist` - A blocklist has just one upstream resolver and forwards anything that does not match its expressions unmodified. If a query matches a block expression, it'll be answered with NXDOMAIN.
+- `cache` - Caches responses for the amount of time in the TTL of answer, NS, and extra records.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
 

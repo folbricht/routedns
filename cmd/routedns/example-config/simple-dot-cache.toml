@@ -1,0 +1,29 @@
+# Simple DoT configuration with a cache for the upstream resolver. It's possible to have
+# multiple caches, they can be combined with resolvers, routers and other groups.
+
+title = "RouteDNS configuration"
+
+[resolvers]
+
+  [resolvers.cloudflare-dot]
+  address = "1.1.1.1:853"
+  protocol = "dot"
+
+[groups]
+
+  [groups.cloudflare-cached]
+  type = "cache"
+  resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+  #gc-period = 60                 # Number of seconds between cache cleanups. Defaults to 1min
+
+[listeners]
+
+  [listeners.local-udp]
+  address = ":53"
+  protocol = "udp"
+  resolver = "cloudflare-cached"
+
+  [listeners.local-tcp]
+  address = ":53"
+  protocol = "tcp"
+  resolver = "cloudflare-cached"
