@@ -27,6 +27,9 @@ type cachedAnswer struct {
 
 var _ Resolver = &Cache{}
 
+// Use this TTL to cache negative responses that do not have a SOA record
+const defaultNegativeExpiry = time.Minute
+
 // NewCache returns a new instance of a Cache resolver. gcPeriod is the time the cache
 // garbage collection runs. Defaults to one minute if set to 0.
 func NewCache(resolver Resolver, gcPeriod time.Duration) *Cache {
@@ -123,28 +126,35 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 }
 
 func (r *Cache) storeInCache(answer *dns.Msg) {
-	// Find the lowest TTL in all resource records (except OPT), this determines
-	// the expiry for the whole answer in the cache.
-	var min uint32 = math.MaxUint32
-	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
-		for _, a := range rr {
-			if _, ok := a.(*dns.OPT); ok {
-				continue
-			}
-			h := a.Header()
-			if h.Ttl < min {
-				min = h.Ttl
-			}
+	now := time.Now()
+
+	// Prepare an item for the cache, without expiry for now
+	item := cachedAnswer{Msg: answer, timestamp: now}
+
+	// Find the lowest TTL in the response, this determines the expiry for the whole answer in the cache.
+	min, ok := minTTL(answer)
+
+	// Calculate expiry for the whole record. Negative answers may not have a SOA to use the TTL from.
+	switch answer.Rcode {
+	case dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
+		if ok {
+			item.expiry = now.Add(time.Duration(min) * time.Second)
+		} else {
+			item.expiry = now.Add(defaultNegativeExpiry)
 		}
-	}
-	if min == 0 {
+	case dns.RcodeSuccess:
+		if !ok {
+			return
+		}
+		item.expiry = now.Add(time.Duration(min) * time.Second)
+	default:
 		return
 	}
-	now := time.Now()
-	expiry := now.Add(time.Duration(min) * time.Second)
+
+	// Store it in the cache
 	question := answer.Question[0]
 	r.mu.Lock()
-	r.answers[question] = cachedAnswer{Msg: answer, timestamp: now, expiry: expiry}
+	r.answers[question] = item
 	r.mu.Unlock()
 }
 
@@ -172,10 +182,33 @@ func (r *Cache) startGC(period time.Duration) {
 				questions = append(questions, q)
 			}
 		}
+		n := len(r.answers)
 		r.mu.RUnlock()
+		Log.WithField("records", n).Trace("cache garbage collection")
 		if len(questions) > 0 {
 			Log.WithField("records", len(questions)).Trace("evicting from cache")
 			r.evictFromCache(questions...)
 		}
 	}
+}
+
+// Find the lowest TTL in all resource records (except OPT).
+func minTTL(answer *dns.Msg) (uint32, bool) {
+	var (
+		min   uint32 = math.MaxUint32
+		found bool
+	)
+	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
+		for _, a := range rr {
+			if _, ok := a.(*dns.OPT); ok {
+				continue
+			}
+			h := a.Header()
+			if h.Ttl < min {
+				min = h.Ttl
+				found = true
+			}
+		}
+	}
+	return min, found
 }

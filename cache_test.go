@@ -65,3 +65,30 @@ func TestCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, r.HitCount())
 }
+
+func TestCacheNXDOMAIN(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			a.SetRcode(q, dns.RcodeNameError)
+			return a, nil
+		},
+	}
+
+	c := NewCache(r, time.Minute)
+
+	// First query should be a cache-miss and be passed on to the upstream resolver
+	// Since it's an NXDOMAIN it should end up in the cache as well, with default TTL
+	q.SetQuestion("test.com.", dns.TypeA)
+	_, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+
+	// Second one should be returned from the cache
+	_, err = c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+}
