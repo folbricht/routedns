@@ -1,0 +1,3 @@
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"

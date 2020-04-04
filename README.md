@@ -46,6 +46,12 @@ The config file defines listeners which represent open ports and protocols on wh
 
 ![configuration](doc/configuration.png)
 
+Configuration files can be broken up into individual files to support large or generated configurations. Split configuration files are passed as arguments:
+
+```text
+routedns example-config/split-config/*.toml
+```
+
 ### Resolvers
 
 The `[resolvers]`-section is used to define and upstream resolvers and the protocol to use when using them. Each of the resolvers requires a unique identifier which may be reference in the following sections. Only defining the resolvers will not actually mean they are used. This section can contain unused upstream resolvers.

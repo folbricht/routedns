@@ -17,7 +17,7 @@ type options struct {
 func main() {
 	var opt options
 	cmd := &cobra.Command{
-		Use:   "routedns",
+		Use:   "routedns <config> [<config>..]",
 		Short: "DNS stub resolver, proxy and router",
 		Long: `DNS stub resolver, proxy and router.
 
@@ -29,9 +29,13 @@ as listener and client protocols.
 Routes can be defined to send requests for certain queries;
 by record type, query name or client-IP to different modifiers
 or upstream resolvers.
+
+Configuration can be split over multiple files with listeners,
+groups and routers defined in different files and provided as
+arguments.
 `,
 		Example: `  routedns config.toml`,
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return start(opt, args)
 		},
@@ -51,8 +55,7 @@ func start(opt options, args []string) error {
 	}
 	rdns.Log.SetLevel(logrus.Level(opt.logLevel))
 
-	configFile := args[0]
-	config, err := loadConfig(configFile)
+	config, err := loadConfig(args...)
 	if err != nil {
 		return err
 	}
