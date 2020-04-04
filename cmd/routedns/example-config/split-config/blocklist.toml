@@ -1,0 +1,7 @@
+[groups.cloudflare-blocklist]
+type = "blocklist"
+resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+blocklist = [                  # Define the names to be blocked
+  '(^|\.)facebook.com.$',
+  '(^|\.)twitter.com.$',
+]

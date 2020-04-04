@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -60,15 +62,27 @@ type route struct {
 }
 
 // LoadConfig reads a config file and returns the decoded structure.
-func loadConfig(name string) (config, error) {
+func loadConfig(name ...string) (config, error) {
+	b := new(bytes.Buffer)
 	var c config
+	for _, fn := range name {
+		if err := loadFile(b, fn); err != nil {
+			return c, err
+		}
+		b.WriteString("\n")
+	}
+	_, err := toml.DecodeReader(b, &c)
+	return c, err
+}
+
+func loadFile(w io.Writer, name string) error {
 	f, err := os.Open(name)
 	if err != nil {
-		return c, err
+		return err
 	}
 	defer f.Close()
-	_, err = toml.DecodeReader(f, &c)
-	return c, err
+	_, err = io.Copy(w, f)
+	return err
 }
 
 // Analyzes possible group depenencies and returns a list of group keys that
