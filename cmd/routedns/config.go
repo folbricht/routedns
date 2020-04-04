@@ -45,6 +45,7 @@ type group struct {
 	Type      string
 	Blocklist []string                // only used by "blocklist" type
 	Replace   []rdns.ReplaceOperation // only used by "replace" type
+	GCPeriod  int                     `toml:"gc-period"` // Time-period (seconds) used to expire cached items in the "cache" type
 }
 
 type router struct {
