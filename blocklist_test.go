@@ -7,13 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlocklist(t *testing.T) {
-	// Build 2 resolvers that count the number of invocations
+func TestBlocklistRegexp(t *testing.T) {
 	var ci ClientInfo
 	q := new(dns.Msg)
 	r := new(TestResolver)
 
-	b, err := NewBlocklist(r, `(^|\.)block.test`, `(^|\.)evil.test`)
+	m, err := NewRegexpMatcher(`(^|\.)block\.test`, `(^|\.)evil\.test`)
+	require.NoError(t, err)
+
+	b, err := NewBlocklist(r, m)
 	require.NoError(t, err)
 
 	// First query a domain not blocked. Should be passed through to the resolver

@@ -131,7 +131,27 @@ func start(opt options, args []string) error {
 			if len(gr) != 1 {
 				return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
 			}
-			resolvers[id], err = rdns.NewBlocklist(gr[0], g.Blocklist...)
+			var m rdns.BlocklistMatcher
+			switch g.Format {
+			case "regexp":
+				m, err = rdns.NewRegexpMatcher(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			case "domain":
+				m, err = rdns.NewDomainMatcher(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			case "hosts":
+				m, err = rdns.NewHostsMatcher(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unsupported blocklist format '%s'", g.Format)
+			}
+			resolvers[id], err = rdns.NewBlocklist(gr[0], m)
 			if err != nil {
 				return err
 			}
