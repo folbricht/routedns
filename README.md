@@ -52,6 +52,8 @@ Configuration files can be broken up into individual files to support large or g
 routedns example-config/split-config/*.toml
 ```
 
+Example [split-config](cmd/routedns/example-config/split-config).
+
 ### Resolvers
 
 The `[resolvers]`-section is used to define and upstream resolvers and the protocol to use when using them. Each of the resolvers requires a unique identifier which may be reference in the following sections. Only defining the resolvers will not actually mean they are used. This section can contain unused upstream resolvers.

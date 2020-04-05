@@ -133,7 +133,7 @@ func start(opt options, args []string) error {
 			}
 			var m rdns.BlocklistMatcher
 			switch g.Format {
-			case "regexp":
+			case "regexp", "":
 				m, err = rdns.NewRegexpMatcher(g.Blocklist...)
 				if err != nil {
 					return err
