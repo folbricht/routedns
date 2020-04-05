@@ -1,0 +1,25 @@
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type = "blocklist"
+resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+format    = "hosts"            # "domain", "hosts" or "regexp", defaults to "regexp"
+blocklist = [                  # Define the names to be blocked
+  '127.0.0.1 www.evil.com',    # Spoofed
+  '0.0.0.0   www.blocked.com', # Blocked
+  '127.0.0.1 www.domain.com',  # IP4 and IP6 addresses can be spoofed independently
+  '::1       www.domain.com',
+  '::        ads.com',
+]
+
+[listeners.local-udp]
+address = ":1153"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":1153"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"

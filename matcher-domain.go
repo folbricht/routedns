@@ -1,0 +1,77 @@
+package rdns
+
+import (
+	"fmt"
+	"net"
+	"strings"
+
+	"github.com/miekg/dns"
+)
+
+// DomainMatcher holds a list of domain strings (potentially with wildcards). Matching
+// logic:
+// domain.com: matches just domain.com and not subdomains
+// .domain.com: matches domain.com and all subdomains
+// *.domain.com: matches all subdomains but not domain.com
+type DomainMatcher struct {
+	root node
+}
+
+type node map[string]node
+
+var _ BlocklistMatcher = &DomainMatcher{}
+
+// NewDomainMatcher returns a new instance of a matcher for a list of regular expressions.
+func NewDomainMatcher(filter ...string) (*DomainMatcher, error) {
+	root := make(node)
+	for _, s := range filter {
+		// Strip trailing . in case the list has FQDN names with . suffixes.
+		s = strings.TrimSuffix(s, ".")
+
+		// Break up the domain into its parts and iterare backwards over them, building
+		// a graph of maps
+		parts := strings.Split(s, ".")
+		n := root
+		for i := len(parts) - 1; i >= 0; i-- {
+			part := parts[i]
+
+			// Only allow wildcards as the first domain part, and not in a string
+			if strings.Contains(part, "*") && (i > 0 || len(part) != 1) {
+				return nil, fmt.Errorf("invalid blocklist item: '%s'", part)
+			}
+
+			subNode, ok := n[part]
+			if !ok {
+				subNode = make(node)
+				n[part] = subNode
+			}
+			n = subNode
+		}
+	}
+	return &DomainMatcher{root: root}, nil
+}
+
+func (m *DomainMatcher) Match(q dns.Question) (net.IP, bool) {
+	s := strings.TrimSuffix(q.Name, ".")
+	parts := strings.Split(s, ".")
+	n := m.root
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := parts[i]
+		subNode, ok := n[part]
+		if !ok {
+			return nil, false
+		}
+		if _, ok := subNode[""]; ok { // exact and sub-domain match
+			return nil, true
+		}
+		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
+			return nil, true
+		}
+		n = subNode
+	}
+	return nil, len(n) == 0 // exact match
+}
+
+func (m *DomainMatcher) String() string {
+	return "Domain"
+}
