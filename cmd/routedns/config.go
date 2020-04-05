@@ -46,7 +46,7 @@ type group struct {
 	Resolvers []string
 	Type      string
 	Blocklist []string                // only used by "blocklist" type
-	Format    string                  // Blocklist input format: "regex", "domain"
+	Format    string                  // Blocklist input format: "regex", "domain", or "hosts"
 	Replace   []rdns.ReplaceOperation // only used by "replace" type
 	GCPeriod  int                     `toml:"gc-period"` // Time-period (seconds) used to expire cached items in the "cache" type
 }
