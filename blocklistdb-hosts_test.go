@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHostsMatcher(t *testing.T) {
-	m, err := NewHostsMatcher(
+func TestHostsDB(t *testing.T) {
+	m, err := NewHostsDB(
 		"# some comment",
 		"              ",
 		"127.0.0.1   domain1.com",

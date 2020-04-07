@@ -13,14 +13,14 @@ import (
 // matches. Everything else is passed through to another resolver.
 type Blocklist struct {
 	resolver Resolver
-	matcher  BlocklistMatcher
+	db       BlocklistDB
 }
 
 var _ Resolver = &Blocklist{}
 
 // NewBlocklist returns a new instance of a blocklist resolver.
-func NewBlocklist(resolver Resolver, m BlocklistMatcher) (*Blocklist, error) {
-	return &Blocklist{resolver: resolver, matcher: m}, nil
+func NewBlocklist(resolver Resolver, db BlocklistDB) (*Blocklist, error) {
+	return &Blocklist{resolver: resolver, db: db}, nil
 }
 
 // Resolve a DNS query by first checking the query against the provided matcher.
@@ -31,7 +31,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	question := q.Question[0]
 	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": question.Name})
-	ip, ok := r.matcher.Match(question)
+	ip, ok := r.db.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Trace("forwarding unmodified query to resolver")
@@ -79,5 +79,5 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *Blocklist) String() string {
-	return fmt.Sprintf("Blocklist(%s)", r.matcher)
+	return fmt.Sprintf("Blocklist(%s)", r.db)
 }

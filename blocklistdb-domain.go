@@ -8,21 +8,21 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DomainMatcher holds a list of domain strings (potentially with wildcards). Matching
+// DomainDB holds a list of domain strings (potentially with wildcards). Matching
 // logic:
 // domain.com: matches just domain.com and not subdomains
 // .domain.com: matches domain.com and all subdomains
 // *.domain.com: matches all subdomains but not domain.com
-type DomainMatcher struct {
+type DomainDB struct {
 	root node
 }
 
 type node map[string]node
 
-var _ BlocklistMatcher = &DomainMatcher{}
+var _ BlocklistDB = &DomainDB{}
 
-// NewDomainMatcher returns a new instance of a matcher for a list of regular expressions.
-func NewDomainMatcher(filter ...string) (*DomainMatcher, error) {
+// NewDomainDB returns a new instance of a matcher for a list of regular expressions.
+func NewDomainDB(filter ...string) (*DomainDB, error) {
 	root := make(node)
 	for _, s := range filter {
 		// Strip trailing . in case the list has FQDN names with . suffixes.
@@ -48,10 +48,10 @@ func NewDomainMatcher(filter ...string) (*DomainMatcher, error) {
 			n = subNode
 		}
 	}
-	return &DomainMatcher{root: root}, nil
+	return &DomainDB{root: root}, nil
 }
 
-func (m *DomainMatcher) Match(q dns.Question) (net.IP, bool) {
+func (m *DomainDB) Match(q dns.Question) (net.IP, bool) {
 	s := strings.TrimSuffix(q.Name, ".")
 	parts := strings.Split(s, ".")
 	n := m.root
@@ -72,6 +72,6 @@ func (m *DomainMatcher) Match(q dns.Question) (net.IP, bool) {
 	return nil, len(n) == 0 // exact match
 }
 
-func (m *DomainMatcher) String() string {
+func (m *DomainDB) String() string {
 	return "Domain"
 }

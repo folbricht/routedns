@@ -7,10 +7,10 @@ import (
 	"github.com/miekg/dns"
 )
 
-// HostsMatcher holds a list of hosts-file entries that are used in blocklists to spoof or bloc requests.
+// HostsDB holds a list of hosts-file entries that are used in blocklists to spoof or bloc requests.
 // IP4 and IP6 records can be spoofed independently, however it's not possible to block only one type. If
 // IP4 is given but no IP6, then a domain match will still result in an NXDOMAIN for the IP6 address.
-type HostsMatcher struct {
+type HostsDB struct {
 	filters map[string]ipRecords
 }
 
@@ -19,10 +19,10 @@ type ipRecords struct {
 	ip6 net.IP
 }
 
-var _ BlocklistMatcher = &HostsMatcher{}
+var _ BlocklistDB = &HostsDB{}
 
-// NewHostsMatcher returns a new instance of a matcher for a list of regular expressions.
-func NewHostsMatcher(items ...string) (*HostsMatcher, error) {
+// NewHostsDB returns a new instance of a matcher for a list of regular expressions.
+func NewHostsDB(items ...string) (*HostsDB, error) {
 	filters := make(map[string]ipRecords)
 	for _, s := range items {
 		fields := strings.Fields(s)
@@ -53,10 +53,10 @@ func NewHostsMatcher(items ...string) (*HostsMatcher, error) {
 			filters[name] = ips
 		}
 	}
-	return &HostsMatcher{filters}, nil
+	return &HostsDB{filters}, nil
 }
 
-func (m *HostsMatcher) Match(q dns.Question) (net.IP, bool) {
+func (m *HostsDB) Match(q dns.Question) (net.IP, bool) {
 	ips, ok := m.filters[strings.TrimSuffix(q.Name, ".")]
 	if q.Qtype == dns.TypeA {
 		return ips.ip4, ok
@@ -64,6 +64,6 @@ func (m *HostsMatcher) Match(q dns.Question) (net.IP, bool) {
 	return ips.ip6, ok
 }
 
-func (m *HostsMatcher) String() string {
+func (m *HostsDB) String() string {
 	return "Hosts"
 }

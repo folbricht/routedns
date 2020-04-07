@@ -12,7 +12,7 @@ func TestBlocklistRegexp(t *testing.T) {
 	q := new(dns.Msg)
 	r := new(TestResolver)
 
-	m, err := NewRegexpMatcher(`(^|\.)block\.test`, `(^|\.)evil\.test`)
+	m, err := NewRegexpDB(`(^|\.)block\.test`, `(^|\.)evil\.test`)
 	require.NoError(t, err)
 
 	b, err := NewBlocklist(r, m)

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDomainMatcher(t *testing.T) {
-	m, err := NewDomainMatcher(
+func TestDomainDB(t *testing.T) {
+	m, err := NewDomainDB(
 		"domain1.com.",    // exact match
 		".domain2.com.",   // exact match and subdomains
 		"x.domain2.com",   // above rule should take precendence
@@ -44,7 +44,7 @@ func TestDomainMatcher(t *testing.T) {
 	}
 }
 
-func TestDomainMatcherError(t *testing.T) {
+func TestDomainDBError(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -52,7 +52,7 @@ func TestDomainMatcherError(t *testing.T) {
 		{"*domain.com"},
 	}
 	for _, test := range tests {
-		_, err := NewDomainMatcher(test.name)
+		_, err := NewDomainDB(test.name)
 		require.Error(t, err)
 	}
 }
