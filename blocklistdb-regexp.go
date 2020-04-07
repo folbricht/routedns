@@ -15,10 +15,10 @@ type RegexpDB struct {
 var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
-func NewRegexpDB(items ...string) (*RegexpDB, error) {
+func NewRegexpDB(rules ...string) (*RegexpDB, error) {
 	var filters []*regexp.Regexp
-	for _, s := range items {
-		re, err := regexp.Compile(s)
+	for _, r := range rules {
+		re, err := regexp.Compile(r)
 		if err != nil {
 			return nil, err
 		}
@@ -26,6 +26,10 @@ func NewRegexpDB(items ...string) (*RegexpDB, error) {
 	}
 
 	return &RegexpDB{filters}, nil
+}
+
+func (m *RegexpDB) New(rules []string) (BlocklistDB, error) {
+	return NewRegexpDB(rules...)
 }
 
 func (m *RegexpDB) Match(q dns.Question) (net.IP, bool) {

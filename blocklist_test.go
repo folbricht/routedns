@@ -15,7 +15,7 @@ func TestBlocklistRegexp(t *testing.T) {
 	m, err := NewRegexpDB(`(^|\.)block\.test`, `(^|\.)evil\.test`)
 	require.NoError(t, err)
 
-	b, err := NewBlocklist(r, m)
+	b, err := NewBlocklist(r, m, nil, 0)
 	require.NoError(t, err)
 
 	// First query a domain not blocked. Should be passed through to the resolver

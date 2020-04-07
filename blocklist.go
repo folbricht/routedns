@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -14,13 +16,33 @@ import (
 type Blocklist struct {
 	resolver Resolver
 	db       BlocklistDB
+	loader   BlocklistLoader
+	mu       sync.Mutex
 }
 
 var _ Resolver = &Blocklist{}
 
-// NewBlocklist returns a new instance of a blocklist resolver.
-func NewBlocklist(resolver Resolver, db BlocklistDB) (*Blocklist, error) {
-	return &Blocklist{resolver: resolver, db: db}, nil
+// NewBlocklist returns a new instance of a blocklist resolver. If a non-nil loader is provided
+// the rules are loaded from it immediately into the DB. If refresh is >0, the rules are reloaded
+// periodically.
+func NewBlocklist(resolver Resolver, db BlocklistDB, l BlocklistLoader, refresh time.Duration) (*Blocklist, error) {
+	if l != nil {
+		rules, err := l.Load()
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve rules: %w", err)
+		}
+		db, err = db.New(rules)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load rules: %w", err)
+		}
+	}
+	blocklist := &Blocklist{resolver: resolver, db: db, loader: l}
+
+	// Start the refresh goroutine if we have a loader and a refresh period was given
+	if l != nil && refresh > 0 {
+		go blocklist.refreshLoop(refresh)
+	}
+	return blocklist, nil
 }
 
 // Resolve a DNS query by first checking the query against the provided matcher.
@@ -80,4 +102,25 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 func (r *Blocklist) String() string {
 	return fmt.Sprintf("Blocklist(%s)", r.db)
+}
+
+func (r *Blocklist) refreshLoop(refresh time.Duration) {
+	for {
+		time.Sleep(refresh)
+		Log.Debug("reloading blocklist")
+
+		rules, err := r.loader.Load()
+		if err != nil {
+			Log.WithError(err).Error("failed to retrieve rules")
+			continue
+		}
+		db, err := r.db.New(rules)
+		if err != nil {
+			Log.WithError(err).Error("failed to load rules")
+			continue
+		}
+		r.mu.Lock()
+		r.db = db
+		r.mu.Unlock()
+	}
 }

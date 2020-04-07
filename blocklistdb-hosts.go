@@ -22,10 +22,10 @@ type ipRecords struct {
 var _ BlocklistDB = &HostsDB{}
 
 // NewHostsDB returns a new instance of a matcher for a list of regular expressions.
-func NewHostsDB(items ...string) (*HostsDB, error) {
+func NewHostsDB(rules ...string) (*HostsDB, error) {
 	filters := make(map[string]ipRecords)
-	for _, s := range items {
-		fields := strings.Fields(s)
+	for _, r := range rules {
+		fields := strings.Fields(r)
 		if len(fields) == 0 {
 			continue
 		}
@@ -54,6 +54,10 @@ func NewHostsDB(items ...string) (*HostsDB, error) {
 		}
 	}
 	return &HostsDB{filters}, nil
+}
+
+func (m *HostsDB) New(rules []string) (BlocklistDB, error) {
+	return NewHostsDB(rules...)
 }
 
 func (m *HostsDB) Match(q dns.Question) (net.IP, bool) {

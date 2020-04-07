@@ -22,15 +22,15 @@ type node map[string]node
 var _ BlocklistDB = &DomainDB{}
 
 // NewDomainDB returns a new instance of a matcher for a list of regular expressions.
-func NewDomainDB(filter ...string) (*DomainDB, error) {
+func NewDomainDB(rules ...string) (*DomainDB, error) {
 	root := make(node)
-	for _, s := range filter {
+	for _, r := range rules {
 		// Strip trailing . in case the list has FQDN names with . suffixes.
-		s = strings.TrimSuffix(s, ".")
+		r = strings.TrimSuffix(r, ".")
 
 		// Break up the domain into its parts and iterare backwards over them, building
 		// a graph of maps
-		parts := strings.Split(s, ".")
+		parts := strings.Split(r, ".")
 		n := root
 		for i := len(parts) - 1; i >= 0; i-- {
 			part := parts[i]
@@ -49,6 +49,10 @@ func NewDomainDB(filter ...string) (*DomainDB, error) {
 		}
 	}
 	return &DomainDB{root: root}, nil
+}
+
+func (m *DomainDB) New(rules []string) (BlocklistDB, error) {
+	return NewDomainDB(rules...)
 }
 
 func (m *DomainDB) Match(q dns.Question) (net.IP, bool) {
