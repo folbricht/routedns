@@ -7,7 +7,7 @@ type = "blocklist"
 resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
 format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
 source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/plain.black.regex.list"
-refresh   = 86400              # Time to refresh the blocklist from the file in seconds
+refresh   = 86400              # Time to refresh the blocklist from the URL in seconds
 
 [listeners.local-udp]
 address = ":53"

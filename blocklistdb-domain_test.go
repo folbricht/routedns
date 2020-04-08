@@ -13,7 +13,9 @@ func TestDomainDB(t *testing.T) {
 		".domain2.com.",   // exact match and subdomains
 		"x.domain2.com",   // above rule should take precendence
 		"*.domain3.com",   // subdomains only
-		"x.x.domain3.com", // more specific wildcard should take precedence
+		"x.x.domain3.com", // more general wildcard above should take precedence
+		"domain4.com",     // the more general rule below wins
+		".domain4.com",
 	)
 	require.NoError(t, err)
 
@@ -29,9 +31,13 @@ func TestDomainDB(t *testing.T) {
 		{"domain2.com.", true},
 		{"sub.domain2.com.", true},
 
-		// // wildcard (match only on subdomains)
+		// wildcard (match only on subdomains)
 		{"domain3.com.", false},
 		{"sub.domain3.com.", true},
+
+		// two rules for this, the generic one wins
+		{"domain4.com.", true},
+		{"sub.domain4.com.", true},
 
 		// not matching
 		{"unblocked.test.", false},

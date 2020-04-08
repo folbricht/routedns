@@ -208,7 +208,7 @@ Some listeners, namely DoH and DoT, can be configured with certificates and can 
 
 ## Blocklists
 
-Blocklists can be added to resolver-chains to prevent further processing and either return NXDOMAIN or a spoofed IP address. The blocklist group supports 2 types of blocklist formats:
+Blocklists can be added to resolver-chains to prevent further processing and either return NXDOMAIN or a spoofed IP address. The blocklist group supports 3 types of blocklist formats:
 
 - `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
@@ -254,6 +254,17 @@ blocklist = [
   '127.0.0.1 www.domain1.com',  # Spoofed
   '0.0.0.0   www.domain2.com',  # NXDOMAIN if matched
 ]
+```
+
+In addition to reading the blocklist rules from the configuration, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `source` property of the blocklist to provide the file location or URL. The `refresh` property can be used to specify a reload-period (in seconds). If no `refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
+
+```toml
+[groups.cloudflare-blocklist]
+type = "blocklist"
+resolvers = ["cloudflare-dot"]
+format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
+source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/plain.black.regex.list"
+refresh   = 86400              # Time to refresh the blocklist from the file in seconds
 ```
 
 ## Use-cases / Examples

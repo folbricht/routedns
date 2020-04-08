@@ -18,6 +18,8 @@ func NewFileLoader(filename string) *FileLoader {
 }
 
 func (l *FileLoader) Load() ([]string, error) {
+	log := Log.WithField("file", l.filename)
+	log.Trace("loading blocklist")
 	f, err := os.Open(l.filename)
 	if err != nil {
 		return nil, err
@@ -28,5 +30,6 @@ func (l *FileLoader) Load() ([]string, error) {
 	for scanner.Scan() {
 		rules = append(rules, scanner.Text())
 	}
+	log.Trace("completed loading blocklist")
 	return rules, scanner.Err()
 }

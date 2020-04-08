@@ -22,6 +22,8 @@ func NewHTTPLoader(url string) *HTTPLoader {
 }
 
 func (l *HTTPLoader) Load() ([]string, error) {
+	log := Log.WithField("url", l.url)
+	log.Trace("loading blocklist")
 	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
 	defer cancel()
 
@@ -45,5 +47,6 @@ func (l *HTTPLoader) Load() ([]string, error) {
 	for scanner.Scan() {
 		rules = append(rules, scanner.Text())
 	}
+	log.Trace("completed loading blocklist")
 	return rules, scanner.Err()
 }
