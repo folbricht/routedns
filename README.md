@@ -17,6 +17,7 @@ Features:
 - In-line query modification and translation
 - Routing of queries based on query type, query name, or client IP
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
+- EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
 - Written in Go - Platform independent
 
@@ -265,6 +266,51 @@ resolvers = ["cloudflare-dot"]
 format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
 source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/plain.black.regex.list"
 refresh   = 86400              # Time to refresh the blocklist from the file in seconds
+```
+
+## EDNS0 Client Subnet modifier
+
+A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address. This is done with the `ecs-modifier` group which supports the following operations:
+
+- `add` - Add an ECS option to a query. If there is one already it is replaced. If no `ecs-address` is provided, the address of the client is used (with `ecs-prefix4` or `ecs-prefix6` applied).
+- `delete` - Remove the ECS option completely from the EDNS0 record.
+- `privacy` - Restrict the number of bits in the address to the number in `ecs-prefix4`/`ecs-prefix6`.
+
+Some of the operations require additional options:
+
+- `ecs-op` - Operation to be performed on query options. Either "add", "delete", or "privacy". Does nothing if not specified.
+- `ecs-address` - The address to use in the option. Only used for add operations. If give, will set to a fixed value. If missing, the address of the client is used (with the appropriate `ecs-prefix` applied).
+- `ecs-prefix4` and `ecs-prefix6` - Source prefix length. Mask for the address. Only used for add and privacy operations.
+
+Remove ECS options from all queries.
+
+```toml
+[groups.google-ecs]
+type = "ecs-modifier"
+resolvers = ["google-dot"]
+ecs-op = "delete" # "add", "delete", "privacy". Defaults to "" which does nothing.
+```
+
+Add/replace ECS options in all queries fixed network address. Without `ecs-address`, this will use the client's IP address.
+
+```toml
+[groups.google-ecs]
+type = "ecs-modifier"
+resolvers = ["google-dot"]
+ecs-op = "add"
+ecs-address = "1.2.3.4"
+ecs-prefix4 = 24
+```
+
+Restrict the number of bits in the address in queries to upstream resolvers.
+
+```toml
+[groups.google-ecs]
+type = "ecs-modifier"
+resolvers = ["google-dot"]
+ecs-op = "privacy"
+ecs-prefix4 = 8
+ecs-prefix6 = 64
 ```
 
 ## Use-cases / Examples

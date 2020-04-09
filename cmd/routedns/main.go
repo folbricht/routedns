@@ -182,6 +182,26 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
+		case "ecs-modifier":
+			if len(gr) != 1 {
+				return fmt.Errorf("type ecs-modifier only supports one resolver in '%s'", id)
+			}
+			var f rdns.ECSModifierFunc
+			switch g.ECSOp {
+			case "add":
+				f = rdns.ECSModifierAdd(g.ECSAddress, g.ECSPrefix4, g.ECSPrefix6)
+			case "delete":
+				f = rdns.ECSModifierDelete
+			case "privacy":
+				f = rdns.ECSModifierPrivacy(g.ECSPrefix4, g.ECSPrefix6)
+			case "":
+			default:
+				return fmt.Errorf("unsupported ecs-modifier operation '%s'", g.ECSOp)
+			}
+			resolvers[id], err = rdns.NewECSModifier(gr[0], f)
+			if err != nil {
+				return err
+			}
 		case "cache":
 			resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
 		default:
