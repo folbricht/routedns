@@ -37,7 +37,7 @@ func TestHostsDB(t *testing.T) {
 	}
 	for _, test := range tests {
 		q := dns.Question{Name: test.q, Qtype: test.typ, Qclass: dns.ClassINET}
-		ip, ok := m.Match(q)
+		ip, _, ok := m.Match(q)
 		require.Equal(t, test.match, ok, "query: %s", test.q)
 		require.Equal(t, test.ip, ip, "query: %s", test.q)
 	}

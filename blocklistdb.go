@@ -13,9 +13,9 @@ type BlocklistDB interface {
 	// ruleset refresh.
 	New(rules []string) (BlocklistDB, error)
 
-	// Returns true if the question matches a record. If the IP is not nil,
+	// Returns true if the question matches a rule. If the IP is not nil,
 	// respond with the given IP. NXDOMAIN otherwise.
-	Match(q dns.Question) (net.IP, bool)
+	Match(q dns.Question) (net.IP, string, bool)
 
 	fmt.Stringer
 }

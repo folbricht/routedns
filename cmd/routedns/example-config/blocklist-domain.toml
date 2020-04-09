@@ -7,6 +7,7 @@ type = "blocklist"
 resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
 format    = "domain"           # "domain", "hosts" or "regexp", defaults to "regexp"
 blocklist = [                  # Define the names to be blocked
+  'evil.com',
   '.facebook.com',
   '*.twitter.com',
 ]

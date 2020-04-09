@@ -60,12 +60,13 @@ func (m *HostsDB) New(rules []string) (BlocklistDB, error) {
 	return NewHostsDB(rules...)
 }
 
-func (m *HostsDB) Match(q dns.Question) (net.IP, bool) {
-	ips, ok := m.filters[strings.TrimSuffix(q.Name, ".")]
+func (m *HostsDB) Match(q dns.Question) (net.IP, string, bool) {
+	name := strings.TrimSuffix(q.Name, ".")
+	ips, ok := m.filters[name]
 	if q.Qtype == dns.TypeA {
-		return ips.ip4, ok
+		return ips.ip4, ips.ip4.String() + " " + name, ok
 	}
-	return ips.ip6, ok
+	return ips.ip6, ips.ip6.String() + " " + name, ok
 }
 
 func (m *HostsDB) String() string {

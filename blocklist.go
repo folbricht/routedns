@@ -53,12 +53,13 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	question := q.Question[0]
 	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": question.Name})
-	ip, ok := r.db.Match(question)
+	ip, rule, ok := r.db.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Trace("forwarding unmodified query to resolver")
 		return r.resolver.Resolve(q, ci)
 	}
+	log = log.WithField("rule", rule)
 
 	answer := new(dns.Msg)
 	answer.SetReply(q)

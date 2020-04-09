@@ -55,27 +55,38 @@ func (m *DomainDB) New(rules []string) (BlocklistDB, error) {
 	return NewDomainDB(rules...)
 }
 
-func (m *DomainDB) Match(q dns.Question) (net.IP, bool) {
+func (m *DomainDB) Match(q dns.Question) (net.IP, string, bool) {
 	s := strings.TrimSuffix(q.Name, ".")
+	var matched []string
 	parts := strings.Split(s, ".")
 	n := m.root
 	for i := len(parts) - 1; i >= 0; i-- {
 		part := parts[i]
 		subNode, ok := n[part]
 		if !ok {
-			return nil, false
+			return nil, "", false
 		}
+		matched = append(matched, part)
 		if _, ok := subNode[""]; ok { // exact and sub-domain match
-			return nil, true
+			return nil, matchedDomainParts(".", matched), true
 		}
 		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
-			return nil, true
+			return nil, matchedDomainParts("*.", matched), true
 		}
 		n = subNode
 	}
-	return nil, len(n) == 0 // exact match
+	return nil, matchedDomainParts("", matched), len(n) == 0 // exact match
 }
 
 func (m *DomainDB) String() string {
 	return "Domain"
+}
+
+// Turn a list of matched domain fragments into a domain (rule)
+func matchedDomainParts(prefix string, p []string) string {
+	for i := len(p)/2 - 1; i >= 0; i-- {
+		opp := len(p) - 1 - i
+		p[i], p[opp] = p[opp], p[i]
+	}
+	return prefix + strings.Join(p, ".")
 }

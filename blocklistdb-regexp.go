@@ -9,7 +9,7 @@ import (
 
 // RegexpDB holds a list of regular expressions against which it evaluates DNS queries.
 type RegexpDB struct {
-	filters []*regexp.Regexp
+	rules []*regexp.Regexp
 }
 
 var _ BlocklistDB = &RegexpDB{}
@@ -32,13 +32,13 @@ func (m *RegexpDB) New(rules []string) (BlocklistDB, error) {
 	return NewRegexpDB(rules...)
 }
 
-func (m *RegexpDB) Match(q dns.Question) (net.IP, bool) {
-	for _, filter := range m.filters {
-		if filter.MatchString(q.Name) {
-			return nil, true
+func (m *RegexpDB) Match(q dns.Question) (net.IP, string, bool) {
+	for _, rule := range m.rules {
+		if rule.MatchString(q.Name) {
+			return nil, rule.String(), true
 		}
 	}
-	return nil, false
+	return nil, "", false
 }
 
 func (m *RegexpDB) String() string {
