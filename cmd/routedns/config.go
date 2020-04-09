@@ -45,7 +45,10 @@ type doh struct {
 type group struct {
 	Resolvers []string
 	Type      string
-	Blocklist []string                // only used by "blocklist" type
+	Blocklist []string                // Blocklist rules, only used by "blocklist" type
+	Format    string                  // Blocklist input format: "regex", "domain", or "hosts"
+	Source    string                  // Location of external blocklist, can be a local path or remote URL
+	Refresh   int                     // Blocklist refresh when using an external source, in seconds
 	Replace   []rdns.ReplaceOperation // only used by "replace" type
 	GCPeriod  int                     `toml:"gc-period"` // Time-period (seconds) used to expire cached items in the "cache" type
 }

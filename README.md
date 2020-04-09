@@ -52,6 +52,8 @@ Configuration files can be broken up into individual files to support large or g
 routedns example-config/split-config/*.toml
 ```
 
+Example [split-config](cmd/routedns/example-config/split-config).
+
 ### Resolvers
 
 The `[resolvers]`-section is used to define and upstream resolvers and the protocol to use when using them. Each of the resolvers requires a unique identifier which may be reference in the following sections. Only defining the resolvers will not actually mean they are used. This section can contain unused upstream resolvers.
@@ -133,7 +135,7 @@ The `type` determines which algorithm is being used. Available types:
 - `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
 - `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 - `replace` - Applies regular expressions to query strings and replaces them before forwarding the query. Useful to map hostnames to a different domain on-the-fly or append domain names to short hostname queries.
-- `blocklist` - A blocklist has just one upstream resolver and forwards anything that does not match its expressions unmodified. If a query matches a block expression, it'll be answered with NXDOMAIN.
+- `blocklist` - A blocklist has just one upstream resolver and forwards anything that does not match its filters. If a query matches, it'll be answered with NXDOMAIN. See [blocklists](#Blocklists) for more information.
 - `cache` - Caches responses for the amount of time in the TTL of answer, NS, and extra records.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
@@ -202,6 +204,67 @@ Some listeners, namely DoH and DoT, can be configured with certificates and can 
   server-key = "/path/to/server.key"
   ca = "/path/to/ca.crt"
   mutual-tls = true
+```
+
+## Blocklists
+
+Blocklists can be added to resolver-chains to prevent further processing and either return NXDOMAIN or a spoofed IP address. The blocklist group supports 3 types of blocklist formats:
+
+- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
+- `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
+  - `domain.com` matches just domain.com and no sub-domains.
+  - `.domain.com` matches domain.com and all sub-domains.
+  - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
+- `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
+
+Multiple blocklists of different types can be chained in the same configuration. Example of a regexp-based blocklist:
+
+```toml
+[groups.my-blocklist]
+type      = "blocklist"
+resolvers = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
+format    ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
+blocklist = [                     # Define the names to be blocked
+  '(^|\.)evil\.com\.$',
+  '(^|\.)unsafe[123]\.org\.$',
+```
+
+Example of a blocklist using a domain-list:
+
+```toml
+[groups.my-blocklist]
+type      = "blocklist"
+resolvers = ["upstream-resolver"]
+format    = "domain"
+blocklist = [
+  'domain1.com',               # Exact match
+  '.domain2.com',              # Exact match and all sub-domains
+  '*.domain3.com',             # Only match sub-domains
+]
+```
+
+A blocklist of type `hosts` can be used to spoof IP addresses:
+
+```toml
+[groups.my-blocklist]
+type = "blocklist"
+resolvers = ["upstream-resolver"]
+format    = "hosts"
+blocklist = [
+  '127.0.0.1 www.domain1.com',  # Spoofed
+  '0.0.0.0   www.domain2.com',  # NXDOMAIN if matched
+]
+```
+
+In addition to reading the blocklist rules from the configuration, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `source` property of the blocklist to provide the file location or URL. The `refresh` property can be used to specify a reload-period (in seconds). If no `refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
+
+```toml
+[groups.cloudflare-blocklist]
+type = "blocklist"
+resolvers = ["cloudflare-dot"]
+format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
+source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/plain.black.regex.list"
+refresh   = 86400              # Time to refresh the blocklist from the file in seconds
 ```
 
 ## Use-cases / Examples

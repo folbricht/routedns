@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -131,7 +132,45 @@ func start(opt options, args []string) error {
 			if len(gr) != 1 {
 				return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
 			}
-			resolvers[id], err = rdns.NewBlocklist(gr[0], g.Blocklist...)
+			if len(g.Blocklist) > 0 && g.Source != "" {
+				return fmt.Errorf("type static blocklist can't be used with 'source' in '%s'", id)
+			}
+			var loader rdns.BlocklistLoader
+			if g.Source != "" {
+				loc, err := url.Parse(g.Source)
+				if err != nil {
+					return err
+				}
+				switch loc.Scheme {
+				case "http", "https":
+					loader = rdns.NewHTTPLoader(g.Source)
+				case "":
+					loader = rdns.NewFileLoader(g.Source)
+				default:
+					return fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, g.Source)
+				}
+			}
+			var db rdns.BlocklistDB
+			switch g.Format {
+			case "regexp", "":
+				db, err = rdns.NewRegexpDB(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			case "domain":
+				db, err = rdns.NewDomainDB(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			case "hosts":
+				db, err = rdns.NewHostsDB(g.Blocklist...)
+				if err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unsupported blocklist format '%s'", g.Format)
+			}
+			resolvers[id], err = rdns.NewBlocklist(gr[0], db, loader, time.Duration(g.Refresh)*time.Second)
 			if err != nil {
 				return err
 			}

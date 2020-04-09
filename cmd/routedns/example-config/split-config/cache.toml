@@ -1,0 +1,4 @@
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+

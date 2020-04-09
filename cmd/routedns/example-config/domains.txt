@@ -1,0 +1,5 @@
+# Example list of domains on a blocklist
+
+.evil.com
+blocked.com
+facebook.com
