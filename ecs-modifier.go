@@ -1,0 +1,132 @@
+package rdns
+
+import (
+	"errors"
+	"fmt"
+	"net"
+
+	"github.com/miekg/dns"
+)
+
+// ECSModifier manipulates EDNS0 Client Subnet in queries.
+type ECSModifier struct {
+	resolver Resolver
+	modifier ECSModifierFunc
+}
+
+var _ Resolver = &ECSModifier{}
+
+// ECSMofifierFunc takes a DNS query and modifies its EDN0 Client Subdomain record
+type ECSModifierFunc func(q *dns.Msg, ci ClientInfo)
+
+// NewECSModifier initializes an ECS modifier.
+func NewECSModifier(resolver Resolver, f ECSModifierFunc) (*ECSModifier, error) {
+	c := &ECSModifier{resolver: resolver, modifier: f}
+	return c, nil
+}
+
+// Resolve modifies the OPT EDNS0 record and passes it to the next resolver.
+func (r *ECSModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	if len(q.Question) < 1 {
+		return nil, errors.New("no question in query")
+	}
+
+	// Modify the query
+	if r.modifier != nil {
+		r.modifier(q, ci)
+	}
+
+	// Pass it on upstream
+	return r.resolver.Resolve(q, ci)
+}
+
+func (r *ECSModifier) String() string {
+	return fmt.Sprintf("ECSModifier(%s)", r.resolver)
+}
+
+func ECSModifierDelete(q *dns.Msg, ci ClientInfo) {
+	edns0 := q.IsEdns0()
+	if edns0 == nil {
+		return
+	}
+	// Filter out any ECS options
+	newOpt := make([]dns.EDNS0, 0, len(edns0.Option))
+	for _, opt := range edns0.Option {
+		if _, ok := opt.(*dns.EDNS0_SUBNET); ok {
+			continue
+		}
+		newOpt = append(newOpt, opt)
+	}
+	edns0.Option = newOpt
+}
+
+func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
+
+	return func(q *dns.Msg, ci ClientInfo) {
+		// Drop any existing ECS options
+		ECSModifierDelete(q, ci)
+
+		// If no address is configured, use that of the client
+		if addr == nil {
+			addr = ci.SourceIP
+		}
+
+		var (
+			family uint16
+			mask   uint8
+		)
+		if ip4 := addr.To4(); len(ip4) == net.IPv4len {
+			family = 1 // ip4
+			addr = ip4
+			mask = prefix4
+			addr = addr.Mask(net.CIDRMask(int(prefix4), 32))
+		} else {
+			family = 2 // ip6
+			mask = prefix6
+			addr = addr.Mask(net.CIDRMask(int(prefix6), 128))
+		}
+
+		// Add a new record if there's no EDNS0 at all
+		edns0 := q.IsEdns0()
+		if edns0 == nil {
+			q.SetEdns0(4096, true)
+			edns0 = q.IsEdns0()
+		}
+
+		// Append the ECS option
+		ecs := new(dns.EDNS0_SUBNET)
+		ecs.Code = dns.EDNS0SUBNET
+		ecs.Family = family      // 1 for IPv4 source address, 2 for IPv6
+		ecs.SourceNetmask = mask // 32 for IPV4, 128 for IPv6
+		ecs.SourceScope = 0
+		ecs.Address = addr
+		edns0.Option = append(edns0.Option, ecs)
+	}
+}
+
+func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
+	return func(q *dns.Msg, ci ClientInfo) {
+		edns0 := q.IsEdns0()
+		if edns0 == nil {
+			return
+		}
+
+		// Find the ECS option
+		for _, opt := range edns0.Option {
+			ecs, ok := opt.(*dns.EDNS0_SUBNET)
+			if !ok {
+				continue
+			}
+			switch ecs.Family {
+			case 1: // ip4
+				addr := ecs.Address.To4()
+				ecs.Address = addr.Mask(net.CIDRMask(int(prefix4), 32))
+				ecs.SourceNetmask = prefix4
+			case 2: // ip6
+				addr := ecs.Address
+				ecs.Address = addr.Mask(net.CIDRMask(int(prefix6), 128))
+				ecs.SourceNetmask = prefix6
+			}
+		}
+	}
+}

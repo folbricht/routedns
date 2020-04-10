@@ -1,0 +1,20 @@
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[groups.google-ecs]
+type = "ecs-modifier"
+resolvers = ["google-dot"]
+ecs-op = "add" # "add", "delete", "privacy". Defaults to "" which does nothing.
+ecs-address = "1.2.3.4"
+ecs-prefix4 = 24
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "google-ecs"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "google-ecs"
