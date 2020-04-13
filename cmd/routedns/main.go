@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -68,6 +69,9 @@ func start(opt options, args []string) error {
 
 	// Parse resolver config from the config first since groups and routers reference them
 	for id, r := range config.Resolvers {
+		if _, ok := resolvers[id]; ok {
+			return fmt.Errorf("group resolver with duplicate id '%s", id)
+		}
 		switch r.Protocol {
 		case "dot":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
@@ -105,127 +109,57 @@ func start(opt options, args []string) error {
 		}
 	}
 
-	// Now the resolver groups. They reference the resolvers above and are used by routers
-	// later. Since groups can reference other groups, we need to figure out which ones to
-	// process first. That's done by analysing the dependencies between them.
-	for _, id := range groupKeyOrder(config.Groups) {
-		g := config.Groups[id]
-		if _, ok := resolvers[id]; ok {
-			return fmt.Errorf("group defined with duplicate id '%s", id)
+	// Since routers depend on groups and vice-versa, build a map of IDs that reference a list of
+	// IDs as dependencies. If all dependencies of an ID have been resolved (exist in the map of
+	// resolvers), this entity can be instantiated in the following step.
+	deps := make(map[string][]string)
+	for id, g := range config.Groups {
+		_, ok := deps[id]
+		if ok {
+			return fmt.Errorf("duplicate name: %s", id)
 		}
-		var gr []rdns.Resolver
-		for _, rid := range g.Resolvers {
-			resolver, ok := resolvers[rid]
-			if !ok {
-				return fmt.Errorf("group '%s' references non-existant resolver or group '%s", id, rid)
-			}
-			gr = append(gr, resolver)
+		deps[id] = g.Resolvers
+	}
+	for id, r := range config.Routers {
+		_, ok := deps[id]
+		if ok {
+			return fmt.Errorf("duplicate name: %s", id)
 		}
-		switch g.Type {
-		case "round-robin":
-			resolvers[id] = rdns.NewRoundRobin(gr...)
-		case "fail-rotate":
-			resolvers[id] = rdns.NewFailRotate(gr...)
-		case "fail-back":
-			resolvers[id] = rdns.NewFailBack(rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
-		case "blocklist":
-			if len(gr) != 1 {
-				return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
-			}
-			if len(g.Blocklist) > 0 && g.Source != "" {
-				return fmt.Errorf("type static blocklist can't be used with 'source' in '%s'", id)
-			}
-			var loader rdns.BlocklistLoader
-			if g.Source != "" {
-				loc, err := url.Parse(g.Source)
-				if err != nil {
-					return err
-				}
-				switch loc.Scheme {
-				case "http", "https":
-					loader = rdns.NewHTTPLoader(g.Source)
-				case "":
-					loader = rdns.NewFileLoader(g.Source)
-				default:
-					return fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, g.Source)
-				}
-			}
-			var db rdns.BlocklistDB
-			switch g.Format {
-			case "regexp", "":
-				db, err = rdns.NewRegexpDB(g.Blocklist...)
-				if err != nil {
-					return err
-				}
-			case "domain":
-				db, err = rdns.NewDomainDB(g.Blocklist...)
-				if err != nil {
-					return err
-				}
-			case "hosts":
-				db, err = rdns.NewHostsDB(g.Blocklist...)
-				if err != nil {
-					return err
-				}
-			default:
-				return fmt.Errorf("unsupported blocklist format '%s'", g.Format)
-			}
-			resolvers[id], err = rdns.NewBlocklist(gr[0], db, loader, time.Duration(g.Refresh)*time.Second)
-			if err != nil {
-				return err
-			}
-		case "replace":
-			if len(gr) != 1 {
-				return fmt.Errorf("type replace only supports one resolver in '%s'", id)
-			}
-			resolvers[id], err = rdns.NewReplace(gr[0], g.Replace...)
-			if err != nil {
-				return err
-			}
-		case "ecs-modifier":
-			if len(gr) != 1 {
-				return fmt.Errorf("type ecs-modifier only supports one resolver in '%s'", id)
-			}
-			var f rdns.ECSModifierFunc
-			switch g.ECSOp {
-			case "add":
-				f = rdns.ECSModifierAdd(g.ECSAddress, g.ECSPrefix4, g.ECSPrefix6)
-			case "delete":
-				f = rdns.ECSModifierDelete
-			case "privacy":
-				f = rdns.ECSModifierPrivacy(g.ECSPrefix4, g.ECSPrefix6)
-			case "":
-			default:
-				return fmt.Errorf("unsupported ecs-modifier operation '%s'", g.ECSOp)
-			}
-			resolvers[id], err = rdns.NewECSModifier(gr[0], f)
-			if err != nil {
-				return err
-			}
-		case "cache":
-			resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
-		default:
-			return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
+		for _, route := range r.Routes {
+			deps[id] = append(deps[id], route.Resolver)
 		}
 	}
 
-	// Parse the routers next. These can be referenced by listeners and by other routers.
-	for _, id := range routerKeyOrder(config.Routers) {
-		r := config.Routers[id]
-		if _, ok := resolvers[id]; ok {
-			return fmt.Errorf("router defined with duplicate id '%s", id)
-		}
-		router := rdns.NewRouter()
-		for _, route := range r.Routes {
-			resolver, ok := resolvers[route.Resolver]
-			if !ok {
-				return fmt.Errorf("router '%s' references non-existant resolver or group '%s", id, route.Resolver)
+	// Repeatedly iterate over the map, checking if all dependencies are resolveable. If
+	// one is found, this node is instantiated and removed from the map. If nothing is found
+	// during an iteration, the dependencies are missing and we bail out.
+	for len(deps) > 0 {
+		found := false
+	node:
+		for id, dependencies := range deps {
+			for _, depID := range dependencies {
+				if _, ok := resolvers[depID]; !ok {
+					continue node
+				}
 			}
-			if err := router.Add(route.Name, route.Type, route.Source, resolver); err != nil {
-				return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
+			// We found the ID of a node that can be instantiated. It could be a group
+			// or a router. Try them both.
+			if g, ok := config.Groups[id]; ok {
+				if err := instantiateGroup(id, g, resolvers); err != nil {
+					return err
+				}
 			}
+			if r, ok := config.Routers[id]; ok {
+				if err := instantiateRouter(id, r, resolvers); err != nil {
+					return err
+				}
+			}
+			delete(deps, id)
+			found = true
 		}
-		resolvers[id] = router
+		if !found {
+			return errors.New("unable to resolve dependencies")
+		}
 	}
 
 	// Build the Listeners last as they can point to routers, groups or resolvers directly.
@@ -271,4 +205,120 @@ func start(opt options, args []string) error {
 	}
 
 	select {}
+}
+
+// Instantiate a group object based on configuration and add to the map of resolvers by ID.
+func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) error {
+	var gr []rdns.Resolver
+	var err error
+	for _, rid := range g.Resolvers {
+		resolver, ok := resolvers[rid]
+		if !ok {
+			return fmt.Errorf("group '%s' references non-existant resolver or group '%s", id, rid)
+		}
+		gr = append(gr, resolver)
+	}
+	switch g.Type {
+	case "round-robin":
+		resolvers[id] = rdns.NewRoundRobin(gr...)
+	case "fail-rotate":
+		resolvers[id] = rdns.NewFailRotate(gr...)
+	case "fail-back":
+		resolvers[id] = rdns.NewFailBack(rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
+	case "blocklist":
+		if len(gr) != 1 {
+			return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
+		}
+		if len(g.Blocklist) > 0 && g.Source != "" {
+			return fmt.Errorf("type static blocklist can't be used with 'source' in '%s'", id)
+		}
+		var loader rdns.BlocklistLoader
+		if g.Source != "" {
+			loc, err := url.Parse(g.Source)
+			if err != nil {
+				return err
+			}
+			switch loc.Scheme {
+			case "http", "https":
+				loader = rdns.NewHTTPLoader(g.Source)
+			case "":
+				loader = rdns.NewFileLoader(g.Source)
+			default:
+				return fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, g.Source)
+			}
+		}
+		var db rdns.BlocklistDB
+		switch g.Format {
+		case "regexp", "":
+			db, err = rdns.NewRegexpDB(g.Blocklist...)
+			if err != nil {
+				return err
+			}
+		case "domain":
+			db, err = rdns.NewDomainDB(g.Blocklist...)
+			if err != nil {
+				return err
+			}
+		case "hosts":
+			db, err = rdns.NewHostsDB(g.Blocklist...)
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported blocklist format '%s'", g.Format)
+		}
+		resolvers[id], err = rdns.NewBlocklist(gr[0], db, loader, time.Duration(g.Refresh)*time.Second)
+		if err != nil {
+			return err
+		}
+	case "replace":
+		if len(gr) != 1 {
+			return fmt.Errorf("type replace only supports one resolver in '%s'", id)
+		}
+		resolvers[id], err = rdns.NewReplace(gr[0], g.Replace...)
+		if err != nil {
+			return err
+		}
+	case "ecs-modifier":
+		if len(gr) != 1 {
+			return fmt.Errorf("type ecs-modifier only supports one resolver in '%s'", id)
+		}
+		var f rdns.ECSModifierFunc
+		switch g.ECSOp {
+		case "add":
+			f = rdns.ECSModifierAdd(g.ECSAddress, g.ECSPrefix4, g.ECSPrefix6)
+		case "delete":
+			f = rdns.ECSModifierDelete
+		case "privacy":
+			f = rdns.ECSModifierPrivacy(g.ECSPrefix4, g.ECSPrefix6)
+		case "":
+		default:
+			return fmt.Errorf("unsupported ecs-modifier operation '%s'", g.ECSOp)
+		}
+		resolvers[id], err = rdns.NewECSModifier(gr[0], f)
+		if err != nil {
+			return err
+		}
+	case "cache":
+		resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
+	default:
+		return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
+	}
+	return nil
+}
+
+// Instantiate a router object based on configuration and add to the map of resolvers by ID.
+func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) error {
+	router := rdns.NewRouter()
+	for _, route := range r.Routes {
+		resolver, ok := resolvers[route.Resolver]
+		if !ok {
+			return fmt.Errorf("router '%s' references non-existant resolver or group '%s'", id, route.Resolver)
+		}
+		if err := router.Add(route.Name, route.Type, route.Source, resolver); err != nil {
+			return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
+		}
+	}
+	resolvers[id] = router
+	return nil
 }
