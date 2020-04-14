@@ -5,8 +5,8 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [resolvers.google-dot]
-address = "8.8.8.8:53"
-protocol = "udp"
+address = "8.8.8.8:853"
+protocol = "dot"
 
 [groups.cloudflare-cached]
 type = "cache"

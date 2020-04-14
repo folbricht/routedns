@@ -69,43 +69,41 @@ The following protocols are supportes:
 The following example defines several well-known resolvers, one using DNS-over-TLS, one DNS-over-HTTP while the other two use plain DNS. A more extensive list of configurations for public DNS services can be found [here](cmd/routedns/example-config/well-known.toml).
 
 ```toml
-[resolvers]
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
 
-  [resolvers.cloudflare-dot]
-  address = "1.1.1.1:853"
-  protocol = "dot"
+[resolvers.cloudflare-doh]
+address = "https://1.1.1.1/dns-query{?dns}"
+protocol = "doh"
 
-  [resolvers.cloudflare-doh]
-  address = "https://1.1.1.1/dns-query{?dns}"
-  protocol = "doh"
+[resolvers.google-udp-8-8-8-8]
+address = "8.8.8.8:53"
+protocol = "udp"
 
-  [resolvers.google-udp-8-8-8-8]
-  address = "8.8.8.8:53"
-  protocol = "udp"
-
-  [resolvers.google-udp-8-8-4-4]
-  address = "8.8.4.4:53"
-  protocol = "udp"
+[resolvers.google-udp-8-8-4-4]
+address = "8.8.4.4:53"
+protocol = "udp"
 ```
 
 Secure resolvers (DoT and DoH) also support additional option to set the trusted CA certificates or even set client key and certificates. Certificate and key files need to be in PEM format. Specify `ca` to only trust a specific set of CAs. If not specified, the resolver will use the system trust store.
 
 ```toml
-  [resolvers.cloudflare-dot-with-ca]
-  address = "1.1.1.1:853"
-  protocol = "dot"
-  ca = "/path/to/DigiCertECCSecureServerCA.pem"
+[resolvers.cloudflare-dot-with-ca]
+address = "1.1.1.1:853"
+protocol = "dot"
+ca = "/path/to/DigiCertECCSecureServerCA.pem"
 ```
 
 For full mutual TLS with a private DNS server that expects the client to present a certificate, the `client-key` and `client-crt` options can be used to specify the key and certificate files.
 
 ```toml
-  [resolvers.my-mutual-tls]
-  address = "myserver:853"
-  protocol = "dot"
-  ca = "/path/to/my-ca.pem"
-  client-key = "/path/to/my-key.pem"
-  client-crt = "/path/to/my-crt.pem"
+[resolvers.my-mutual-tls]
+address = "myserver:853"
+protocol = "dot"
+ca = "/path/to/my-ca.pem"
+client-key = "/path/to/my-key.pem"
+client-crt = "/path/to/my-crt.pem"
 ```
 
 #### Bootstrapping
@@ -118,15 +116,15 @@ When upstream services are configured using their hostnames, routedns will first
 To solve these issues, it is possible to add a bootstrap IP address to the config. This will use the IP to connect to the service without first having to do a lookup while still preserving the DoH URL or DoT hostname for the TLS handshake. The `bootstrap-address` option is available on both, DoT and DoH resolvers.
 
 ```toml
-  [resolvers.google-doh-post-bootstrap]
-  address = "https://dns.google/dns-query"
-  protocol = "doh"
-  bootstrap-address = "8.8.8.8"
+[resolvers.google-doh-post-bootstrap]
+address = "https://dns.google/dns-query"
+protocol = "doh"
+bootstrap-address = "8.8.8.8"
 ```
 
 ### Groups
 
-Multiple resolvers can be combined into a group to implement different failover or loadbalancing algorithms within that group. Some groups are used as query modifiers (e.g. blocklist) and only have one upstream resolver. Again, each group requires a unique identifier.
+Multiple resolvers can be combined into a group to implement different failover or loadbalancing algorithms within that group. Some groups are used as query modifiers (e.g. blocklist or caches) and can be chained with other groups or routers. Again, each group requires a unique identifier.
 
 Each group has `resolvers` which is and array of one or more resolver-identifiers. These can either be resolvers defined above, or other groups defined earlier.
 
@@ -142,11 +140,9 @@ The `type` determines which algorithm is being used. Available types:
 In this example, two upstream resolvers are grouped together and will be used alternating:
 
 ```toml
-[groups]
-
-  [groups.google-udp]
-  resolvers = ["google-udp-8-8-8-8", "google-udp-8-8-4-4"]
-  type = "round-robin"
+[groups.google-udp]
+resolvers = ["google-udp-8-8-8-8", "google-udp-8-8-4-4"]
+type = "round-robin"
 ```
 
 ### Routers
@@ -163,17 +159,11 @@ A route has the following fields:
 Below, `router1` sends all queries for the MX record of `google.com` and all its sub-domains to a group consisting of Google's DNS servers. Anything else is sent to a DNS-over-TLS resolver.
 
 ```toml
-[routers]
-
-  [routers.router1]
-
-    [[routers.router1.routes]]
-    type = "MX"
-    name = '(^|\.)google\.com\.$'
-    resolver="google-udp"
-
-    [[routers.router1.routes]] # A route without type and name becomes the default route for all other queries
-    resolver="cloudflare-dot"
+[routers.router1]
+routes = [
+  { name = '(^|\.)google\.com\.$', type = "MX", resolver="google-udp" },
+  { resolver="cloudflare-dot" }, # default route
+]
 ```
 
 ### Listeners
