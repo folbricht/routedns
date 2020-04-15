@@ -1,0 +1,38 @@
+title = "RouteDNS configuration for split DNS"
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+
+[routers.router1]
+routes = [
+  { name = '\.twitter\.com\.$', resolver="cloudflare-cached" },
+  { name = '\.facebook\.com\.$', resolver="cloudflare-cached" },
+  { resolver="google-dot" }, # default route
+]
+
+[groups.my-blocklist]
+type = "blocklist"
+resolvers = ["router1"]
+format    = "domain"
+blocklist = [
+  '.evil.com',
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "my-blocklist"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "my-blocklist"
