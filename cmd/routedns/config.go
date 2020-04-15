@@ -19,13 +19,14 @@ type config struct {
 }
 
 type listener struct {
-	Address   string
-	Protocol  string
-	Resolver  string
-	CA        string
-	ServerKey string `toml:"server-key"`
-	ServerCrt string `toml:"server-crt"`
-	MutualTLS bool   `toml:"mutual-tls"`
+	Address    string
+	Protocol   string
+	Resolver   string
+	CA         string
+	ServerKey  string   `toml:"server-key"`
+	ServerCrt  string   `toml:"server-crt"`
+	MutualTLS  bool     `toml:"mutual-tls"`
+	AllowedNet []string `toml:"allowed-net"`
 }
 
 type resolver struct {
@@ -91,4 +92,16 @@ func loadFile(w io.Writer, name string) error {
 	defer f.Close()
 	_, err = io.Copy(w, f)
 	return err
+}
+
+func parseCIDRList(networks []string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, s := range networks {
+		_, n, err := net.ParseCIDR(s)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }

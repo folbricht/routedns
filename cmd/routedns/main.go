@@ -169,24 +169,32 @@ func start(opt options, args []string) error {
 		if !ok {
 			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s", id, l.Resolver)
 		}
+
+		allowedNet, err := parseCIDRList(l.AllowedNet)
+		if err != nil {
+			return err
+		}
+
+		opt := rdns.ListenOptions{AllowedNet: allowedNet}
+
 		switch l.Protocol {
 		case "tcp":
-			listeners = append(listeners, rdns.NewDNSListener(l.Address, "tcp", resolver))
+			listeners = append(listeners, rdns.NewDNSListener(l.Address, "tcp", opt, resolver))
 		case "udp":
-			listeners = append(listeners, rdns.NewDNSListener(l.Address, "udp", resolver))
+			listeners = append(listeners, rdns.NewDNSListener(l.Address, "udp", opt, resolver))
 		case "dot":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig}, resolver)
+			ln := rdns.NewDoTListener(l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "doh":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig}, resolver)
+			ln := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)

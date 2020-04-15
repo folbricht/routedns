@@ -16,13 +16,16 @@ import (
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
 type DoHListener struct {
 	*http.Server
-	r Resolver
+	r   Resolver
+	opt DoHListenerOptions
 }
 
 var _ Listener = &DoHListener{}
 
 // DoTListenerOptions contains options used by the DNS-over-HTTPS server.
 type DoHListenerOptions struct {
+	ListenOptions
+
 	TLSConfig *tls.Config
 }
 
@@ -33,7 +36,8 @@ func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoH
 			Addr:      addr,
 			TLSConfig: opt.TLSConfig,
 		},
-		r: resolver,
+		r:   resolver,
+		opt: opt,
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
@@ -112,13 +116,25 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 	}
 	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.Addr})
 	log.Debug("received query")
-	log.WithField("resolver", s.r.String()).Trace("forwarding query to resolver")
-	a, err := s.r.Resolve(q, ci)
-	if err != nil {
-		log.WithError(err).Error("failed to resolve")
-		a = new(dns.Msg)
-		a.SetRcode(q, dns.RcodeServerFailure)
+
+	fmt.Println(q)
+
+	var err error
+	a := new(dns.Msg)
+	if isAllowed(s.opt.AllowedNet, ci.SourceIP) {
+		log.WithField("resolver", s.r.String()).Trace("forwarding query to resolver")
+		a, err = s.r.Resolve(q, ci)
+		if err != nil {
+			log.WithError(err).Error("failed to resolve")
+			a = new(dns.Msg)
+			a.SetRcode(q, dns.RcodeServerFailure)
+		}
+	} else {
+		log.Debug("refusing client ip")
+		a.SetRcode(q, dns.RcodeRefused)
 	}
+
+	fmt.Println(a)
 
 	// Pad the packet according to rfc8467 and rfc7830
 	padAnswer(q, a)

@@ -1,0 +1,11 @@
+title = "RouteDNS configuration with a listener only allowing some client networks"
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-dot"
+allowed-net = ["127.0.0.1/32", "::1/128", "192.168.0.0/16"]

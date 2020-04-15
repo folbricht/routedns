@@ -17,6 +17,8 @@ var _ Listener = &DoTListener{}
 
 // DoTListenerOptions contains options used by the DNS-over-TLS server.
 type DoTListenerOptions struct {
+	ListenOptions
+
 	TLSConfig *tls.Config
 }
 
@@ -27,7 +29,7 @@ func NewDoTListener(addr string, opt DoTListenerOptions, resolver Resolver) *DoT
 			Addr:      addr,
 			Net:       "tcp-tls",
 			TLSConfig: opt.TLSConfig,
-			Handler:   listenHandler("dot", addr, resolver),
+			Handler:   listenHandler("dot", addr, resolver, opt.AllowedNet),
 		},
 	}
 }
