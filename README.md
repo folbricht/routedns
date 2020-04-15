@@ -168,33 +168,41 @@ routes = [
 
 ### Listeners
 
-Listers specify how queries are received and how they should be handled. Listeners can send queries to routers, groups, or to resolvers directly. Listeners have a listen address, a protocol (`udp`, `tcp`, `dot` or `doh`), and specify the handler identifier in `resolver`.
+Listers specify how queries are received and how they should be handled. Listeners can send queries to routers, groups, or to resolvers directly. Listeners have a listen address, a protocol (`udp`, `tcp`, `dot` or `doh`), and specify the handler identifier in `resolver`. 
 
 ```toml
-[listeners]
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router1"
 
-  [listeners.local-udp]
-  address = "127.0.0.1:53"
-  protocol = "udp"
-  resolver = "router1"
-
-  [listeners.local-tcp]
-  address = "127.0.0.1:53"
-  protocol = "tcp"
-  resolver = "router1"
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "router1"
 ```
 
 Some listeners, namely DoH and DoT, can be configured with certificates and can enforce mutual-TLS. A secure listener of this type requires at least the `server-crt` and `server-key` options. Other options such as `ca` and `mutual-tls` can be used in more secure configurations. A listener using DoH and requiring client certificates would look like this:
 
 ```toml
-  [listeners.local-doh]
-  address = ":443"
-  protocol = "doh"
-  resolver = "upstream-dot"
-  server-crt = "/path/to/server.crt"
-  server-key = "/path/to/server.key"
-  ca = "/path/to/ca.crt"
-  mutual-tls = true
+[listeners.local-doh]
+address = ":443"
+protocol = "doh"
+resolver = "upstream-dot"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+ca = "/path/to/ca.crt"
+mutual-tls = true
+```
+
+It is possible to only allow querying a listener from a number of client networks using the `allowed-net` option. Clients outside the allowed networks will receive answers with a status of `REFUSED`. By default, a listener allows all clients which can be restricted like so:
+
+```toml
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-dot"
+allowed-net = ["127.0.0.1/32", "::1/128", "192.168.0.0/16"]
 ```
 
 ## Blocklists
