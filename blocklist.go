@@ -14,33 +14,68 @@ import (
 // Blocklist is a resolver that returns NXDOMAIN or a spoofed IP for every query that
 // matches. Everything else is passed through to another resolver.
 type Blocklist struct {
+	BlocklistOptions
 	resolver Resolver
-	db       BlocklistDB
-	loader   BlocklistLoader
-	mu       sync.Mutex
+	mu       sync.RWMutex
 }
 
 var _ Resolver = &Blocklist{}
 
-// NewBlocklist returns a new instance of a blocklist resolver. If a non-nil loader is provided
-// the rules are loaded from it immediately into the DB. If refresh is >0, the rules are reloaded
-// periodically.
-func NewBlocklist(resolver Resolver, db BlocklistDB, l BlocklistLoader, refresh time.Duration) (*Blocklist, error) {
-	if l != nil {
-		rules, err := l.Load()
+type BlocklistOptions struct {
+	BlocklistDB BlocklistDB
+
+	// Loader for the blacklist during initialization and refresh. Disabled
+	// if nil.
+	BlocklistLoader BlocklistLoader
+
+	// Refresh period for the blocklist. Disabled if 0.
+	BlocklistRefresh time.Duration
+
+	// Rules that override the blocklist rules, effecively negate them.
+	AllowlistDB BlocklistDB
+
+	// Loader for the allowlist during initialization and refresh. Disabled
+	// if nil.
+	AllowlistLoader BlocklistLoader
+
+	// Refresh period for the allowlist. Disabled if 0.
+	AllowlistRefresh time.Duration
+}
+
+// NewBlocklist returns a new instance of a blocklist resolver.
+func NewBlocklist(resolver Resolver, opt BlocklistOptions) (*Blocklist, error) {
+	blocklist := &Blocklist{resolver: resolver, BlocklistOptions: opt}
+
+	// Load the blocklist immediately if a loader was given
+	if blocklist.BlocklistLoader != nil {
+		rules, err := blocklist.BlocklistLoader.Load()
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve rules: %w", err)
 		}
-		db, err = db.New(rules)
+		blocklist.BlocklistDB, err = blocklist.BlocklistDB.New(rules)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load rules: %w", err)
 		}
 	}
-	blocklist := &Blocklist{resolver: resolver, db: db, loader: l}
 
-	// Start the refresh goroutine if we have a loader and a refresh period was given
-	if l != nil && refresh > 0 {
-		go blocklist.refreshLoop(refresh)
+	// Load the allowlist immediately if a loader was given
+	if blocklist.AllowlistLoader != nil {
+		rules, err := blocklist.AllowlistLoader.Load()
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve rules: %w", err)
+		}
+		blocklist.AllowlistDB, err = blocklist.AllowlistDB.New(rules)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load rules: %w", err)
+		}
+	}
+
+	// Start the refresh goroutines if we have a loader and a refresh period was given
+	if blocklist.BlocklistLoader != nil && blocklist.BlocklistRefresh > 0 {
+		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
+	}
+	if blocklist.AllowlistLoader != nil && blocklist.AllowlistRefresh > 0 {
+		go blocklist.refreshLoopAllowlist(blocklist.AllowlistRefresh)
 	}
 	return blocklist, nil
 }
@@ -53,7 +88,21 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	question := q.Question[0]
 	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": question.Name})
-	ip, rule, ok := r.db.Match(question)
+
+	r.mu.RLock()
+	blocklistDB := r.BlocklistDB
+	allowlistDB := r.AllowlistDB
+	r.mu.RUnlock()
+
+	// Forward to upstream immediately if there's a match in the allowlist
+	if allowlistDB != nil {
+		if _, rule, ok := allowlistDB.Match(question); ok {
+			log.WithField("rule", rule).WithField("resolver", r.resolver.String()).Trace("matched allowlist, forwarding")
+			return r.resolver.Resolve(q, ci)
+		}
+	}
+
+	ip, rule, ok := blocklistDB.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Trace("forwarding unmodified query to resolver")
@@ -102,26 +151,49 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *Blocklist) String() string {
-	return fmt.Sprintf("Blocklist(%s)", r.db)
+	r.mu.RLock()
+	blocklistDB := r.BlocklistDB
+	r.mu.RUnlock()
+	return fmt.Sprintf("Blocklist(%s)", blocklistDB)
 }
 
-func (r *Blocklist) refreshLoop(refresh time.Duration) {
+func (r *Blocklist) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
 		Log.Debug("reloading blocklist")
 
-		rules, err := r.loader.Load()
+		rules, err := r.BlocklistLoader.Load()
 		if err != nil {
 			Log.WithError(err).Error("failed to retrieve rules")
 			continue
 		}
-		db, err := r.db.New(rules)
+		db, err := r.BlocklistDB.New(rules)
 		if err != nil {
 			Log.WithError(err).Error("failed to load rules")
 			continue
 		}
 		r.mu.Lock()
-		r.db = db
+		r.BlocklistDB = db
+		r.mu.Unlock()
+	}
+}
+func (r *Blocklist) refreshLoopAllowlist(refresh time.Duration) {
+	for {
+		time.Sleep(refresh)
+		Log.Debug("reloading allowlist")
+
+		rules, err := r.AllowlistLoader.Load()
+		if err != nil {
+			Log.WithError(err).Error("failed to retrieve rules")
+			continue
+		}
+		db, err := r.AllowlistDB.New(rules)
+		if err != nil {
+			Log.WithError(err).Error("failed to load rules")
+			continue
+		}
+		r.mu.Lock()
+		r.AllowlistDB = db
 		r.mu.Unlock()
 	}
 }

@@ -1,13 +1,18 @@
+# Config with a remote blocklist that is refreshed once a day and also a remote
+# allowlist that overrides any blocking rules
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"
 
 [groups.cloudflare-blocklist]
 type = "blocklist"
-resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
-format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
+resolvers = ["cloudflare-dot"]
+format    = "regexp"
 source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.regexp.list"
-refresh   = 86400              # Time to refresh the blocklist from the URL in seconds
+refresh   = 86400
+allowlist-format  = "domain"
+allowlist-source  = "https://some.other.list"
+allowlist-refresh = 86400
 
 [listeners.local-udp]
 address = ":53"
