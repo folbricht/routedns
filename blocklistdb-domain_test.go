@@ -8,7 +8,7 @@ import (
 )
 
 func TestDomainDB(t *testing.T) {
-	m, err := NewDomainDB(
+	loader := NewStaticLoader([]string{
 		"domain1.com.",    // exact match
 		".domain2.com.",   // exact match and subdomains
 		"x.domain2.com",   // above rule should take precendence
@@ -16,7 +16,9 @@ func TestDomainDB(t *testing.T) {
 		"x.x.domain3.com", // more general wildcard above should take precedence
 		"domain4.com",     // the more general rule below wins
 		".domain4.com",
-	)
+	})
+
+	m, err := NewDomainDB(loader)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -58,7 +60,8 @@ func TestDomainDBError(t *testing.T) {
 		{"*domain.com"},
 	}
 	for _, test := range tests {
-		_, err := NewDomainDB(test.name)
+		loader := NewStaticLoader([]string{test.name})
+		_, err := NewDomainDB(loader)
 		require.Error(t, err)
 	}
 }

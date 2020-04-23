@@ -12,6 +12,7 @@ import (
 // IP4 is given but no IP6, then a domain match will still result in an NXDOMAIN for the IP6 address.
 type HostsDB struct {
 	filters map[string]ipRecords
+	loader  BlocklistLoader
 }
 
 type ipRecords struct {
@@ -22,7 +23,11 @@ type ipRecords struct {
 var _ BlocklistDB = &HostsDB{}
 
 // NewHostsDB returns a new instance of a matcher for a list of regular expressions.
-func NewHostsDB(rules ...string) (*HostsDB, error) {
+func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
+	rules, err := loader.Load()
+	if err != nil {
+		return nil, err
+	}
 	filters := make(map[string]ipRecords)
 	for _, r := range rules {
 		fields := strings.Fields(r)
@@ -53,11 +58,11 @@ func NewHostsDB(rules ...string) (*HostsDB, error) {
 			filters[name] = ips
 		}
 	}
-	return &HostsDB{filters}, nil
+	return &HostsDB{filters, loader}, nil
 }
 
-func (m *HostsDB) New(rules []string) (BlocklistDB, error) {
-	return NewHostsDB(rules...)
+func (m *HostsDB) Reload() (BlocklistDB, error) {
+	return NewHostsDB(m.loader)
 }
 
 func (m *HostsDB) Match(q dns.Question) (net.IP, string, bool) {

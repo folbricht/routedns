@@ -9,13 +9,18 @@ import (
 
 // RegexpDB holds a list of regular expressions against which it evaluates DNS queries.
 type RegexpDB struct {
-	rules []*regexp.Regexp
+	rules  []*regexp.Regexp
+	loader BlocklistLoader
 }
 
 var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
-func NewRegexpDB(rules ...string) (*RegexpDB, error) {
+func NewRegexpDB(loader BlocklistLoader) (*RegexpDB, error) {
+	rules, err := loader.Load()
+	if err != nil {
+		return nil, err
+	}
 	var filters []*regexp.Regexp
 	for _, r := range rules {
 		re, err := regexp.Compile(r)
@@ -25,11 +30,11 @@ func NewRegexpDB(rules ...string) (*RegexpDB, error) {
 		filters = append(filters, re)
 	}
 
-	return &RegexpDB{filters}, nil
+	return &RegexpDB{filters, loader}, nil
 }
 
-func (m *RegexpDB) New(rules []string) (BlocklistDB, error) {
-	return NewRegexpDB(rules...)
+func (m *RegexpDB) Reload() (BlocklistDB, error) {
+	return NewRegexpDB(m.loader)
 }
 
 func (m *RegexpDB) Match(q dns.Question) (net.IP, string, bool) {

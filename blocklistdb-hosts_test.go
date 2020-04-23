@@ -9,7 +9,7 @@ import (
 )
 
 func TestHostsDB(t *testing.T) {
-	m, err := NewHostsDB(
+	loader := NewStaticLoader([]string{
 		"# some comment",
 		"              ",
 		"127.0.0.1   domain1.com",
@@ -18,7 +18,9 @@ func TestHostsDB(t *testing.T) {
 		"::          domain5.com",
 		"::1         domain6.com",
 		"192.168.1.1 domain6.com",
-	)
+	})
+
+	m, err := NewHostsDB(loader)
 	require.NoError(t, err)
 
 	tests := []struct {

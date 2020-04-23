@@ -12,7 +12,11 @@ func TestBlocklistRegexp(t *testing.T) {
 	q := new(dns.Msg)
 	r := new(TestResolver)
 
-	m, err := NewRegexpDB(`(^|\.)block\.test`, `(^|\.)evil\.test`)
+	loader := NewStaticLoader([]string{
+		`(^|\.)block\.test`,
+		`(^|\.)evil\.test`,
+	})
+	m, err := NewRegexpDB(loader)
 	require.NoError(t, err)
 
 	opt := BlocklistOptions{
@@ -33,4 +37,48 @@ func TestBlocklistRegexp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
 	require.Equal(t, dns.RcodeNameError, a.Rcode)
+}
+
+func TestBlocklistAllow(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := new(TestResolver)
+
+	blockloader := NewStaticLoader([]string{
+		`(^|\.)block\.test`,
+		`(^|\.)evil\.test`,
+	})
+	allowloader := NewStaticLoader([]string{
+		`(^|\.)good\.evil\.test`,
+	})
+	blockDB, err := NewRegexpDB(blockloader)
+	require.NoError(t, err)
+	allowDB, err := NewRegexpDB(allowloader)
+	require.NoError(t, err)
+
+	opt := BlocklistOptions{
+		BlocklistDB: blockDB,
+		AllowlistDB: allowDB,
+	}
+	b, err := NewBlocklist(r, opt)
+	require.NoError(t, err)
+
+	// First query a domain not blocked. Should be passed through to the resolver
+	q.SetQuestion("test.com.", dns.TypeA)
+	_, err = b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+
+	// One domain from the blocklist should come back with NXDOMAIN
+	q.SetQuestion("x.evil.test.", dns.TypeA)
+	a, err := b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	require.Equal(t, dns.RcodeNameError, a.Rcode)
+
+	// One domain blocklist that also matches the allowlist should go through
+	q.SetQuestion("good.evil.test.", dns.TypeA)
+	_, err = b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 2, r.HitCount())
 }

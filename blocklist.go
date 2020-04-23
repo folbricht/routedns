@@ -24,19 +24,11 @@ var _ Resolver = &Blocklist{}
 type BlocklistOptions struct {
 	BlocklistDB BlocklistDB
 
-	// Loader for the blacklist during initialization and refresh. Disabled
-	// if nil.
-	BlocklistLoader BlocklistLoader
-
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
 
 	// Rules that override the blocklist rules, effecively negate them.
 	AllowlistDB BlocklistDB
-
-	// Loader for the allowlist during initialization and refresh. Disabled
-	// if nil.
-	AllowlistLoader BlocklistLoader
 
 	// Refresh period for the allowlist. Disabled if 0.
 	AllowlistRefresh time.Duration
@@ -46,35 +38,11 @@ type BlocklistOptions struct {
 func NewBlocklist(resolver Resolver, opt BlocklistOptions) (*Blocklist, error) {
 	blocklist := &Blocklist{resolver: resolver, BlocklistOptions: opt}
 
-	// Load the blocklist immediately if a loader was given
-	if blocklist.BlocklistLoader != nil {
-		rules, err := blocklist.BlocklistLoader.Load()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve rules: %w", err)
-		}
-		blocklist.BlocklistDB, err = blocklist.BlocklistDB.New(rules)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load rules: %w", err)
-		}
-	}
-
-	// Load the allowlist immediately if a loader was given
-	if blocklist.AllowlistLoader != nil {
-		rules, err := blocklist.AllowlistLoader.Load()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve rules: %w", err)
-		}
-		blocklist.AllowlistDB, err = blocklist.AllowlistDB.New(rules)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load rules: %w", err)
-		}
-	}
-
-	// Start the refresh goroutines if we have a loader and a refresh period was given
-	if blocklist.BlocklistLoader != nil && blocklist.BlocklistRefresh > 0 {
+	// Start the refresh goroutines if we have a list and a refresh period was given
+	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
 		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
 	}
-	if blocklist.AllowlistLoader != nil && blocklist.AllowlistRefresh > 0 {
+	if blocklist.AllowlistDB != nil && blocklist.AllowlistRefresh > 0 {
 		go blocklist.refreshLoopAllowlist(blocklist.AllowlistRefresh)
 	}
 	return blocklist, nil
@@ -161,13 +129,7 @@ func (r *Blocklist) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
 		Log.Debug("reloading blocklist")
-
-		rules, err := r.BlocklistLoader.Load()
-		if err != nil {
-			Log.WithError(err).Error("failed to retrieve rules")
-			continue
-		}
-		db, err := r.BlocklistDB.New(rules)
+		db, err := r.BlocklistDB.Reload()
 		if err != nil {
 			Log.WithError(err).Error("failed to load rules")
 			continue
@@ -181,13 +143,7 @@ func (r *Blocklist) refreshLoopAllowlist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
 		Log.Debug("reloading allowlist")
-
-		rules, err := r.AllowlistLoader.Load()
-		if err != nil {
-			Log.WithError(err).Error("failed to retrieve rules")
-			continue
-		}
-		db, err := r.AllowlistDB.New(rules)
+		db, err := r.AllowlistDB.Reload()
 		if err != nil {
 			Log.WithError(err).Error("failed to load rules")
 			continue

@@ -55,14 +55,25 @@ type group struct {
 	ECSPrefix6 uint8                   `toml:"ecs-prefix6"` // ECS IPv6 address prefix, 0-128. Used for "add" and "privacy"
 
 	// Blocklist options
-	Blocklist        []string // Blocklist rules, only used by "blocklist" type
-	Format           string   // Blocklist input format: "regex", "domain", or "hosts"
-	Source           string   // Location of external blocklist, can be a local path or remote URL
-	Refresh          int      // Blocklist refresh when using an external source, in seconds
+	Blocklist []string // Blocklist rules, only used by "blocklist" type
+	Format    string   // Blocklist input format: "regex", "domain", or "hosts"
+	Source    string   // Location of external blocklist, can be a local path or remote URL
+	Refresh   int      // Blocklist refresh when using an external source, in seconds
+
+	// Advanced blocklist
+	BlocklistFormat  string   `toml:"blocklist-format"` // only used for static blocklists in the config
+	BlocklistSource  []list   `toml:"blocklist-source"`
+	BlocklistRefresh int      `toml:"blocklist-refresh"`
 	Allowlist        []string // Rules to override the blocklist rules
-	AllowlistFormat  string   `toml:"allowlist-format"`
-	AllowlistSource  string   `toml:"allowlist-source"`
+	AllowlistFormat  string   `toml:"allowlist-format"` // only used for static allowlists in the config
+	AllowlistSource  []list   `toml:"allowlist-source"`
 	AllowlistRefresh int      `toml:"allowlist-refresh"`
+}
+
+// Block/Allowlist items for blocklist-v2
+type list struct {
+	Format string
+	Source string
 }
 
 type router struct {

@@ -240,85 +240,72 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && g.Source != "" {
 			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
 		}
-		if len(g.Allowlist) > 0 && g.AllowlistSource != "" {
-			return fmt.Errorf("static allowlist can't be used with 'source' in '%s'", id)
-		}
-		var blocklistLoader rdns.BlocklistLoader
-		if g.Source != "" {
-			loc, err := url.Parse(g.Source)
-			if err != nil {
-				return err
-			}
-			switch loc.Scheme {
-			case "http", "https":
-				blocklistLoader = rdns.NewHTTPLoader(g.Source)
-			case "":
-				blocklistLoader = rdns.NewFileLoader(g.Source)
-			default:
-				return fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, g.Source)
-			}
-		}
-		var allowlistLoader rdns.BlocklistLoader
-		if g.AllowlistSource != "" {
-			loc, err := url.Parse(g.AllowlistSource)
-			if err != nil {
-				return err
-			}
-			switch loc.Scheme {
-			case "http", "https":
-				allowlistLoader = rdns.NewHTTPLoader(g.AllowlistSource)
-			case "":
-				allowlistLoader = rdns.NewFileLoader(g.AllowlistSource)
-			default:
-				return fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, g.AllowlistSource)
-			}
-		}
-		var blocklistDB rdns.BlocklistDB
-		switch g.Format {
-		case "regexp", "":
-			blocklistDB, err = rdns.NewRegexpDB(g.Blocklist...)
-			if err != nil {
-				return err
-			}
-		case "domain":
-			blocklistDB, err = rdns.NewDomainDB(g.Blocklist...)
-			if err != nil {
-				return err
-			}
-		case "hosts":
-			blocklistDB, err = rdns.NewHostsDB(g.Blocklist...)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unsupported blocklist format '%s'", g.Format)
-		}
-		var allowlistDB rdns.BlocklistDB
-		switch g.AllowlistFormat {
-		case "regexp", "":
-			allowlistDB, err = rdns.NewRegexpDB(g.Allowlist...)
-			if err != nil {
-				return err
-			}
-		case "domain":
-			allowlistDB, err = rdns.NewDomainDB(g.Allowlist...)
-			if err != nil {
-				return err
-			}
-		case "hosts":
-			allowlistDB, err = rdns.NewHostsDB(g.Allowlist...)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unsupported allowlist format '%s'", g.Format)
+		blocklistDB, err := newBlocklistDB(g.Format, g.Source, g.Blocklist)
+		if err != nil {
+			return err
 		}
 		opt := rdns.BlocklistOptions{
 			BlocklistDB:      blocklistDB,
-			BlocklistLoader:  blocklistLoader,
 			BlocklistRefresh: time.Duration(g.Refresh) * time.Second,
+		}
+		resolvers[id], err = rdns.NewBlocklist(gr[0], opt)
+		if err != nil {
+			return err
+		}
+	case "blocklist-v2":
+		if len(gr) != 1 {
+			return fmt.Errorf("type blocklist-v2 only supports one resolver in '%s'", id)
+		}
+		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
+			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
+		}
+		if len(g.Allowlist) > 0 && len(g.AllowlistSource) > 0 {
+			return fmt.Errorf("static allowlist can't be used with 'source' in '%s'", id)
+		}
+		var blocklistDB rdns.BlocklistDB
+		if len(g.Blocklist) > 0 {
+			blocklistDB, err = newBlocklistDB(g.BlocklistFormat, "", g.Blocklist)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dbs []rdns.BlocklistDB
+			for _, s := range g.BlocklistSource {
+				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				if err != nil {
+					return fmt.Errorf("%s: %w", id, err)
+				}
+				dbs = append(dbs, db)
+			}
+			blocklistDB, err = rdns.NewMultiDB(dbs...)
+			if err != nil {
+				return err
+			}
+		}
+		var allowlistDB rdns.BlocklistDB
+		if len(g.Allowlist) > 0 {
+			allowlistDB, err = newBlocklistDB(g.AllowlistFormat, "", g.Allowlist)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dbs []rdns.BlocklistDB
+			for _, s := range g.AllowlistSource {
+				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				if err != nil {
+					return fmt.Errorf("%s: %w", id, err)
+				}
+				dbs = append(dbs, db)
+			}
+			allowlistDB, err = rdns.NewMultiDB(dbs...)
+			if err != nil {
+				return err
+			}
+		}
+		opt := rdns.BlocklistOptions{
+			BlocklistDB:      blocklistDB,
+			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
 			AllowlistDB:      allowlistDB,
-			AllowlistLoader:  allowlistLoader,
 			AllowlistRefresh: time.Duration(g.AllowlistRefresh) * time.Second,
 		}
 		resolvers[id], err = rdns.NewBlocklist(gr[0], opt)
@@ -375,4 +362,45 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 	}
 	resolvers[id] = router
 	return nil
+}
+
+func newBlocklistDB(format, source string, rules []string) (rdns.BlocklistDB, error) {
+	loc, err := url.Parse(source)
+	if err != nil {
+		return nil, err
+	}
+	var loader rdns.BlocklistLoader
+	if len(rules) > 0 {
+		loader = rdns.NewStaticLoader(rules)
+	} else {
+		switch loc.Scheme {
+		case "http", "https":
+			loader = rdns.NewHTTPLoader(source)
+		case "":
+			loader = rdns.NewFileLoader(source)
+		default:
+			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, source)
+		}
+	}
+	var db rdns.BlocklistDB
+	switch format {
+	case "regexp", "":
+		db, err = rdns.NewRegexpDB(loader)
+		if err != nil {
+			return nil, err
+		}
+	case "domain":
+		db, err = rdns.NewDomainDB(loader)
+		if err != nil {
+			return nil, err
+		}
+	case "hosts":
+		db, err = rdns.NewHostsDB(loader)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported format '%s'", format)
+	}
+	return db, nil
 }
