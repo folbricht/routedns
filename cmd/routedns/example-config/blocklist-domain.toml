@@ -3,10 +3,10 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [groups.cloudflare-blocklist]
-type = "blocklist"
-resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
-format    = "domain"           # "domain", "hosts" or "regexp", defaults to "regexp"
-blocklist = [                  # Define the names to be blocked
+type             = "blocklist-v2"
+resolvers        = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+blocklist-format = "domain"           # "domain", "hosts" or "regexp", defaults to "regexp"
+blocklist        = [                  # Define the names to be blocked
   'evil.com',
   '.facebook.com',
   '*.twitter.com',

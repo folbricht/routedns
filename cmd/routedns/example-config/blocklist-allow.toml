@@ -7,9 +7,9 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [groups.cloudflare-blocklist]
-type = "blocklist-v2"
-resolvers = ["cloudflare-dot"]
-blocklist-format  = "domain"
+type             = "blocklist-v2"
+resolvers        = ["cloudflare-dot"]
+blocklist-format = "domain"
 blocklist = [
   'evil.com',
   '.facebook.com',
