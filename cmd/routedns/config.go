@@ -47,16 +47,33 @@ type doh struct {
 type group struct {
 	Resolvers  []string
 	Type       string
-	Blocklist  []string                // Blocklist rules, only used by "blocklist" type
-	Format     string                  // Blocklist input format: "regex", "domain", or "hosts"
-	Source     string                  // Location of external blocklist, can be a local path or remote URL
-	Refresh    int                     // Blocklist refresh when using an external source, in seconds
 	Replace    []rdns.ReplaceOperation // only used by "replace" type
 	GCPeriod   int                     `toml:"gc-period"`   // Time-period (seconds) used to expire cached items in the "cache" type
 	ECSOp      string                  `toml:"ecs-op"`      // ECS modifier operation, "add", "delete", "privacy"
 	ECSAddress net.IP                  `toml:"ecs-address"` // ECS address. If empty for "add", uses the client IP. Ignored for "privacy" and "delete"
 	ECSPrefix4 uint8                   `toml:"ecs-prefix4"` // ECS IPv4 address prefix, 0-32. Used for "add" and "privacy"
 	ECSPrefix6 uint8                   `toml:"ecs-prefix6"` // ECS IPv6 address prefix, 0-128. Used for "add" and "privacy"
+
+	// Blocklist options
+	Blocklist []string // Blocklist rules, only used by "blocklist" type
+	Format    string   // Blocklist input format: "regex", "domain", or "hosts"
+	Source    string   // Location of external blocklist, can be a local path or remote URL
+	Refresh   int      // Blocklist refresh when using an external source, in seconds
+
+	// Advanced blocklist
+	BlocklistFormat  string   `toml:"blocklist-format"` // only used for static blocklists in the config
+	BlocklistSource  []list   `toml:"blocklist-source"`
+	BlocklistRefresh int      `toml:"blocklist-refresh"`
+	Allowlist        []string // Rules to override the blocklist rules
+	AllowlistFormat  string   `toml:"allowlist-format"` // only used for static allowlists in the config
+	AllowlistSource  []list   `toml:"allowlist-source"`
+	AllowlistRefresh int      `toml:"allowlist-refresh"`
+}
+
+// Block/Allowlist items for blocklist-v2
+type list struct {
+	Format string
+	Source string
 }
 
 type router struct {

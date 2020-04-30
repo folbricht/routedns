@@ -20,9 +20,9 @@ title = "RouteDNS configuration"
 [groups]
 
   [groups.cleanbrowsing-filtered]
-  type = "blocklist"
+  type = "blocklist-v2"
   resolvers = ["cleanbrowsing-dot"] # Anything that passes the filter is sent on to this resolver
-  blocklist = [                     # Define the names to be blocked
+  blocklist = [                     # Define the names to be blocked, by default in regexp format
     '(^|\.)facebook\.com\.$',
     '(^|\.)twitter\.com\.$',
   ]

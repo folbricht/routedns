@@ -1,0 +1,31 @@
+# Simple configuration for "blocklist-v2" which supports optional allow-lists that take precedence
+# over itens on the block-list. In this example, static local lists are used for both, but either
+# can be read from files or remote URLs with optional refresh period.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type             = "blocklist-v2"
+resolvers        = ["cloudflare-dot"]
+blocklist-format = "domain"
+blocklist = [
+  'evil.com',
+  '.facebook.com',
+  '*.twitter.com',
+]
+allowlist-format = "domain"
+allowlist = [                # Allowlist items override/bypass blocklist items
+  'allowed.facebook.com',
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"

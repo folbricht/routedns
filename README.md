@@ -134,7 +134,7 @@ The `type` determines which algorithm is being used. Available types:
 - `fail-rotate` - One resolver is active. If it fails the next becomes active and the request is retried. If the last one fails the first becomes the active again. There's no time-based automatic fail-back.
 - `fail-back` - Similar to `fail-rotate` but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 - `replace` - Applies regular expressions to query strings and replaces them before forwarding the query. Useful to map hostnames to a different domain on-the-fly or append domain names to short hostname queries.
-- `blocklist` - A blocklist has just one upstream resolver and forwards anything that does not match its filters. If a query matches, it'll be answered with NXDOMAIN. See [blocklists](#Blocklists) for more information.
+- `blocklist-v2` - A blocklist has just one upstream resolver and forwards anything that does not match its filters. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP. See [blocklists](#Blocklists) for more information. Note that `blocklist` is still supported by lacks features of `blocklist-v2` such as multiple lists, or allowlists that skip the filters.
 - `cache` - Caches responses for the amount of time in the TTL of answer, NS, and extra records.
 
 In this example, two upstream resolvers are grouped together and will be used alternating:
@@ -220,10 +220,10 @@ Multiple blocklists of different types can be chained in the same configuration.
 
 ```toml
 [groups.my-blocklist]
-type      = "blocklist"
-resolvers = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
-format    ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
-blocklist = [                     # Define the names to be blocked
+type             = "blocklist-v2"
+resolvers        = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
+blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
+blocklist        = [                     # Define the names to be blocked
   '(^|\.)evil\.com\.$',
   '(^|\.)unsafe[123]\.org\.$',
 ```
@@ -232,9 +232,9 @@ Example of a blocklist using a domain-list:
 
 ```toml
 [groups.my-blocklist]
-type      = "blocklist"
-resolvers = ["upstream-resolver"]
-format    = "domain"
+type            = "blocklist-v2"
+resolvers       = ["upstream-resolver"]
+bloclist-format = "domain"
 blocklist = [
   'domain1.com',               # Exact match
   '.domain2.com',              # Exact match and all sub-domains
@@ -246,25 +246,42 @@ A blocklist of type `hosts` can be used to spoof IP addresses:
 
 ```toml
 [groups.my-blocklist]
-type = "blocklist"
-resolvers = ["upstream-resolver"]
-format    = "hosts"
+type             = "blocklist-v2"
+resolvers        = ["upstream-resolver"]
+blocklist-format = "hosts"
 blocklist = [
   '127.0.0.1 www.domain1.com',  # Spoofed
   '0.0.0.0   www.domain2.com',  # NXDOMAIN if matched
 ]
 ```
 
-In addition to reading the blocklist rules from the configuration, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `source` property of the blocklist to provide the file location or URL. The `refresh` property can be used to specify a reload-period (in seconds). If no `refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
+In addition to reading the blocklist rules from the configuration file, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `blocklist-source` property of the blocklist to provide a list of blocklists of different formats, either local files or URLs. The `blocklist-refresh` property can be used to specify a reload-period (in seconds). If no `blocklist-refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
 
 ```toml
 [groups.cloudflare-blocklist]
-type = "blocklist"
+type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
-format    = "regexp"           # "domain", "hosts" or "regexp", defaults to "regexp"
-source    = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/plain.black.regex.list"
-refresh   = 86400              # Time to refresh the blocklist from the file in seconds
+blocklist-refresh = 86400
+blocklist-source = [
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {format = "regexp", source = "/path/to/local/regexp.list"},
+]
 ```
+
+To override the blocklist filtering behavior, the properties `allowlist`, `allowlist-format`, `allowlist-source` and `allowlist-refresh` can be used to define inverse filters. They are used just like the equivalent blocklist-options, but are effectively inverting its behavior. A query matching a rule on the allowlist will be passing through and not be modified. Here an example of a blocklist with 2 filtering lists, and a allow-list that overrides the filtering behavior.
+
+[groups.cloudflare-blocklist]
+type = "blocklist-v2"
+resolvers = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source = [
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
+]
+allowlist-refresh = 86400
+allowlist-source = [
+   {format = "domain", source = "/path/to/trustworthy.list"},
+]
 
 ## EDNS0 Client Subnet modifier
 
@@ -405,7 +422,7 @@ The goal here is to single out children's devices on the network and apply a cus
 [groups]
 
   [groups.cleanbrowsing-filtered]
-  type = "blocklist"
+  type = "blocklist-v2"
   resolvers = ["cleanbrowsing-dot"] # Anything that passes the filter is sent on to this resolver
   blocklist = [                     # Define the names to be blocked
     '(^|\.)facebook\.com\.$',

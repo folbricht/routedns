@@ -20,9 +20,9 @@ routes = [
 ]
 
 [groups.my-blocklist]
-type = "blocklist"
-resolvers = ["router1"]
-format    = "domain"
+type             = "blocklist-v2"
+resolvers        = ["router1"]
+blocklist-format = "domain"
 blocklist = [
   '.evil.com',
 ]

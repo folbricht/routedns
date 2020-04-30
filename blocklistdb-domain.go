@@ -14,7 +14,8 @@ import (
 // .domain.com: matches domain.com and all subdomains
 // *.domain.com: matches all subdomains but not domain.com
 type DomainDB struct {
-	root node
+	root   node
+	loader BlocklistLoader
 }
 
 type node map[string]node
@@ -22,7 +23,11 @@ type node map[string]node
 var _ BlocklistDB = &DomainDB{}
 
 // NewDomainDB returns a new instance of a matcher for a list of regular expressions.
-func NewDomainDB(rules ...string) (*DomainDB, error) {
+func NewDomainDB(loader BlocklistLoader) (*DomainDB, error) {
+	rules, err := loader.Load()
+	if err != nil {
+		return nil, err
+	}
 	root := make(node)
 	for _, r := range rules {
 		// Strip trailing . in case the list has FQDN names with . suffixes.
@@ -51,8 +56,8 @@ func NewDomainDB(rules ...string) (*DomainDB, error) {
 	return &DomainDB{root: root}, nil
 }
 
-func (m *DomainDB) New(rules []string) (BlocklistDB, error) {
-	return NewDomainDB(rules...)
+func (m *DomainDB) Reload() (BlocklistDB, error) {
+	return NewDomainDB(m.loader)
 }
 
 func (m *DomainDB) Match(q dns.Question) (net.IP, string, bool) {
