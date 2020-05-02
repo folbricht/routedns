@@ -102,7 +102,7 @@ func (c *Pipeline) start() {
 				// a network topology change wouldn't be noticed. Putting the idle timeout here ensures
 				// a reconnect in that case as well. This does create a very slight race however if the
 				// sender is using the connection right at the time of the timeout in the receiver.
-				conn.SetReadDeadline(time.Now().Add(idleTimeout))
+				_ = conn.SetReadDeadline(time.Now().Add(idleTimeout))
 				a, err := conn.ReadMsg()
 				if err != nil {
 					switch e := err.(type) {

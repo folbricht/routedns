@@ -80,7 +80,7 @@ func listenHandler(protocol, addr string, r Resolver, allowedNet []*net.IPNet) d
 		} else {
 			stripPadding(a)
 		}
-		w.WriteMsg(a)
+		_ = w.WriteMsg(a)
 	}
 }
 

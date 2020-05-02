@@ -141,5 +141,5 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 		return
 	}
 	w.Header().Set("content-type", "application/dns-message")
-	w.Write(out)
+	_, _ = w.Write(out)
 }

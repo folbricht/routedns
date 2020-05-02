@@ -83,7 +83,7 @@ func padQuery(q *dns.Msg) {
 	// Calculate the desired padding length
 	len := q.Len()
 	padLen := QueryPaddingBlockSize - len%QueryPaddingBlockSize
-	paddingOpt.Padding = respPadBuf[0:padLen]
+	paddingOpt.Padding = queryPadBuf[0:padLen]
 }
 
 // Remove padding from a query or response. Typically needed when sending a response that was received
