@@ -117,8 +117,6 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.Addr})
 	log.Debug("received query")
 
-	fmt.Println(q)
-
 	var err error
 	a := new(dns.Msg)
 	if isAllowed(s.opt.AllowedNet, ci.SourceIP) {
@@ -133,8 +131,6 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 		log.Debug("refusing client ip")
 		a.SetRcode(q, dns.RcodeRefused)
 	}
-
-	fmt.Println(a)
 
 	// Pad the packet according to rfc8467 and rfc7830
 	padAnswer(q, a)
