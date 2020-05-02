@@ -7,6 +7,7 @@ require (
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.22
 	github.com/pkg/errors v0.8.1
+	github.com/rs/zerolog v1.18.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cobra v0.0.5
 	github.com/stretchr/testify v1.2.2

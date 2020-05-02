@@ -40,5 +40,5 @@ func (m MultiDB) Match(q dns.Question) (net.IP, string, bool) {
 }
 
 func (m MultiDB) String() string {
-	return "Regexp"
+	return "Multi-Blocklist"
 }

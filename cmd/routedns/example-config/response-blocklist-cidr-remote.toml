@@ -1,0 +1,21 @@
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type              = "response-blocklist-cidr"
+resolvers         = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source  = [
+  {source = "./example-config/cidr.txt"},
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"

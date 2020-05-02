@@ -342,8 +342,44 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 	case "cache":
 		resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
+	case "response-blocklist-cidr":
+		if len(gr) != 1 {
+			return fmt.Errorf("type response-blocklist-cidr only supports one resolver in '%s'", id)
+		}
+		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
+			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
+		}
+		var blocklistDB rdns.IPBlocklistDB
+		if len(g.Blocklist) > 0 {
+			loader := rdns.NewStaticLoader(g.Blocklist)
+			blocklistDB, err = rdns.NewCidrDB(loader)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dbs []rdns.IPBlocklistDB
+			for _, s := range g.BlocklistSource {
+				db, err := newIPBlocklistDB(s.Source)
+				if err != nil {
+					return fmt.Errorf("%s: %w", id, err)
+				}
+				dbs = append(dbs, db)
+			}
+			blocklistDB, err = rdns.NewMultiCidrDB(dbs...)
+			if err != nil {
+				return err
+			}
+		}
+		opt := rdns.ResponseBlocklistCIDROptions{
+			BlocklistDB:      blocklistDB,
+			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
+		}
+		resolvers[id], err = rdns.NewResponseBlocklistCIDR(gr[0], opt)
+		if err != nil {
+			return err
+		}
 	default:
-		return fmt.Errorf("unsupported group type '%s' for group '%s", g.Type, id)
+		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
 	}
 	return nil
 }
@@ -403,4 +439,21 @@ func newBlocklistDB(format, source string, rules []string) (rdns.BlocklistDB, er
 		return nil, fmt.Errorf("unsupported format '%s'", format)
 	}
 	return db, nil
+}
+
+func newIPBlocklistDB(source string) (rdns.IPBlocklistDB, error) {
+	loc, err := url.Parse(source)
+	if err != nil {
+		return nil, err
+	}
+	var loader rdns.BlocklistLoader
+	switch loc.Scheme {
+	case "http", "https":
+		loader = rdns.NewHTTPLoader(source)
+	case "":
+		loader = rdns.NewFileLoader(source)
+	default:
+		return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, source)
+	}
+	return rdns.NewCidrDB(loader)
 }
