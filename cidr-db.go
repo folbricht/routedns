@@ -1,15 +1,8 @@
 package rdns
 
 import (
-	"fmt"
 	"net"
 )
-
-type IPBlocklistDB interface {
-	Reload() (IPBlocklistDB, error)
-	Match(ip net.IP) (string, bool)
-	fmt.Stringer
-}
 
 // CidrDB holds a list of IP networks that are used to block matching DNS responses.
 type CidrDB struct {

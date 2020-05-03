@@ -347,7 +347,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("type response-blocklist-cidr only supports one resolver in '%s'", id)
 		}
 		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
-			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
+			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
@@ -375,6 +375,41 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistCIDR(gr[0], opt)
+		if err != nil {
+			return err
+		}
+	case "response-blocklist-name":
+		if len(gr) != 1 {
+			return fmt.Errorf("type response-blocklist-name only supports one resolver in '%s'", id)
+		}
+		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
+			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
+		}
+		var blocklistDB rdns.BlocklistDB
+		if len(g.Blocklist) > 0 {
+			blocklistDB, err = newBlocklistDB(g.BlocklistFormat, "", g.Blocklist)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dbs []rdns.BlocklistDB
+			for _, s := range g.BlocklistSource {
+				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				if err != nil {
+					return fmt.Errorf("%s: %w", id, err)
+				}
+				dbs = append(dbs, db)
+			}
+			blocklistDB, err = rdns.NewMultiDB(dbs...)
+			if err != nil {
+				return err
+			}
+		}
+		opt := rdns.ResponseBlocklistNameOptions{
+			BlocklistDB:      blocklistDB,
+			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
+		}
+		resolvers[id], err = rdns.NewResponseBlocklistName(gr[0], opt)
 		if err != nil {
 			return err
 		}

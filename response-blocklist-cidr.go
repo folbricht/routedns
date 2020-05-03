@@ -9,6 +9,13 @@ import (
 	"github.com/miekg/dns"
 )
 
+// IPBlocklistDB is a database containing IPs used in blocklists.
+type IPBlocklistDB interface {
+	Reload() (IPBlocklistDB, error)
+	Match(ip net.IP) (string, bool)
+	fmt.Stringer
+}
+
 // ResponseBlocklistCIDR is a resolver that filters by matching the IPs in the response against
 // a blocklist.
 type ResponseBlocklistCIDR struct {
