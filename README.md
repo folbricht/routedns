@@ -207,7 +207,9 @@ allowed-net = ["127.0.0.1/32", "::1/128", "192.168.0.0/16"]
 
 ## Blocklists
 
-Blocklists can be added to resolver-chains to prevent further processing and either return NXDOMAIN or a spoofed IP address. The blocklist group supports 3 types of blocklist formats:
+### Query blocklists
+
+Query blocklists can be added to resolver-chains to prevent further processing and either return NXDOMAIN or a spoofed IP address for a DNS query that matches a rule on the blocklist. The blocklist group supports 3 types of blocklist formats:
 
 - `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
@@ -268,8 +270,9 @@ blocklist-source = [
 ]
 ```
 
-To override the blocklist filtering behavior, the properties `allowlist`, `allowlist-format`, `allowlist-source` and `allowlist-refresh` can be used to define inverse filters. They are used just like the equivalent blocklist-options, but are effectively inverting its behavior. A query matching a rule on the allowlist will be passing through and not be modified. Here an example of a blocklist with 2 filtering lists, and a allow-list that overrides the filtering behavior.
+To override the blocklist filtering behavior, the properties `allowlist`, `allowlist-format`, `allowlist-source` and `allowlist-refresh` can be used to define inverse filters. They are used just like the equivalent blocklist-options, but are effectively inverting its behavior. A query matching a rule on the allowlist will be passing through the blocklist and not be blocked. Here an example of a blocklist with 2 filtering lists, and a allow-list that overrides the filtering behavior.
 
+```toml
 [groups.cloudflare-blocklist]
 type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
@@ -282,6 +285,62 @@ allowlist-refresh = 86400
 allowlist-source = [
    {format = "domain", source = "/path/to/trustworthy.list"},
 ]
+```
+
+### Response blocklists
+
+Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-cidr` and `response-blocklist-name`.
+
+- `response-blocklist-cidr` blocks backed on IP networks (in CIDR notation) on A or AAAA responses.
+- `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PRT and SRV records.
+
+The configuration options of response blocklists are very similar to that of [query blocklists](#Queryblocklists) with the exception of the allowlists options which are not currently supported.
+
+Examples of simple response blocklists with static rules in the configuration file.
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "response-blocklist-cidr"
+resolvers           = ["cloudflare-dot"]
+blocklist           = [
+  '127.0.0.0/24',
+  '157.240.0.0/16',
+]
+```
+
+```toml
+[groups.cloudflare-blocklist]
+type             = "response-blocklist-name"
+resolvers        = ["cloudflare-dot"]
+blocklist-format = "domain"
+blocklist        = [
+  'ns.evil.com',
+  '*.acme.test',
+]
+```
+
+Response blocklists that use local or remote rulesets with periodic refresh.
+
+```toml
+[groups.cloudflare-blocklist]
+type              = "response-blocklist-cidr"
+resolvers         = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source  = [
+  {source = "./example-config/cidr.txt"},
+  {source = "https://host/block.cidr.txt"},
+]
+```
+
+```toml
+[groups.cloudflare-blocklist]
+type              = "response-blocklist-name"
+resolvers         = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source  = [
+  {format = "domain", source = "./example-config/domains.txt"},
+]
+```
 
 ## EDNS0 Client Subnet modifier
 
