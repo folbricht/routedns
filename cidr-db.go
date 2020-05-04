@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"net"
+	"strings"
 )
 
 // CidrDB holds a list of IP networks that are used to block matching DNS responses.
@@ -25,14 +26,18 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 		ip6: new(ipBlocklistTrie),
 	}
 	for _, r := range rules {
+		r = strings.TrimSpace(r)
+		if strings.HasPrefix(r, "#") || r == "" {
+			continue
+		}
 		ip, n, err := net.ParseCIDR(r)
 		if err != nil {
 			return nil, err
 		}
 		if ip = ip.To4(); ip == nil {
-			db.ip4.add(n)
-		} else {
 			db.ip6.add(n)
+		} else {
+			db.ip4.add(n)
 		}
 	}
 	return db, nil
@@ -44,9 +49,9 @@ func (m *CidrDB) Reload() (IPBlocklistDB, error) {
 
 func (m *CidrDB) Match(ip net.IP) (string, bool) {
 	if ip = ip.To4(); ip == nil {
-		m.ip4.hasIP(ip)
+		m.ip6.hasIP(ip)
 	}
-	return m.ip6.hasIP(ip)
+	return m.ip4.hasIP(ip)
 }
 
 func (m *CidrDB) String() string {
