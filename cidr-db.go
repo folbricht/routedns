@@ -5,8 +5,10 @@ import (
 )
 
 // CidrDB holds a list of IP networks that are used to block matching DNS responses.
+// Network ranges are stored in a trie (one for IP4 and one for IP6) to allow for
+// efficient matching
 type CidrDB struct {
-	networks []*net.IPNet
+	ip4, ip6 *ipBlocklistTrie
 	loader   BlocklistLoader
 }
 
@@ -18,16 +20,22 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	var networks []*net.IPNet
+	db := &CidrDB{
+		ip4: new(ipBlocklistTrie),
+		ip6: new(ipBlocklistTrie),
+	}
 	for _, r := range rules {
-		_, n, err := net.ParseCIDR(r)
+		ip, n, err := net.ParseCIDR(r)
 		if err != nil {
 			return nil, err
 		}
-		networks = append(networks, n)
+		if ip = ip.To4(); ip == nil {
+			db.ip4.add(n)
+		} else {
+			db.ip6.add(n)
+		}
 	}
-
-	return &CidrDB{networks, loader}, nil
+	return db, nil
 }
 
 func (m *CidrDB) Reload() (IPBlocklistDB, error) {
@@ -35,12 +43,10 @@ func (m *CidrDB) Reload() (IPBlocklistDB, error) {
 }
 
 func (m *CidrDB) Match(ip net.IP) (string, bool) {
-	for _, n := range m.networks {
-		if n.Contains(ip) {
-			return n.String(), true
-		}
+	if ip = ip.To4(); ip == nil {
+		m.ip4.hasIP(ip)
 	}
-	return "", false
+	return m.ip6.hasIP(ip)
 }
 
 func (m *CidrDB) String() string {
