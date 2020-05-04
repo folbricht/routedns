@@ -34,7 +34,7 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ip = ip.To4(); ip == nil {
+		if addr := ip.To4(); addr == nil {
 			db.ip6.add(n)
 		} else {
 			db.ip4.add(n)
@@ -48,8 +48,8 @@ func (m *CidrDB) Reload() (IPBlocklistDB, error) {
 }
 
 func (m *CidrDB) Match(ip net.IP) (string, bool) {
-	if ip = ip.To4(); ip == nil {
-		m.ip6.hasIP(ip)
+	if addr := ip.To4(); addr == nil {
+		return m.ip6.hasIP(ip)
 	}
 	return m.ip4.hasIP(ip)
 }

@@ -57,8 +57,10 @@ func (t *ipBlocklistTrie) hasIP(ip net.IP) (string, bool) {
 	}
 	p := t.root
 	size := 32
-	if ip = ip.To4(); ip == nil {
+	if addr := ip.To4(); addr == nil {
 		size = 128
+	} else {
+		ip = addr // make sure we use the 4-byte representation of an IPv4
 	}
 	for i := 0; i < size; i++ {
 		if p.leaf {
@@ -82,7 +84,7 @@ func (t *ipBlocklistTrie) hasIP(ip net.IP) (string, bool) {
 
 func ruleString(ip net.IP, maskBits int) string {
 	size := 32
-	if ip = ip.To4(); ip == nil {
+	if addr := ip.To4(); addr == nil {
 		size = 128
 	}
 	mask := net.CIDRMask(maskBits, size)
