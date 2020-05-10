@@ -218,6 +218,17 @@ Query blocklists can be added to resolver-chains to prevent further processing a
   - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
 - `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
 
+The following options are supported by the `blocklist-v2` type:
+
+- `blocklist-resolver` - Alternative resolver for queries matching the blocklist, rather than responding with NXDOMAIN.
+- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided.
+- `blocklist-refresh` - Time interval in which external (remote or local) blocklists are reloaded.
+- `blocklist-soure` - An array of blocklists, each with `format` and `source`.
+- `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
+- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided.
+- `allowlist-refresh` - Time interval in which external (remote or local) allowlists are reloaded.
+- `allowlist-soure` - An array of allowlists, each with `format` and `source`.
+
 Multiple blocklists of different types can be chained in the same configuration. Example of a regexp-based blocklist:
 
 ```toml
@@ -281,6 +292,7 @@ blocklist-source = [
    {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
    {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
 ]
+allowlist-resolver = "trusted-resolver" # Send anything on the allowlist to a different upstream resolver (optional)
 allowlist-refresh = 86400
 allowlist-source = [
    {format = "domain", source = "/path/to/trustworthy.list"},
