@@ -119,6 +119,13 @@ func start(opt options, args []string) error {
 			return fmt.Errorf("duplicate name: %s", id)
 		}
 		deps[id] = g.Resolvers
+		// Some groups have additional resolvers, add those here.
+		if g.BlockListResolver != "" {
+			deps[id] = append(deps[id], g.BlockListResolver)
+		}
+		if g.AllowListResolver != "" {
+			deps[id] = append(deps[id], g.AllowListResolver)
+		}
 	}
 	for id, r := range config.Routers {
 		_, ok := deps[id]
@@ -303,10 +310,12 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			}
 		}
 		opt := rdns.BlocklistOptions{
-			BlocklistDB:      blocklistDB,
-			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
-			AllowlistDB:      allowlistDB,
-			AllowlistRefresh: time.Duration(g.AllowlistRefresh) * time.Second,
+			BlocklistResolver: resolvers[g.BlockListResolver],
+			BlocklistDB:       blocklistDB,
+			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+			AllowListResolver: resolvers[g.AllowListResolver],
+			AllowlistDB:       allowlistDB,
+			AllowlistRefresh:  time.Duration(g.AllowlistRefresh) * time.Second,
 		}
 		resolvers[id], err = rdns.NewBlocklist(gr[0], opt)
 		if err != nil {

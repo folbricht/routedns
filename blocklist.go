@@ -22,10 +22,18 @@ type Blocklist struct {
 var _ Resolver = &Blocklist{}
 
 type BlocklistOptions struct {
+	// Optional, send any blocklist match to this resolver rather
+	// than return NXDOMAIN.
+	BlocklistResolver Resolver
+
 	BlocklistDB BlocklistDB
 
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
+
+	// Optional, send anything that matches the allowlist to an
+	// alternative resolver rather than the default upstream one.
+	AllowListResolver Resolver
 
 	// Rules that override the blocklist rules, effecively negate them.
 	AllowlistDB BlocklistDB
@@ -62,10 +70,15 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	allowlistDB := r.AllowlistDB
 	r.mu.RUnlock()
 
-	// Forward to upstream immediately if there's a match in the allowlist
+	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
 	if allowlistDB != nil {
 		if _, rule, ok := allowlistDB.Match(question); ok {
-			log.WithField("rule", rule).WithField("resolver", r.resolver.String()).Trace("matched allowlist, forwarding")
+			log = log.WithField("rule", rule)
+			if r.AllowListResolver != nil {
+				log.WithField("resolver", r.AllowListResolver.String()).Trace("matched allowlist, forwarding")
+				return r.AllowListResolver.Resolve(q, ci)
+			}
+			log.WithField("resolver", r.resolver.String()).Trace("matched allowlist, forwarding")
 			return r.resolver.Resolve(q, ci)
 		}
 	}
@@ -77,6 +90,12 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 	log = log.WithField("rule", rule)
+
+	// If an optional blocklist-resolver was given, send the query to that instead of returning NXDOMAIN.
+	if r.BlocklistResolver != nil {
+		log.WithField("resolver", r.resolver.String()).Trace("matched blocklist, forwarding")
+		return r.BlocklistResolver.Resolve(q, ci)
+	}
 
 	answer := new(dns.Msg)
 	answer.SetReply(q)

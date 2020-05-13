@@ -60,14 +60,16 @@ type group struct {
 	Source    string   // Location of external blocklist, can be a local path or remote URL
 	Refresh   int      // Blocklist refresh when using an external source, in seconds
 
-	// Advanced blocklist
-	BlocklistFormat  string   `toml:"blocklist-format"` // only used for static blocklists in the config
-	BlocklistSource  []list   `toml:"blocklist-source"`
-	BlocklistRefresh int      `toml:"blocklist-refresh"`
-	Allowlist        []string // Rules to override the blocklist rules
-	AllowlistFormat  string   `toml:"allowlist-format"` // only used for static allowlists in the config
-	AllowlistSource  []list   `toml:"allowlist-source"`
-	AllowlistRefresh int      `toml:"allowlist-refresh"`
+	// Blocklist-v2 options
+	BlockListResolver string   `toml:"blocklist-resolver"`
+	AllowListResolver string   `toml:"allowlist-resolver"`
+	BlocklistFormat   string   `toml:"blocklist-format"` // only used for static blocklists in the config
+	BlocklistSource   []list   `toml:"blocklist-source"`
+	BlocklistRefresh  int      `toml:"blocklist-refresh"`
+	Allowlist         []string // Rules to override the blocklist rules
+	AllowlistFormat   string   `toml:"allowlist-format"` // only used for static allowlists in the config
+	AllowlistSource   []list   `toml:"allowlist-source"`
+	AllowlistRefresh  int      `toml:"allowlist-refresh"`
 }
 
 // Block/Allowlist items for blocklist-v2
