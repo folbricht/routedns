@@ -1,0 +1,53 @@
+# This example shows how to combine routers with static responders to build
+# a walled garden. Static responders can also be used with alternative resolvers
+# on blocklists to control the block response (something other than NXDOMAIN).
+
+# A static-responder always returns the same response records defined here. The only
+# thing that is changed is the name in the answer records to match that of the query.
+# It's possible to define Answer, NS, and Extra records in zone-file format as well
+# as a RCode which defaults to 0 (NOERROR).
+[groups.static-a]
+type   = "static-responder"
+rcode  = 0 # Response code: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ...
+answer = ["IN A 1.2.3.4"]
+ns = [
+    "domain.com. 18000 IN NS ns1.domain.com.",
+    "domain.com. 18000 IN NS ns2.domain.com.",
+]
+extra = [
+    "ns1.domain.com. 1800 IN A 127.0.0.1",
+    "ns1.domain.com. 1800 IN AAAA ::1",
+    "ns2.domain.com. 1800 IN A 127.0.0.1",
+    "ns2.domain.com. 1800 IN AAAA ::1",
+]
+
+[groups.static-aaaa]
+type   = "static-responder"
+answer = ["IN AAAA ::1"]
+
+[groups.static-mx]
+type   = "static-responder"
+answer = ["IN MX 10 smtp.acme.test."]
+
+[groups.static-nxdomain]
+type  = "static-responder"
+rcode = 3
+
+# Use a router to send certain types of queries to static responders.
+[routers.walled-garden-router]
+routes = [
+  { type = "A", resolver="static-a" },
+  { type = "AAAA", resolver="static-aaaa" },
+  { type = "MX", resolver="static-mx" },
+  { resolver="static-nxdomain" }, # default route
+]
+
+[listeners.local-udp]
+address = ":1153"
+protocol = "udp"
+resolver = "walled-garden-router"
+
+[listeners.local-tcp]
+address = ":1153"
+protocol = "tcp"
+resolver = "walled-garden-router"
