@@ -43,11 +43,11 @@ routes = [
 ]
 
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "walled-garden-router"
 
 [listeners.local-tcp]
-address = ":1153"
+address = ":53"
 protocol = "tcp"
 resolver = "walled-garden-router"
