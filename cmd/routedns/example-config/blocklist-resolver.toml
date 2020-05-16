@@ -2,7 +2,10 @@
 # queries that match the allowlist or blocklist. The default behavior is to
 # return NXDOMAIN for any item that matches the blocklist but not the allowlist.
 # With resolvers, it's possible to send queries to different resolvers based
-# on them matching the allowlist or blocklist. Similar to a router.
+# on them matching the allowlist or blocklist, similar to a router. This is
+# useful when the blocklist should return something other than NXDOMAIN, the
+# query can be routed to a statis-responder instead, providing more control
+# over what is returned.
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
@@ -12,10 +15,15 @@ protocol = "dot"
 address = "8.8.8.8:853"
 protocol = "dot"
 
+# Returns servfail for every query routed here by the blocklist
+[groups.static-servfail]
+type   = "static-responder"
+rcode  = 2 # Response code: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ...
+
 [groups.cloudflare-blocklist]
 type             = "blocklist-v2"
 resolvers        = ["cloudflare-dot"] # Default upstream resolver for anything not matching either list
-blocklist-resolver = "google-dot" # Resolver used for anything matching the blocklist (and not on the allowlist)
+blocklist-resolver = "static-servfail" # Resolver used for anything matching the blocklist (and not on the allowlist)
 blocklist-format = "domain"
 blocklist = [
   'evil.com',
