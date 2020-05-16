@@ -31,6 +31,9 @@ type ResponseBlocklistCIDROptions struct {
 
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
+
+	// If true, removes matching records from the response rather than replying with NXDOMAIN.
+	Filter bool
 }
 
 // NewResponseBlocklistCIDR returns a new instance of a response blocklist resolver.
@@ -51,25 +54,10 @@ func (r *ResponseBlocklistCIDR) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, er
 	if err != nil {
 		return answer, err
 	}
-	for _, rr := range answer.Answer {
-		var ip net.IP
-		switch r := rr.(type) {
-		case *dns.A:
-			ip = r.A
-		case *dns.AAAA:
-			ip = r.AAAA
-		default:
-			continue
-		}
-		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithField("rule", rule).Debug("blocking response")
-			answer := new(dns.Msg)
-			answer.SetReply(q)
-			answer.SetRcode(q, dns.RcodeNameError)
-			return answer, nil
-		}
+	if r.Filter {
+		return r.filterMatch(q, answer)
 	}
-	return answer, err
+	return r.blockIfMatch(q, answer)
 }
 
 func (r *ResponseBlocklistCIDR) String() string {
@@ -92,4 +80,57 @@ func (r *ResponseBlocklistCIDR) refreshLoopBlocklist(refresh time.Duration) {
 		r.BlocklistDB = db
 		r.mu.Unlock()
 	}
+}
+
+func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg) (*dns.Msg, error) {
+	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
+		for _, rr := range records {
+			var ip net.IP
+			switch r := rr.(type) {
+			case *dns.A:
+				ip = r.A
+			case *dns.AAAA:
+				ip = r.AAAA
+			default:
+				continue
+			}
+			if rule, ok := r.BlocklistDB.Match(ip); ok {
+				Log.WithField("rule", rule).Debug("blocking response")
+				answer := new(dns.Msg)
+				answer.SetReply(query)
+				answer.SetRcode(query, dns.RcodeNameError)
+				return answer, nil
+			}
+		}
+	}
+	return answer, nil
+}
+
+func (r *ResponseBlocklistCIDR) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
+	answer.Answer = r.filterRR(answer.Answer)
+	answer.Ns = r.filterRR(answer.Ns)
+	answer.Extra = r.filterRR(answer.Extra)
+	return answer, nil
+}
+
+func (r *ResponseBlocklistCIDR) filterRR(rrs []dns.RR) []dns.RR {
+	newRRs := make([]dns.RR, 0, len(rrs))
+	for _, rr := range rrs {
+		var ip net.IP
+		switch r := rr.(type) {
+		case *dns.A:
+			ip = r.A
+		case *dns.AAAA:
+			ip = r.AAAA
+		default:
+			newRRs = append(newRRs, rr)
+			continue
+		}
+		if rule, ok := r.BlocklistDB.Match(ip); ok {
+			Log.WithField("rule", rule).Debug("filtering response")
+			continue
+		}
+		newRRs = append(newRRs, rr)
+	}
+	return newRRs
 }
