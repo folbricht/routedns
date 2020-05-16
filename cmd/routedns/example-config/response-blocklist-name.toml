@@ -7,7 +7,7 @@ type             = "response-blocklist-name"
 resolvers        = ["cloudflare-dot"]
 blocklist-format = "domain"
 blocklist        = [
-  'controlpanel.evil.com.',
+  'ns.evil.com.',
   '*.acme.test',
 ]
 #filter = true # Set to true if the response RRs should be filtered rather than returning NXDOMAIN (default)
