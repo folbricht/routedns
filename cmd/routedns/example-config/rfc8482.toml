@@ -1,0 +1,26 @@
+# Blocks requests for QTYPE ANY RRs by using a router and a static responder. The router
+# sends all ANY queries to the static responder which replies with an HINFO RR.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.static-rfc8482]
+type   = "static-responder"
+answer = ["IN HINFO RFC8482 ANY obsoleted!"]
+
+[routers.my-router]
+routes = [
+  { type = "ANY", resolver="static-rfc8482" }, # Send ANY queries to a static responder
+  { resolver="cloudflare-dot" },               # All other queries are forwarded
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "my-router"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "my-router"
