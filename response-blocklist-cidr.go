@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -27,18 +28,26 @@ type ResponseBlocklistCIDR struct {
 var _ Resolver = &ResponseBlocklistCIDR{}
 
 type ResponseBlocklistCIDROptions struct {
+	// Optional, if the response is found to match the blocklist, send the query to this resolver.
+	BlocklistResolver Resolver
+
 	BlocklistDB IPBlocklistDB
 
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
 
-	// If true, removes matching records from the response rather than replying with NXDOMAIN.
+	// If true, removes matching records from the response rather than replying with NXDOMAIN. Can
+	// not be combined with alternative blockist-resolver
 	Filter bool
 }
 
 // NewResponseBlocklistCIDR returns a new instance of a response blocklist resolver.
 func NewResponseBlocklistCIDR(resolver Resolver, opt ResponseBlocklistCIDROptions) (*ResponseBlocklistCIDR, error) {
 	blocklist := &ResponseBlocklistCIDR{resolver: resolver, ResponseBlocklistCIDROptions: opt}
+
+	if opt.Filter && opt.BlocklistResolver != nil {
+		return nil, errors.New("the 'filter' feature can not be used with 'blocklist-resolver'")
+	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
@@ -57,7 +66,7 @@ func (r *ResponseBlocklistCIDR) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, er
 	if r.Filter {
 		return r.filterMatch(q, answer)
 	}
-	return r.blockIfMatch(q, answer)
+	return r.blockIfMatch(q, answer, ci)
 }
 
 func (r *ResponseBlocklistCIDR) String() string {
@@ -82,7 +91,7 @@ func (r *ResponseBlocklistCIDR) refreshLoopBlocklist(refresh time.Duration) {
 	}
 }
 
-func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg) (*dns.Msg, error) {
+func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
 		for _, rr := range records {
 			var ip net.IP
@@ -95,11 +104,13 @@ func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg) (*dns.Msg, 
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				Log.WithField("rule", rule).Debug("blocking response")
-				answer := new(dns.Msg)
-				answer.SetReply(query)
-				answer.SetRcode(query, dns.RcodeNameError)
-				return answer, nil
+				log := Log.WithField("rule", rule)
+				if r.BlocklistResolver != nil {
+					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
+					return r.BlocklistResolver.Resolve(query, ci)
+				}
+				log.Debug("blocking response")
+				return nxdomain(query), nil
 			}
 		}
 	}
@@ -108,6 +119,10 @@ func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg) (*dns.Msg, 
 
 func (r *ResponseBlocklistCIDR) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
 	answer.Answer = r.filterRR(answer.Answer)
+	// If there's nothing left after applying the filter, return NXDOMAIN
+	if len(answer.Answer) == 0 {
+		return nxdomain(query), nil
+	}
 	answer.Ns = r.filterRR(answer.Ns)
 	answer.Extra = r.filterRR(answer.Extra)
 	return answer, nil

@@ -306,7 +306,7 @@ Rather than filtering queries, response blocklists evaluate the response to a qu
 - `response-blocklist-cidr` blocks backed on IP networks (in CIDR notation) on A or AAAA responses.
 - `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PRT and SRV records.
 
-The configuration options of response blocklists are very similar to that of [query blocklists](#Queryblocklists) with the exception of the allowlists options which are not currently supported. If the `filter` option is set to `true`, matching records will be removed from responses rather than the whole response.
+The configuration options of response blocklists are very similar to that of [query blocklists](#Queryblocklists) with the exception of the allowlists options which are not currently supported. If the `filter` option is set to `true` in `response-blocklist-cidr`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned.
 
 Examples of simple response blocklists with static rules in the configuration file.
 
