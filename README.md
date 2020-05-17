@@ -399,6 +399,37 @@ ecs-prefix4 = 8
 ecs-prefix6 = 64
 ```
 
+## Static responders
+
+A `static-responder` can be used to terminate a query with a fixed answer. The answer can contain Answer, NS, and Extra records with a configurable RCode. Static responsers are useful in combination with routers to build walled-gardens or blocklists providing more control over the response. The individual records in the response are defined in zone-file format. The default TTL is 1h unless given in the record.
+
+A fixed responder that will return a full answer with NS and Extra records with different TTL. The name string in answer records gets updated dynamically to match the query, while NS and Extra records are return unmodified.
+
+```toml
+[groups.static-a]
+type   = "static-responder"
+rcode  = 0 # Response code: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ...
+answer = ["IN A 1.2.3.4"]
+ns = [
+    "domain.com. 18000 IN NS ns1.domain.com.",
+    "domain.com. 18000 IN NS ns2.domain.com.",
+]
+extra = [
+    "ns1.domain.com. 1800 IN A 127.0.0.1",
+    "ns1.domain.com. 1800 IN AAAA ::1",
+    "ns2.domain.com. 1800 IN A 127.0.0.1",
+    "ns2.domain.com. 1800 IN AAAA ::1",
+]
+```
+
+Simple responder that'll reply with SERVFAIL to every query routed to it.
+
+```toml
+[groups.static-nxdomain]
+type  = "static-responder"
+rcode = 3
+```
+
 ## Use-cases / Examples
 
 ### Use case 1: Use DNS-over-TLS for all queries locally

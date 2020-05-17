@@ -70,6 +70,12 @@ type group struct {
 	AllowlistFormat   string   `toml:"allowlist-format"` // only used for static allowlists in the config
 	AllowlistSource   []list   `toml:"allowlist-source"`
 	AllowlistRefresh  int      `toml:"allowlist-refresh"`
+
+	// Static responder options
+	Answer []string
+	NS     []string
+	Extra  []string
+	RCode  int
 }
 
 // Block/Allowlist items for blocklist-v2

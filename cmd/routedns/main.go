@@ -422,6 +422,18 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "static-responder":
+		opt := rdns.StaticResolverOptions{
+			Answer: g.Answer,
+			NS:     g.NS,
+			Extra:  g.Extra,
+			RCode:  g.RCode,
+		}
+		resolvers[id], err = rdns.NewStaticResolver(opt)
+		if err != nil {
+			return err
+		}
+
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
 	}
