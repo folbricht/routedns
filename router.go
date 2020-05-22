@@ -35,6 +35,9 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		if route.typ != 0 && route.typ != question.Qtype {
 			continue
 		}
+		if route.class != 0 && route.class != question.Qclass {
+			continue
+		}
 		if !route.name.MatchString(question.Name) {
 			continue
 		}
@@ -53,8 +56,12 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 // routes won't have any impact. Name is a regular expression that is
 // applied to the name in the first question section of the DNS message.
 // Source is an IP or network in CIDR format.
-func (r *Router) Add(name, typ, source string, resolver Resolver) error {
+func (r *Router) Add(name, class, typ, source string, resolver Resolver) error {
 	t, err := stringToType(typ)
+	if err != nil {
+		return err
+	}
+	c, err := stringToType(class)
 	if err != nil {
 		return err
 	}
@@ -71,6 +78,7 @@ func (r *Router) Add(name, typ, source string, resolver Resolver) error {
 	}
 	newRoute := &route{
 		typ:      t,
+		class:    c,
 		name:     re,
 		source:   sNet,
 		resolver: resolver,
@@ -98,11 +106,34 @@ func stringToType(s string) (uint16, error) {
 			return k, nil
 		}
 	}
-	return 0, fmt.Errorf("unknown type '%s", s)
+	return 0, fmt.Errorf("unknown type '%s'", s)
+}
+
+// Convert a DNS class string into is numerical form, for example "INET" -> 1.
+func stringToClass(s string) (uint16, error) {
+	switch s {
+	case "":
+		return 0, nil
+	case "INET":
+		return 1, nil
+	case "CSNET":
+		return 2, nil
+	case "CHAOS":
+		return 3, nil
+	case "HESIOD":
+		return 4, nil
+	case "NONE":
+		return 254, nil
+	case "ANY":
+		return 255, nil
+	default:
+		return 0, fmt.Errorf("unknown class '%s'", s)
+	}
 }
 
 type route struct {
 	typ      uint16
+	class    uint16
 	name     *regexp.Regexp
 	source   *net.IPNet
 	resolver Resolver

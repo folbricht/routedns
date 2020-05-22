@@ -11,7 +11,7 @@ answer = ["IN HINFO RFC8482 ANY obsoleted!"]
 
 [routers.my-router]
 routes = [
-  { type = "ANY", resolver="static-rfc8482" }, # Send ANY queries to a static responder
+  { type = "ANY", resolver="static-rfc8482" }, # Send queries of type ANY to a static responder
   { resolver="cloudflare-dot" },               # All other queries are forwarded
 ]
 
