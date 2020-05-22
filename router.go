@@ -61,7 +61,7 @@ func (r *Router) Add(name, class, typ, source string, resolver Resolver) error {
 	if err != nil {
 		return err
 	}
-	c, err := stringToType(class)
+	c, err := stringToClass(class)
 	if err != nil {
 		return err
 	}
@@ -114,13 +114,11 @@ func stringToClass(s string) (uint16, error) {
 	switch s {
 	case "":
 		return 0, nil
-	case "INET":
+	case "IN":
 		return 1, nil
-	case "CSNET":
-		return 2, nil
-	case "CHAOS":
+	case "CH":
 		return 3, nil
-	case "HESIOD":
+	case "HS":
 		return 4, nil
 	case "NONE":
 		return 254, nil

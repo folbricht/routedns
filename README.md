@@ -152,7 +152,7 @@ Routers are used to send queries to specific upstream resolvers, groups, or to o
 A route has the following fields:
 
 - `type` - If defined, only matches queries of this type
-- `class` - If defined, only matches queries of this class ("INET", "CSNET", "CHAOS", "HESIOD", "NONE", "ANY")
+- `class` - If defined, only matches queries of this class ("IN", "CH", "HS", "NONE", "ANY")
 - `name` - A regular expession that is applied to the query name. Note that dots in domain names need to be escaped
 - `source` - Network in CIDR notation. Used to route based on client IP.
 - `resolver` - The identifier of a resolver, group, or another router that was defined earlier.
