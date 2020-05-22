@@ -1,0 +1,33 @@
+# Shows how to use an alternative blocklist-resolver with a response blocklist.
+# 1) the query is sent to the default resolver ("default-do")
+# 2) if the response contains an item on the blocklist and a blocklist-resolver
+#    is configured, the query will be sent there instead. Note, the response from
+#    blocklist-resolver is not re-evaluated.
+
+[resolvers.default-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.alternate-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type               = "response-blocklist-name"
+resolvers          = ["default-dot"] # Default resolver, all queries are sent here first
+blocklist-resolver = "alternate-dot" # Use this resolver when a response matches the blocklist
+blocklist-format   = "domain"
+blocklist          = [
+  'ns.evil.com.',
+  '*.acme.test',
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"

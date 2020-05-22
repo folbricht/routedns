@@ -7,7 +7,7 @@ type             = "response-blocklist-name"
 resolvers        = ["cloudflare-dot"]
 blocklist-format = "domain"
 blocklist        = [
-  'ns.evil.com',
+  'ns.evil.com.',
   '*.acme.test',
 ]
 

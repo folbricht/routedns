@@ -61,6 +61,7 @@ type group struct {
 	Refresh   int      // Blocklist refresh when using an external source, in seconds
 
 	// Blocklist-v2 options
+	Filter            bool     // Filter response records rather than return NXDOMAIN
 	BlockListResolver string   `toml:"blocklist-resolver"`
 	AllowListResolver string   `toml:"allowlist-resolver"`
 	BlocklistFormat   string   `toml:"blocklist-format"` // only used for static blocklists in the config

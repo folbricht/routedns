@@ -9,3 +9,11 @@ func qName(q *dns.Msg) string {
 	}
 	return q.Question[0].Name
 }
+
+// Returns a NXDOMAIN answer for a query.
+func nxdomain(q *dns.Msg) *dns.Msg {
+	a := new(dns.Msg)
+	a.SetReply(q)
+	a.SetRcode(q, dns.RcodeNameError)
+	return a
+}

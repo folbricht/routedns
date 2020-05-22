@@ -19,6 +19,9 @@ type ResponseBlocklistName struct {
 var _ Resolver = &ResponseBlocklistName{}
 
 type ResponseBlocklistNameOptions struct {
+	// Optional, if the response is found to match the blocklist, send the query to this resolver.
+	BlocklistResolver Resolver
+
 	BlocklistDB BlocklistDB
 
 	// Refresh period for the blocklist. Disabled if 0.
@@ -43,33 +46,7 @@ func (r *ResponseBlocklistName) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, er
 	if err != nil {
 		return answer, err
 	}
-	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
-		for _, rr := range records {
-			var name string
-			switch r := rr.(type) {
-			case *dns.CNAME:
-				name = r.Target
-			case *dns.MX:
-				name = r.Mx
-			case *dns.NS:
-				name = r.Ns
-			case *dns.PTR:
-				name = r.Ptr
-			case *dns.SRV:
-				name = r.Target
-			default:
-				continue
-			}
-			if _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
-				Log.WithField("rule", rule).Debug("blocking response")
-				answer := new(dns.Msg)
-				answer.SetReply(q)
-				answer.SetRcode(q, dns.RcodeNameError)
-				return answer, nil
-			}
-		}
-	}
-	return answer, err
+	return r.blockIfMatch(q, answer, ci)
 }
 
 func (r *ResponseBlocklistName) String() string {
@@ -92,4 +69,36 @@ func (r *ResponseBlocklistName) refreshLoopBlocklist(refresh time.Duration) {
 		r.BlocklistDB = db
 		r.mu.Unlock()
 	}
+}
+
+func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
+		for _, rr := range records {
+			var name string
+			switch r := rr.(type) {
+			case *dns.CNAME:
+				name = r.Target
+			case *dns.MX:
+				name = r.Mx
+			case *dns.NS:
+				name = r.Ns
+			case *dns.PTR:
+				name = r.Ptr
+			case *dns.SRV:
+				name = r.Target
+			default:
+				continue
+			}
+			if _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
+				log := Log.WithField("rule", rule)
+				if r.BlocklistResolver != nil {
+					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
+					return r.BlocklistResolver.Resolve(query, ci)
+				}
+				log.Debug("blocking response")
+				return nxdomain(query), nil
+			}
+		}
+	}
+	return answer, nil
 }

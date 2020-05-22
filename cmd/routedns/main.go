@@ -380,8 +380,10 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			}
 		}
 		opt := rdns.ResponseBlocklistCIDROptions{
-			BlocklistDB:      blocklistDB,
-			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
+			BlocklistResolver: resolvers[g.BlockListResolver],
+			BlocklistDB:       blocklistDB,
+			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+			Filter:            g.Filter,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistCIDR(gr[0], opt)
 		if err != nil {
@@ -415,8 +417,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			}
 		}
 		opt := rdns.ResponseBlocklistNameOptions{
-			BlocklistDB:      blocklistDB,
-			BlocklistRefresh: time.Duration(g.BlocklistRefresh) * time.Second,
+			BlocklistResolver: resolvers[g.BlockListResolver],
+			BlocklistDB:       blocklistDB,
+			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistName(gr[0], opt)
 		if err != nil {
