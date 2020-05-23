@@ -147,11 +147,12 @@ type = "round-robin"
 
 ### Routers
 
-Routers are used to send queries to specific upstream resolvers, groups, or to other routers based on the query type or name. Routers too require a unique identifier. Each router contains at least one route. Routes are are evaluated in the order they are defined and the first match will be used. Typically the last route should not have a type or name, making it the default route.
+Routers are used to send queries to specific upstream resolvers, groups, or to other routers based on the query type or name. Routers too require a unique identifier. Each router contains at least one route. Routes are are evaluated in the order they are defined and the first match will be used. Typically the last route should not have a class, type or name, making it the default route.
 
 A route has the following fields:
 
 - `type` - If defined, only matches queries of this type
+- `class` - If defined, only matches queries of this class ("IN", "CH", "HS", "NONE", "ANY")
 - `name` - A regular expession that is applied to the query name. Note that dots in domain names need to be escaped
 - `source` - Network in CIDR notation. Used to route based on client IP.
 - `resolver` - The identifier of a resolver, group, or another router that was defined earlier.
