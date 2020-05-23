@@ -9,64 +9,79 @@ import (
 	"net"
 	"net/http"
 
+	quic "github.com/lucas-clemente/quic-go"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
 
-// DoHListener is a DNS listener/server for DNS-over-HTTPS.
-type DoHListener struct {
-	*http.Server
-	r   Resolver
-	opt DoHListenerOptions
+// QuicListener is a DNS listener/server for QUIC.
+type QuicListener struct {
+	addr string
+	r    Resolver
+	opt  QuicListenerOptions
+	ln   quic.Listener
 }
 
-var _ Listener = &DoHListener{}
+var _ Listener = &QuicListener{}
 
-// DoHListenerOptions contains options used by the DNS-over-HTTPS server.
-type DoHListenerOptions struct {
+// QuicListenerOptions contains options used by the QUIC server.
+type QuicListenerOptions struct {
 	ListenOptions
 
 	TLSConfig *tls.Config
 }
 
-// NewDoHListener returns an instance of a DNS-over-HTTPS listener.
-func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoHListener {
-	l := &DoHListener{
-		Server: &http.Server{
-			Addr:      addr,
-			TLSConfig: opt.TLSConfig,
-		},
-		r:   resolver,
-		opt: opt,
+// NewQuicListener returns an instance of a QUIC listener.
+func NewQuicListener(addr string, opt QuicListenerOptions, resolver Resolver) *QuicListener {
+	if opt.TLSConfig == nil {
+		opt.TLSConfig = new(tls.Config)
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
-	l.Handler = mux
+	opt.TLSConfig.NextProtos = []string{"dq"}
+	l := &QuicListener{
+		addr: addr,
+		r:    resolver,
+		opt:  opt,
+	}
 	return l
 }
 
-// Start the DoH server.
-func (s DoHListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("starting listener")
-	ln, err := net.Listen("tcp", s.Addr)
+// Start the QUIC server.
+func (s QuicListener) Start() error {
+	conf := quic.Config{}
+	var err error
+	s.ln, err = quic.ListenAddr(s.addr, s.opt.TLSConfig, &conf)
 	if err != nil {
 		return err
 	}
-	defer ln.Close()
-	return s.ServeTLS(ln, "", "")
+
+	log := Log.WithFields(logrus.Fields{"protocol": "quic", "addr": s.addr})
+	log.Info("starting listener")
+
+	for {
+		session, err := s.ln.Accept(context.Background())
+		if err != nil {
+			log.WithError(err).Warn("failed to accept")
+			continue
+		}
+
+		log := log.WithField("client", session.RemoteAddr())
+		go func() {
+			handleClient(l, session, udpBackend)
+		}()
+	}
 }
 
 // Stop the server.
-func (s DoHListener) Stop() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("stopping listener")
-	return s.Shutdown(context.Background())
+func (s QuicListener) Stop() error {
+	Log.WithFields(logrus.Fields{"protocol": "quic", "addr": s.addr}).Info("stopping listener")
+	return s.ln.Close()
 }
 
-func (s DoHListener) String() string {
-	return fmt.Sprintf("DoH(%s)", s.Addr)
+func (s QuicListener) String() string {
+	return fmt.Sprintf("QUIC(%s)", s.addr)
 }
 
-func (s DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
+func (s QuicListener) dohHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.getHandler(w, r)
@@ -77,7 +92,7 @@ func (s DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
+func (s QuicListener) getHandler(w http.ResponseWriter, r *http.Request) {
 	b64, ok := r.URL.Query()["dns"]
 	if !ok {
 		http.Error(w, "no dns query parameter found", http.StatusBadRequest)
@@ -95,7 +110,7 @@ func (s DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
 	s.parseAndRespond(b, w, r)
 }
 
-func (s DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
+func (s QuicListener) postHandler(w http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -104,7 +119,7 @@ func (s DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
 	s.parseAndRespond(b, w, r)
 }
 
-func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
+func (s QuicListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
