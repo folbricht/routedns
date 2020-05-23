@@ -8,7 +8,7 @@ Features:
 
 - Support for DNS-over-TLS (DoT, [RFC7858](https://tools.ietf.org/html/rfc7858)), client and server
 - Support for DNS-over-HTTPS (DoH, [RFC8484](https://tools.ietf.org/html/rfc8484)), client and server with HTTP2
-- Support for DNS-over-QUIC (DNS/QUIC, [draft-huitema-quic-dnsoquic-06](https://tools.ietf.org/id/draft-huitema-quic-dnsoquic-06.html)), client and server
+- Support for DNS-over-QUIC (DoQ, [draft-ietf-dprive-dnsoquic-00](https://www.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt)), client and server
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency

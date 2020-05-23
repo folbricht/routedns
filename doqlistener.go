@@ -65,7 +65,7 @@ func (s DoQListener) Start() error {
 
 		go func() {
 			s.handleSession(session)
-			_ = session.CloseWithError(quic.ErrorCode(quicErrorNoError), "")
+			_ = session.CloseWithError(quic.ErrorCode(DOQNoError), "")
 			s.log.Trace("closing session")
 		}()
 	}
@@ -137,9 +137,6 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
-
-	// Pad the packet according to rfc8467 and rfc7830
-	padAnswer(q, a)
 
 	out, err := a.Pack()
 	if err != nil {

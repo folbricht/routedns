@@ -14,7 +14,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const quicErrorNoError = 0x100
+const (
+	DOQNoError                 = 0x00
+	DOQInternalError           = 0x01
+	DOQTransportParameterError = 0x02
+)
 
 // DoQClient is a DNS-over-QUIC resolver.
 type DoQClient struct {
@@ -72,15 +76,14 @@ func NewDoQClient(endpoint string, opt DoQClientOptions) (*DoQClient, error) {
 
 // Resolve a DNS query.
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.WithFields(logrus.Fields{
-		"client":   ci.SourceIP,
-		"qname":    qName(q),
-		"resolver": d.endpoint,
-		"protocol": "dot",
+	d.log.WithFields(logrus.Fields{
+		"client": ci.SourceIP,
+		"qname":  qName(q),
 	}).Debug("querying upstream resolver")
 
-	// Add padding to the query before sending over TLS
-	padQuery(q)
+	// When sending queries over a QUIC connection, the DNS Message ID MUST be set to zero.
+	id := q.Id
+	q.Id = 0
 
 	// Encode the query
 	b, err := q.Pack()
@@ -110,9 +113,10 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Decode the response
+	// Decode the response and restore the ID before responding
 	a := new(dns.Msg)
 	err = a.Unpack(b)
+	a.Id = id
 	return a, err
 }
 
@@ -147,7 +151,7 @@ func (s *doqSession) getStream() (quic.Stream, error) {
 	stream, err := s.session.OpenStream()
 	if err != nil {
 		// Try to open a new session
-		_ = s.session.CloseWithError(quic.ErrorCode(quicErrorNoError), "")
+		_ = s.session.CloseWithError(quic.ErrorCode(DOQNoError), "")
 		s.session, err = quic.DialAddr(s.endpoint, s.tlsConfig, nil)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open session")
