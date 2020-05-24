@@ -22,14 +22,14 @@ type DoHListener struct {
 
 var _ Listener = &DoHListener{}
 
-// DoTListenerOptions contains options used by the DNS-over-HTTPS server.
+// DoHListenerOptions contains options used by the DNS-over-HTTPS server.
 type DoHListenerOptions struct {
 	ListenOptions
 
 	TLSConfig *tls.Config
 }
 
-// NewDoTListener returns an instance of either a UDP or TCP DNS listener.
+// NewDoHListener returns an instance of a DNS-over-HTTPS listener.
 func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoHListener {
 	l := &DoHListener{
 		Server: &http.Server{

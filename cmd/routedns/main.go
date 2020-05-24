@@ -73,6 +73,19 @@ func start(opt options, args []string) error {
 			return fmt.Errorf("group resolver with duplicate id '%s", id)
 		}
 		switch r.Protocol {
+		case "doq":
+			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+			if err != nil {
+				return err
+			}
+			opt := rdns.DoQClientOptions{
+				BootstrapAddr: r.BootstrapAddr,
+				TLSConfig:     tlsConfig,
+			}
+			resolvers[id], err = rdns.NewDoQClient(r.Address, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		case "dot":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 			if err != nil {
@@ -202,6 +215,13 @@ func start(opt options, args []string) error {
 				return err
 			}
 			ln := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			listeners = append(listeners, ln)
+		case "doq":
+			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			ln := rdns.NewQUICListener(l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
