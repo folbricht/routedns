@@ -108,6 +108,7 @@ func start(opt options, args []string) error {
 				Method:        r.DoH.Method,
 				TLSConfig:     tlsConfig,
 				BootstrapAddr: r.BootstrapAddr,
+				Transport:     r.Transport,
 			}
 			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
 			if err != nil {
