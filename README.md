@@ -9,6 +9,7 @@ Features:
 - Support for DNS-over-TLS (DoT, [RFC7858](https://tools.ietf.org/html/rfc7858)), client and server
 - Support for DNS-over-HTTPS (DoH, [RFC8484](https://tools.ietf.org/html/rfc8484)), client and server with HTTP2
 - Support for DNS-over-QUIC (doq-i00, [draft-ietf-dprive-dnsoquic-00](https://www.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt)), client and server
+- DNS-over-HTTPS using a QUIC transport, client and server
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
@@ -206,6 +207,60 @@ address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cloudflare-dot"
 allowed-net = ["127.0.0.1/32", "::1/128", "192.168.0.0/16"]
+```
+
+## QUIC support
+
+Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-00](https://www.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt)) as well as DNS-over-HTTPS using QUIC. Both methosd are supported by RouteDNS, client and server implementations.
+
+### DNS-over-QUIC
+
+DoQ is similar to DoT in that it used standard DNS encoding, but over a QUIC transport stream. There is no overhead from HTTP. No official port has been assigned yet but 784/udp is recommended for experimentation.
+
+Use `protocol = "doq"` to start a listener (server). All the other options of secure listeners like `server-crt`, `server-key`, `ca`, and `mutual-tls` are supported as well.
+
+```toml
+[listeners.local-doq]
+address = ":784"
+protocol = "doq"
+resolver = "cloudflare-dot"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+```
+
+The same `protocol = "doq"` is used on the resolver (client) side. Like with the other resolvers, use `bootstrap-address` to bypass the lookup of the server address itself.
+
+```toml
+[resolvers.local-doq]
+address = "server.acme.test:784"
+protocol = "doq"
+ca = "/path/to/ca.crt"
+bootstrap-address = "127.0.0.1"
+```
+
+### DNS-over-HTTPS with QUIC
+
+DoH with QUIC is similar to regular DoH with the transport protocol being different. The HTTP routes and methods are the same. To enable QUIC on the listener or resolver, add the `transport = "quic"` option. Everything else remains the same.
+
+Example listener config:
+
+```toml
+[listeners.local-doh-quic]
+address = ":443"
+protocol = "doh"
+transport = "quic"
+resolver = "cloudflare-dot"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+```
+
+Example resolver config:
+
+```toml
+[resolvers.cloudflare-doh-quic]
+address = "https://cloudflare-dns.com/dns-query{?dns}"
+protocol = "doh"
+transport = "quic"
 ```
 
 ## Blocklists
@@ -635,3 +690,5 @@ The client is configured to act as local DNS resolver, handling all queries from
 - DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
 - DNS-over-HTTPS RFC - [https://tools.ietf.org/html/rfc8484](https://tools.ietf.org/html/rfc8484)
 - EDNS0 padding [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
+- Go QUIC implementation - [https://github.com/lucas-clemente/quic-go](https://github.com/lucas-clemente/quic-go)
+- Go DNS library - [https://github.com/miekg/dns](https://github.com/miekg/dns)

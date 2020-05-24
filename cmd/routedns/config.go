@@ -21,6 +21,7 @@ type config struct {
 type listener struct {
 	Address    string
 	Protocol   string
+	Transport  string
 	Resolver   string
 	CA         string
 	ServerKey  string   `toml:"server-key"`

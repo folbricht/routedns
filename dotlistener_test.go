@@ -136,3 +136,12 @@ func getLnAddress() (string, error) {
 	defer l.Close()
 	return l.Addr().String(), nil
 }
+
+func getUDPLnAddress() (string, error) {
+	l, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	defer l.Close()
+	return l.LocalAddr().String(), nil
+}
