@@ -81,7 +81,20 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"qname":  qName(q),
 	}).Debug("querying upstream resolver")
 
-	// When sending queries over a QUIC connection, the DNS Message ID MUST be set to zero.
+	// Sending a edns-tcp-keepalive EDNS(0) option over DoQ is an error. Filter it out.
+	edns0 := q.IsEdns0()
+	if edns0 != nil {
+		newOpt := make([]dns.EDNS0, 0, len(edns0.Option))
+		for _, opt := range edns0.Option {
+			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
+				continue
+			}
+			newOpt = append(newOpt, opt)
+		}
+		edns0.Option = newOpt
+	}
+
+	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
 	id := q.Id
 	q.Id = 0
 
@@ -113,10 +126,22 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Decode the response and restore the ID before responding
+	// Decode the response and restore the ID
 	a := new(dns.Msg)
 	err = a.Unpack(b)
 	a.Id = id
+
+	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
+	edns0 = a.IsEdns0()
+	if edns0 != nil {
+		for _, opt := range edns0.Option {
+			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
+				d.log.Error("received edns-tcp-keepalive from doq server, aborting")
+				return nil, errors.New("received edns-tcp-keepalive over doq server")
+			}
+		}
+	}
+
 	return a, err
 }
 

@@ -130,6 +130,17 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	log = log.WithField("qname", qName(q))
 	log.Debug("received query")
 
+	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
+	edns0 := q.IsEdns0()
+	if edns0 != nil {
+		for _, opt := range edns0.Option {
+			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
+				log.Error("received edns-tcp-keepalive, aborting")
+				return
+			}
+		}
+	}
+
 	// Resolve the query using the next hop
 	a, err := s.r.Resolve(q, ci)
 	if err != nil {
