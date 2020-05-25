@@ -108,6 +108,7 @@ func start(opt options, args []string) error {
 				Method:        r.DoH.Method,
 				TLSConfig:     tlsConfig,
 				BootstrapAddr: r.BootstrapAddr,
+				Transport:     r.Transport,
 			}
 			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
 			if err != nil {
@@ -214,7 +215,10 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln, err := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt, Transport: l.Transport}, resolver)
+			if err != nil {
+				return err
+			}
 			listeners = append(listeners, ln)
 		case "doq":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)

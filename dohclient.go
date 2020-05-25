@@ -10,9 +10,12 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/jtacoma/uritemplates"
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
@@ -27,6 +30,9 @@ type DoHClientOptions struct {
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
+	// Transport protocol to run HTTPS over. "quic" or "tcp", defaults to "tcp".
+	Transport string
+
 	TLSConfig *tls.Config
 }
 
@@ -40,41 +46,26 @@ type DoHClient struct {
 
 var _ Resolver = &DoHClient{}
 
-// NewDoHClient instantiates a new DNS-over-HTTPS resolver.
 func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	// Parse the URL template
 	template, err := uritemplates.Parse(endpoint)
 	if err != nil {
 		return nil, err
 	}
-	// HTTP transport for this client
-	tr := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		TLSClientConfig:       opt.TLSConfig,
-		DisableCompression:    true,
-		ResponseHeaderTimeout: time.Second,
-		IdleConnTimeout:       30 * time.Second,
+
+	var tr http.RoundTripper
+	switch opt.Transport {
+	case "tcp", "":
+		tr, err = dohTcpTransport(opt)
+	case "quic":
+		tr, err = dohQuicTransport(opt)
+	default:
+		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	// Use a custom dialer if a bootstrap address was provided
-	if opt.BootstrapAddr != "" {
-		var d net.Dialer
-		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			addr = net.JoinHostPort(opt.BootstrapAddr, port)
-			return d.DialContext(ctx, network, addr)
-		}
-	}
-	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
-	// the HTTP library. Turn it on for this transport.
-	if tr.TLSClientConfig != nil {
-		if err := http2.ConfigureTransport(tr); err != nil {
-			return nil, err
-		}
-	}
 	client := &http.Client{
 		Transport: tr,
 	}
@@ -187,4 +178,121 @@ func responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 	a := new(dns.Msg)
 	err = a.Unpack(rb)
 	return a, err
+}
+
+func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSClientConfig:       opt.TLSConfig,
+		DisableCompression:    true,
+		ResponseHeaderTimeout: time.Second,
+		IdleConnTimeout:       30 * time.Second,
+	}
+	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
+	// the HTTP library. Turn it on for this transport.
+	if tr.TLSClientConfig != nil {
+		if err := http2.ConfigureTransport(tr); err != nil {
+			return nil, err
+		}
+	}
+
+	// Use a custom dialer if a bootstrap address was provided
+	if opt.BootstrapAddr != "" {
+		var d net.Dialer
+		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			addr = net.JoinHostPort(opt.BootstrapAddr, port)
+			return d.DialContext(ctx, network, addr)
+		}
+	}
+	return tr, nil
+}
+
+func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
+	tr := &http3.RoundTripper{
+		TLSClientConfig: opt.TLSConfig,
+		QuicConfig:      &quic.Config{},
+		Dial: func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+			if opt.BootstrapAddr != "" {
+				hostname, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				tlsConfig = tlsConfig.Clone()
+				tlsConfig.ServerName = hostname
+				addr = net.JoinHostPort(opt.BootstrapAddr, port)
+			}
+			return newQuicSession(addr, tlsConfig, config)
+		},
+	}
+	return tr, nil
+}
+
+// QUIC session that automatically restarts when it's used after having timed out. Needed
+// since the quic-go RoundTripper doesn't have any session management and timed out
+// sessions aren't restarted. This one doesn't support Early sessions, and instead just
+// uses a regular session.
+type quicSession struct {
+	quic.Session
+
+	addr      string
+	tlsConfig *tls.Config
+	config    *quic.Config
+	mu        sync.Mutex
+
+	expiredContext context.Context
+}
+
+func newQuicSession(addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+	session, err := quic.DialAddr(addr, tlsConfig, config)
+	if err != nil {
+		return nil, err
+	}
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	return &quicSession{
+		addr:           addr,
+		tlsConfig:      tlsConfig,
+		config:         config,
+		Session:        session,
+		expiredContext: expired,
+	}, nil
+}
+
+func (s *quicSession) HandshakeComplete() context.Context {
+	return s.expiredContext
+}
+
+func (s *quicSession) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stream, err := s.Session.OpenStreamSync(ctx)
+	if err != nil {
+		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
+		s.Session, err = quic.DialAddr(s.addr, s.tlsConfig, s.config)
+		if err != nil {
+			return nil, err
+		}
+		stream, err = s.Session.OpenStreamSync(ctx)
+	}
+	return stream, err
+}
+
+func (s *quicSession) OpenStream() (quic.Stream, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stream, err := s.Session.OpenStream()
+	if err != nil {
+		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
+		s.Session, err = quic.DialAddr(s.addr, s.tlsConfig, s.config)
+		if err != nil {
+			return nil, err
+		}
+		stream, err = s.Session.OpenStream()
+	}
+	return stream, err
 }

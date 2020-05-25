@@ -1,0 +1,14 @@
+# Server-side of a simple DNS-over-HTTPS proxy using QUIC transport. See "doh-quic-client-local.toml"
+# for a matching client/resolver configuration.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-doh-quic]
+address = ":1443"
+protocol = "doh"
+transport = "quic"
+resolver = "cloudflare-dot"
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"

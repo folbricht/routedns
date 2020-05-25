@@ -9,15 +9,22 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
 
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
 type DoHListener struct {
-	*http.Server
-	r   Resolver
-	opt DoHListenerOptions
+	httpServer *http.Server
+	quicServer *http3.Server
+
+	addr string
+	r    Resolver
+	opt  DoHListenerOptions
+
+	mux *http.ServeMux
 }
 
 var _ Listener = &DoHListener{}
@@ -26,47 +33,85 @@ var _ Listener = &DoHListener{}
 type DoHListenerOptions struct {
 	ListenOptions
 
+	// Transport protocol to run HTTPS over. "quic" or "tcp", defaults to "tcp".
+	Transport string
+
 	TLSConfig *tls.Config
 }
 
 // NewDoHListener returns an instance of a DNS-over-HTTPS listener.
-func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) *DoHListener {
-	l := &DoHListener{
-		Server: &http.Server{
-			Addr:      addr,
-			TLSConfig: opt.TLSConfig,
-		},
-		r:   resolver,
-		opt: opt,
+func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) (*DoHListener, error) {
+	switch opt.Transport {
+	case "tcp", "":
+		opt.Transport = "tcp"
+	case "quic":
+		opt.Transport = "quic"
+	default:
+		return nil, fmt.Errorf("unknown protocol: '%s'", opt.Transport)
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
-	l.Handler = mux
-	return l
+
+	l := &DoHListener{
+		addr: addr,
+		r:    resolver,
+		opt:  opt,
+		mux:  http.NewServeMux(),
+	}
+	l.mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
+	return l, nil
 }
 
 // Start the DoH server.
-func (s DoHListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("starting listener")
-	ln, err := net.Listen("tcp", s.Addr)
+func (s *DoHListener) Start() error {
+	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.addr}).Info("starting listener")
+	if s.opt.Transport == "quic" {
+		return s.startQUIC()
+	}
+	return s.startTCP()
+}
+
+// Start the DoH server with TCP transport.
+func (s *DoHListener) startTCP() error {
+	s.httpServer = &http.Server{
+		Addr:      s.addr,
+		TLSConfig: s.opt.TLSConfig,
+		Handler:   s.mux,
+	}
+
+	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	return s.ServeTLS(ln, "", "")
+	return s.httpServer.ServeTLS(ln, "", "")
+}
+
+// Start the DoH server with QUIC transport.
+func (s *DoHListener) startQUIC() error {
+	s.quicServer = &http3.Server{
+		Server: &http.Server{
+			Addr:      s.addr,
+			TLSConfig: s.opt.TLSConfig,
+			Handler:   s.mux,
+		},
+		QuicConfig: &quic.Config{},
+	}
+	return s.quicServer.ListenAndServe()
 }
 
 // Stop the server.
-func (s DoHListener) Stop() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.Addr}).Info("stopping listener")
-	return s.Shutdown(context.Background())
+func (s *DoHListener) Stop() error {
+	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.addr}).Info("stopping listener")
+	if s.opt.Transport == "quic" {
+		return s.quicServer.Close()
+	}
+	return s.httpServer.Shutdown(context.Background())
 }
 
-func (s DoHListener) String() string {
-	return fmt.Sprintf("DoH(%s)", s.Addr)
+func (s *DoHListener) String() string {
+	return fmt.Sprintf("DoH(%s)", s.addr)
 }
 
-func (s DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
+func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.getHandler(w, r)
@@ -77,7 +122,7 @@ func (s DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
+func (s *DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
 	b64, ok := r.URL.Query()["dns"]
 	if !ok {
 		http.Error(w, "no dns query parameter found", http.StatusBadRequest)
@@ -95,7 +140,7 @@ func (s DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
 	s.parseAndRespond(b, w, r)
 }
 
-func (s DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
+func (s *DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -104,7 +149,7 @@ func (s DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
 	s.parseAndRespond(b, w, r)
 }
 
-func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
+func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -114,7 +159,7 @@ func (s DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Re
 	ci := ClientInfo{
 		SourceIP: net.ParseIP(host),
 	}
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.Addr})
+	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
 	log.Debug("received query")
 
 	var err error

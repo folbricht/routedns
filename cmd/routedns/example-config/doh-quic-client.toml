@@ -1,0 +1,16 @@
+# DNS-over-HTTPS using the QUIC protocol.
+
+[resolvers.cloudflare-doh-quic]
+address = "https://cloudflare-dns.com/dns-query{?dns}"
+protocol = "doh"
+transport = "quic"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-doh-quic"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cloudflare-doh-quic"

@@ -1,0 +1,19 @@
+# DNS-over-HTTPS using the QUIC protocol to a local test server. See "doh-quic-server.toml"
+# for the matching server-side configuration.
+
+[resolvers.cloudflare-doh-quic]
+address = "https://server.acme.test:1443/dns-query{?dns}"
+protocol = "doh"
+transport = "quic"
+bootstrap-address = "127.0.0.1"
+ca = "example-config/server.crt"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-doh-quic"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cloudflare-doh-quic"

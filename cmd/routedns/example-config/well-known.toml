@@ -1,7 +1,7 @@
 # This file shows a selection of well-known DNS resolvers and supported protocols to
 # help build RoutedDNS configs. It isn't intended to be used directly but can for testing.
 
-title = "RouteDNS configuration for providing DNS-over-HTTP locally"
+title = "Resolvers for well-known DNS services"
 
 [resolvers]
 
@@ -14,7 +14,7 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   address = "1.0.0.1:853"
   protocol = "dot"
 
-  # Cloudflare DNS-over-HTTP using the POST method
+  # Cloudflare DNS-over-HTTPS using the POST method
   [resolvers.cloudflare-doh-1-1-1-1-post]
   address = "https://1.1.1.1/dns-query"
   protocol = "doh"
@@ -23,7 +23,7 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   address = "https://1.0.0.1/dns-query"
   protocol = "doh"
 
-  # Cloudflare DNS-over-HTTP using the GET method
+  # Cloudflare DNS-over-HTTPS using the GET method
   [resolvers.cloudflare-doh-1-1-1-1-get]
   address = "https://1.1.1.1/dns-query{?dns}"
   protocol = "doh"
@@ -33,6 +33,12 @@ title = "RouteDNS configuration for providing DNS-over-HTTP locally"
   address = "https://1.0.0.1/dns-query{?dns}"
   protocol = "doh"
   doh = { method = "GET" }
+
+  # Cloudflare DNS-over-HTTPS using the QUIC protocol
+  [resolvers.cloudflare-doh-quic]
+  address = "https://cloudflare-dns.com/dns-query{?dns}"
+  protocol = "doh"
+  transport = "quic"
 
   # Cloudflare plain DNS
   [resolvers.cloudflare-udp-1-1-1-1]
