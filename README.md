@@ -1,6 +1,10 @@
 # RouteDNS - DNS stub resolver, proxy and router
 
+<<<<<<< Updated upstream
 [![GoDoc](https://godoc.org/github.com/folbricht/routedns?status.svg)](https://godoc.org/github.com/folbricht/routedns) ![build](https://github.com/folbricht/routedns/workflows/build/badge.svg)
+=======
+[![GoDoc](https://godoc.org/github.com/folbricht/routedns?status.svg)](https://godoc.org/github.com/folbricht/routedns) ![build](https://github.com/folbricht/routedns/workflows/build/badge.svg) ![license](https://img.shields.io/badge/License-BSD-green.svg)
+>>>>>>> Stashed changes
 
 RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex configurations allowing routing of queries based on query name, type or source address as well as blocklists and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
 
@@ -25,7 +29,7 @@ Features:
 
 ## Installation
 
-Get the binary, this will put it under $GOPATH/bin, ~/go/bin if $GOPATH is not set:
+Install [Go](https://golang.org/dl) then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
 
 ```text
 go get -u github.com/folbricht/routedns/cmd/routedns
