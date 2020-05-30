@@ -353,6 +353,15 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "ttl-modifier":
+		if len(gr) != 1 {
+			return fmt.Errorf("type ttl-modifier only supports one resolver in '%s'", id)
+		}
+		opt := rdns.TTLModifierOptions{
+			MinTTL: g.TTLMin,
+			MaxTTL: g.TTLMax,
+		}
+		resolvers[id] = rdns.NewTTLModifier(gr[0], opt)
 	case "ecs-modifier":
 		if len(gr) != 1 {
 			return fmt.Errorf("type ecs-modifier only supports one resolver in '%s'", id)

@@ -34,7 +34,6 @@ type CacheOptions struct {
 	NegativeTTL uint32
 }
 
-// Use this TTL to cache negative responses t
 // NewCache returns a new instance of a Cache resolver.
 func NewCache(resolver Resolver, opt CacheOptions) *Cache {
 	c := &Cache{

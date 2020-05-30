@@ -57,6 +57,8 @@ type group struct {
 	ECSPrefix6       uint8                   `toml:"ecs-prefix6"`        // ECS IPv6 address prefix, 0-128. Used for "add" and "privacy"
 	CacheSize        int                     `toml:"cache-size"`         // Max number of items to keep in the cache. Default 0 == unlimited
 	CacheNegativeTTL uint32                  `toml:"cache-negative-ttl"` // TTL to apply to negative responses, default 60.
+	TTLMin           uint32                  `toml:"ttl-min"`            // TTL minimum to apply to responses in the TTL-modifier
+	TTLMax           uint32                  `toml:"ttl-max"`            // TTL maximum to apply to responses in the TTL-modifier
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
