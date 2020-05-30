@@ -1,0 +1,21 @@
+# Simple proxy using a cache.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-size = 1000               # Optional, max number of responses to cache. Default unlimited
+cache-negative-ttl = 10         # Optional, TTL to apply to responses without a SOA
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cloudflare-cached"

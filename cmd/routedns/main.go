@@ -374,7 +374,12 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return err
 		}
 	case "cache":
-		resolvers[id] = rdns.NewCache(gr[0], time.Duration(g.GCPeriod)*time.Second)
+		opt := rdns.CacheOptions{
+			GCPeriod:    time.Duration(g.GCPeriod) * time.Second,
+			Capacity:    g.CacheSize,
+			NegativeTTL: g.CacheNegativeTTL,
+		}
+		resolvers[id] = rdns.NewCache(gr[0], opt)
 	case "response-blocklist-cidr":
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-blocklist-cidr only supports one resolver in '%s'", id)
