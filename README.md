@@ -13,7 +13,7 @@ Features:
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
-- Multiple failover and load-balancing algorithms, caching, in-line query/response modification and translation (full list [here](#doc/configuration.md))
+- Multiple failover and load-balancing algorithms, caching, in-line query/response modification and translation (full list [here](doc/configuration.md))
 - Routing of queries based on query type, query name, or client IP
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
@@ -40,7 +40,7 @@ Example configuration files for a number of use-cases can be found [here](cmd/ro
 
 ## Configuration
 
-RouteDNS supports building complex DNS processing pipelines. A typically configuration would have one or more listeners to receive queries, several modifiers and routers to process the query (or responses), and then several resolvers that pass the query to upstream DNS services. See the [Configuration Guide](#doc/configuration.md) for details on how to setup a pipeline.
+RouteDNS supports building complex DNS processing pipelines. A typically configuration would have one or more listeners to receive queries, several modifiers and routers to process the query (or responses), and then several resolvers that pass the query to upstream DNS services. See the [Configuration Guide](doc/configuration.md) for details on how to setup a pipeline.
 
 ![pipeline-overview](doc/pipeline-overview.svg)
 
