@@ -32,7 +32,10 @@ func TestCache(t *testing.T) {
 		},
 	}
 
-	c := NewCache(r, time.Minute)
+	opt := CacheOptions{
+		GCPeriod: time.Minute,
+	}
+	c := NewCache(r, opt)
 
 	// First query should be a cache-miss and be passed on to the upstream resolver
 	q.SetQuestion("test.com.", dns.TypeA)
@@ -78,7 +81,10 @@ func TestCacheNXDOMAIN(t *testing.T) {
 		},
 	}
 
-	c := NewCache(r, time.Minute)
+	opt := CacheOptions{
+		GCPeriod: time.Minute,
+	}
+	c := NewCache(r, opt)
 
 	// First query should be a cache-miss and be passed on to the upstream resolver
 	// Since it's an NXDOMAIN it should end up in the cache as well, with default TTL

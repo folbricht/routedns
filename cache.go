@@ -14,33 +14,40 @@ import (
 // Cache stores results received from its upstream resolver for
 // up to TTL seconds in memory.
 type Cache struct {
+	CacheOptions
 	resolver Resolver
-	answers  map[dns.Question]cachedAnswer
-	mu       sync.RWMutex
-}
-
-type cachedAnswer struct {
-	timestamp time.Time // Time the record was cached. Needed to adjust TTL
-	expiry    time.Time // Time the record expires and should be removed
-	*dns.Msg
+	mu       sync.Mutex
+	lru      *lruCache
 }
 
 var _ Resolver = &Cache{}
 
-// Use this TTL to cache negative responses that do not have a SOA record
-const defaultNegativeExpiry = time.Minute
+type CacheOptions struct {
+	// Time period the cache garbage collection runs. Defaults to one minute if set to 0.
+	GCPeriod time.Duration
 
-// NewCache returns a new instance of a Cache resolver. gcPeriod is the time the cache
-// garbage collection runs. Defaults to one minute if set to 0.
-func NewCache(resolver Resolver, gcPeriod time.Duration) *Cache {
+	// Max number of responses to keep in the cache. Defaults to 0 which means no limit. If
+	// the limit is reached, the least-recently used entry is removed from the cache.
+	Capacity int
+
+	// TTL to use for negative responsed that do not have an SOA record, default 60
+	NegativeTTL uint32
+}
+
+// NewCache returns a new instance of a Cache resolver.
+func NewCache(resolver Resolver, opt CacheOptions) *Cache {
 	c := &Cache{
-		resolver: resolver,
-		answers:  make(map[dns.Question]cachedAnswer),
+		CacheOptions: opt,
+		resolver:     resolver,
+		lru:          newLRUCache(opt.Capacity),
 	}
-	if gcPeriod == 0 {
-		gcPeriod = time.Minute
+	if c.GCPeriod == 0 {
+		c.GCPeriod = time.Minute
 	}
-	go c.startGC(gcPeriod)
+	if c.NegativeTTL == 0 {
+		c.NegativeTTL = 60
+	}
+	go c.startGC(c.GCPeriod)
 	return c
 }
 
@@ -88,12 +95,12 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 	question := q.Question[0]
 	var answer *dns.Msg
 	var timestamp time.Time
-	r.mu.RLock()
-	if a, ok := r.answers[question]; ok {
+	r.mu.Lock()
+	if a := r.lru.get(question); a != nil {
 		answer = a.Copy()
 		timestamp = a.timestamp
 	}
-	r.mu.RUnlock()
+	r.mu.Unlock()
 
 	// Return a cache-miss if there's no answer record in the map
 	if answer == nil {
@@ -129,7 +136,7 @@ func (r *Cache) storeInCache(answer *dns.Msg) {
 	now := time.Now()
 
 	// Prepare an item for the cache, without expiry for now
-	item := cachedAnswer{Msg: answer, timestamp: now}
+	item := &cacheAnswer{Msg: answer, timestamp: now}
 
 	// Find the lowest TTL in the response, this determines the expiry for the whole answer in the cache.
 	min, ok := minTTL(answer)
@@ -140,7 +147,7 @@ func (r *Cache) storeInCache(answer *dns.Msg) {
 		if ok {
 			item.expiry = now.Add(time.Duration(min) * time.Second)
 		} else {
-			item.expiry = now.Add(defaultNegativeExpiry)
+			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}
 	case dns.RcodeSuccess:
 		if !ok {
@@ -152,16 +159,15 @@ func (r *Cache) storeInCache(answer *dns.Msg) {
 	}
 
 	// Store it in the cache
-	question := answer.Question[0]
 	r.mu.Lock()
-	r.answers[question] = item
+	r.lru.add(item)
 	r.mu.Unlock()
 }
 
 func (r *Cache) evictFromCache(questions ...dns.Question) {
 	r.mu.Lock()
 	for _, question := range questions {
-		delete(r.answers, question)
+		r.lru.delete(question)
 	}
 	r.mu.Unlock()
 }
@@ -175,20 +181,19 @@ func (r *Cache) startGC(period time.Duration) {
 	for {
 		time.Sleep(period)
 		now := time.Now()
-		var questions []dns.Question
-		r.mu.RLock()
-		for q, a := range r.answers {
+		var total, removed int
+		r.mu.Lock()
+		r.lru.deleteFunc(func(a *cacheAnswer) bool {
 			if now.After(a.expiry) {
-				questions = append(questions, q)
+				removed++
+				return true
 			}
-		}
-		n := len(r.answers)
-		r.mu.RUnlock()
-		Log.WithField("records", n).Trace("cache garbage collection")
-		if len(questions) > 0 {
-			Log.WithField("records", len(questions)).Trace("evicting from cache")
-			r.evictFromCache(questions...)
-		}
+			return false
+		})
+		total = r.lru.size()
+		r.mu.Unlock()
+
+		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
 	}
 }
 
