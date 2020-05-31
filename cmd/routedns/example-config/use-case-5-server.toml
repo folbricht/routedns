@@ -1,0 +1,15 @@
+# DoH server enforcing mutual-TLS with clients and then forwards every
+# query to Cloudflare over DoT.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.proxy-doh]
+address = ":443"
+protocol = "doh"
+resolver = "cloudflare-dot"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+ca = "/path/to/ca.crt"
+mutual-tls = true

@@ -1,0 +1,42 @@
+# This config shows how to deal with multiple VPNs having their own DNS. It
+# supports modifying queries for short hostnames such as prod-server1 into
+# queries for server1.prod-domain.com and are routint to the correct DNS server.
+
+# Lab DNS servers
+[resolvers.prod-dns]
+address = "10.1.1.1:53"
+protocol = "udp"
+
+[resolvers.test-dns]
+address = "10.2.1.1:53"
+protocol = "udp"
+
+# Standard Cloudflare DoT, used for everything not destined to the lab
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[routers.router1]
+routes = [
+  { name = '(^|\.)prod-domain\.com\.$', resolver="prod-dns" }, # Prod VPN
+  { name = '(^|\.)test-domain\.com\.$', resolver="test-dns" }, # Test VPN
+  { resolver="cloudflare-dot" },                               # Everything else
+]
+
+[groups.append-domain]
+type = "replace"
+resolvers = ["router1"]
+replace = [
+  { from = '^prod-([^.]+\.)$', to = '${1}prod-domain.com.' },
+  { from = '^test-([^.]+\.)$', to = '${1}test-domain.com.' },
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "append-domain"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "append-domain"

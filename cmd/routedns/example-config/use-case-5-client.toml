@@ -1,0 +1,14 @@
+# Local proxy receiving queries from the local machine only and forwarding
+# over DoH with mututal TLS using a custom CA.
+
+[resolvers.proxy-doh]
+address = "https://<Proxy-IP>:443/dns-query"
+protocol = "doh"
+ca = "/path/to/ca.crt"
+client-crt = "/path/to/client.crt"
+client-key = "/path/to/client.crt"
+
+[listeners.local]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "proxy-doh"
