@@ -1,0 +1,39 @@
+# Example DNS in a corp environment. Everything destined for the company domain
+# is sent to the company DNS servers. All other queries are sent securely via
+# DNS-over-HTTPS.
+
+# Define the two company DNS servers. Both use plain (insecure) DNS over UDP
+[resolvers.mycompany-dns-a]
+address = "10.0.0.1:53"
+protocol = "udp"
+
+[resolvers.mycompany-dns-b]
+address = "10.0.0.2:53"
+protocol = "udp"
+
+# Define the Cloudflare DNS-over-HTTPS resolver (GET methods) since that is most likely allowed outbound
+[resolvers.cloudflare-doh-1-1-1-1-get]
+address = "https://1.1.1.1/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+# Since the company DNS servers have a habit of failing, group them to rotate on failure
+[groups.mycompany-dns]
+resolvers = ["mycompany-dns-a", "mycompany-dns-b"]
+type = "fail-rotate"
+
+[routers.router1]
+routes = [
+  { name = '(^|\.)mycompany\.com\.$', resolver="mycompany-dns" }, # Use company DNS, perhaps through a VPN tunnel
+  { resolver="cloudflare-doh-1-1-1-1-get" },                      # Everything else can go securely to Cloudflare
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router1"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "router1"

@@ -3,39 +3,26 @@
 # one's company network. Company resources can only be resolved using company DNS
 # servers, while everything else can be sent securely over TLS.
 
-title = "RouteDNS configuration for split DNS"
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
 
-[resolvers]
+[resolvers.mycompany-dns]
+address = "10.0.0.1:53"
+protocol = "udp"
 
-  [resolvers.cloudflare-dot]
-  address = "1.1.1.1:853"
-  protocol = "dot"
+[routers.router1]
+routes = [
+  { name = '\.mycompany\.com\.$', type = "MX", resolver="mycompany-dns" },
+  { resolver="cloudflare-dot" }, # default route
+]
 
-  [resolvers.mycompany-dns]
-  address = "10.0.0.1:53"
-  protocol = "udp"
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router1"
 
-[routers]
-
-  [routers.router1]
-
-    # Send everything for '*.mycomany.com.' to the company's DNS, possibly through a VPN tunnel
-    [[routers.router1.routes]]
-    name = '\.mycompany\.com\.$'
-    resolver="mycompany-dns"
- 
-    # Everything else can go securely to Cloudflare
-    [[routers.router1.routes]]
-    resolver="cloudflare-dot"
-
-[listeners]
-
-  [listeners.local-udp]
-  address = "127.0.0.1:53"
-  protocol = "udp"
-  resolver = "router1"
-
-  [listeners.local-tcp]
-  address = "127.0.0.1:53"
-  protocol = "tcp"
-  resolver = "router1"
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "router1"

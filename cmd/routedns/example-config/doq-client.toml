@@ -8,11 +8,11 @@ ca = "example-config/server.crt"
 bootstrap-address = "127.0.0.1"
 
 [listeners.local-udp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "local-doq"
 
 [listeners.local-tcp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "tcp"
 resolver = "local-doq"
