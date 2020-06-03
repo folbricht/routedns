@@ -14,6 +14,7 @@ resolvers           = ["cloudflare-dot"]
 blocklist-source = [
   {format = "location", source = "example-config/location.txt"}
 ]
+filter=true
 
 [listeners.local-udp]
 address = ":1153"

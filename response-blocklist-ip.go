@@ -145,7 +145,7 @@ func (r *ResponseBlocklistIP) filterRR(rrs []dns.RR) []dns.RR {
 			continue
 		}
 		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithField("rule", rule).Debug("filtering response")
+			Log.WithFields(logrus.Fields{"rule": rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)
