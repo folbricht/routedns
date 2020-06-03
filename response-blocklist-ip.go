@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // IPBlocklistDB is a database containing IPs used in blocklists.
@@ -106,7 +107,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := Log.WithField("rule", rule)
+				log := Log.WithFields(logrus.Fields{"rule": rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)

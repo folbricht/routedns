@@ -45,6 +45,8 @@ func NewGeoIPDB(loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
 		if strings.HasPrefix(r, "#") || r == "" {
 			continue
 		}
+		r = strings.Split(r, "#")[0] // possible comment at the end of the line
+		r = strings.TrimSpace(r)
 		parts := strings.Split(r, ":")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("unable to parse location rule '%s", r)
