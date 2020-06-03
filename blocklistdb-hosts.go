@@ -30,6 +30,7 @@ func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
 	}
 	filters := make(map[string]ipRecords)
 	for _, r := range rules {
+		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
 		if len(fields) == 0 {
 			continue

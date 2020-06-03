@@ -30,6 +30,8 @@ func NewDomainDB(loader BlocklistLoader) (*DomainDB, error) {
 	}
 	root := make(node)
 	for _, r := range rules {
+		r = strings.TrimSpace(r)
+
 		// Strip trailing . in case the list has FQDN names with . suffixes.
 		r = strings.TrimSuffix(r, ".")
 

@@ -3,6 +3,7 @@ package rdns
 import (
 	"net"
 	"regexp"
+	"strings"
 
 	"github.com/miekg/dns"
 )
@@ -23,6 +24,10 @@ func NewRegexpDB(loader BlocklistLoader) (*RegexpDB, error) {
 	}
 	var filters []*regexp.Regexp
 	for _, r := range rules {
+		r = strings.TrimSpace(r)
+		if r == "" || strings.HasPrefix(r, "#") {
+			continue
+		}
 		re, err := regexp.Compile(r)
 		if err != nil {
 			return nil, err
