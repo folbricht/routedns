@@ -1,0 +1,18 @@
+# This config starts a UDP and a TCP resolver on the loopback interface for plain DNS.
+# All queries are forwarded to a local DNS-over-DTLS server.
+
+[resolvers.local-dtls]
+address = "server.acme.test:853"
+protocol = "dtls"
+ca = "example-config/server-ec.crt"
+bootstrap-address = "127.0.0.1"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "local-dtls"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "local-dtls"

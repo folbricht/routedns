@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -18,15 +19,20 @@ const idleTimeout = 10 * time.Second
 // Pipeline is a DNS client that is able to use pipelining for ultiple requests over
 // one connection, handle out-of-order responses and deals with disconnects
 // gracefully. It opens a single connection on demand and uses it for all queries.
-// It can manage UDP, TCP, DNS-over-TLS connections.
+// It can manage UDP, TCP, DNS-over-TLS, and DNS-over-DTLS connections.
 type Pipeline struct {
 	addr     string
-	client   *dns.Client
+	client   DNSDialer
 	requests chan *request
 }
 
+// DNSDialer is an abstraction for a dns.Client that returns a *dns.Conn.
+type DNSDialer interface {
+	Dial(address string) (*dns.Conn, error)
+}
+
 // NewPipeline returns an initialized (and running) DNS connection manager.
-func NewPipeline(addr string, client *dns.Client) *Pipeline {
+func NewPipeline(addr string, client DNSDialer) *Pipeline {
 	c := &Pipeline{
 		addr:     addr,
 		client:   client,
@@ -84,7 +90,7 @@ func (c *Pipeline) start() {
 					log.WithField("qname", qName(query)).Trace("sending query")
 					if err := conn.WriteMsg(query); err != nil {
 						req.markDone(nil, err) // fail the request
-						inFlight.get(query)    // clean up the in-flight queue to it doesn't keep growing
+						inFlight.get(query)    // clean up the in-flight queue so it doesn't keep growing
 						conn.Close()           // throw away this connection, should wake up the reader as well
 						wg.Done()
 						log.WithField("qname", qName(query)).WithError(err).Trace("failed sending query")
@@ -116,11 +122,17 @@ func (c *Pipeline) start() {
 						wg.Done()
 						return
 					default:
+						if err == io.EOF {
+							log.Debug("connection terminated by server")
+							close(done) // tell the writer to not use this connection anymore
+							wg.Done()
+							return
+						}
 						// It's possible the response can't be correctly parsed, but we do have a response.
 						// In this case, return it and carry on, don't terminate the connection because we
-						// got a bad package (like a truncated one for example).
+						// got a bad packet (like a truncated one for example).
 						if a == nil {
-							log.Error(err)
+							log.WithError(err).Error("read failed")
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
 							return

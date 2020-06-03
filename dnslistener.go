@@ -75,7 +75,7 @@ func listenHandler(protocol, addr string, r Resolver, allowedNet []*net.IPNet) d
 
 		// If the client asked via DoT and EDNS0 is enabled, the response should be padded for extra security.
 		// See rfc7830 and rfc8467.
-		if protocol == "dot" {
+		if protocol == "dot" || protocol == "dtls" {
 			padAnswer(req, a)
 		} else {
 			stripPadding(a)

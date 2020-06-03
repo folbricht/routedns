@@ -99,6 +99,19 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
+		case "dtls":
+			dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+			if err != nil {
+				return err
+			}
+			opt := rdns.DTLSClientOptions{
+				BootstrapAddr: r.BootstrapAddr,
+				DTLSConfig:    dtlsConfig,
+			}
+			resolvers[id], err = rdns.NewDTLSClient(r.Address, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		case "doh":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 			if err != nil {
@@ -209,6 +222,13 @@ func start(opt options, args []string) error {
 				return err
 			}
 			ln := rdns.NewDoTListener(l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			listeners = append(listeners, ln)
+		case "dtls":
+			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			ln := rdns.NewDTLSListener(l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "doh":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
