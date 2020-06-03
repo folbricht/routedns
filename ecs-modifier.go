@@ -16,7 +16,7 @@ type ECSModifier struct {
 
 var _ Resolver = &ECSModifier{}
 
-// ECSMofifierFunc takes a DNS query and modifies its EDN0 Client Subdomain record
+// ECSModifierFunc takes a DNS query and modifies its EDN0 Client Subdomain record
 type ECSModifierFunc func(q *dns.Msg, ci ClientInfo)
 
 // NewECSModifier initializes an ECS modifier.
