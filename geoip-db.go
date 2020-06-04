@@ -72,6 +72,9 @@ func (m *GeoIPDB) Match(ip net.IP) (string, bool) {
 		City struct {
 			GeoNameID uint64 `maxminddb:"geoname_id"`
 		} `maxminddb:"city"`
+		Subdivisions []struct {
+			GeoNameID uint64 `maxminddb:"geoname_id"`
+		} `maxminddb:"subdivisions"`
 	}
 
 	if err := m.geoDB.Lookup(ip, &record); err != nil {
@@ -80,9 +83,13 @@ func (m *GeoIPDB) Match(ip net.IP) (string, bool) {
 	}
 
 	// Try to find the continent, country, or city GeoName ID in the blocklist
-	for _, key := range []uint64{record.Continent.GeoNameID, record.Country.GeoNameID, record.City.GeoNameID} {
-		if _, ok := m.db[key]; ok {
-			return fmt.Sprintf("%d", key), true
+	ids := []uint64{record.Continent.GeoNameID, record.Country.GeoNameID, record.City.GeoNameID}
+	for _, sd := range record.Subdivisions {
+		ids = append(ids, sd.GeoNameID)
+	}
+	for _, id := range ids {
+		if _, ok := m.db[id]; ok {
+			return fmt.Sprintf("%d", id), true
 		}
 	}
 	return "", false
