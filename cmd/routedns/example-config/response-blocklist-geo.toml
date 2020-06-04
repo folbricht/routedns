@@ -5,23 +5,19 @@ protocol = "dot"
 [groups.cloudflare-blocklist]
 type                = "response-blocklist-ip"
 resolvers           = ["cloudflare-dot"]
-# blocklist-format    = "location"
-# blocklist           = [
-#   "continent:6255148 # Europe", # Europe
-#   "country:2017370",   # Russia
-#   "city:7839805",      # Melbourne
-# ]
-blocklist-source = [
-  {format = "location", source = "example-config/location.txt"}
+blocklist-format    = "location"
+blocklist           = [
+  "6255148", # Europe
+  "2017370", # Russia
+  "7839805", # Melbourne
 ]
-filter=true
 
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
 
 [listeners.local-tcp]
-address = ":1153"
+address = ":53"
 protocol = "tcp"
 resolver = "cloudflare-blocklist"
