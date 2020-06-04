@@ -107,7 +107,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := Log.WithFields(logrus.Fields{"rule": rule, "ip": ip})
+				log := Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -121,17 +121,17 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 }
 
 func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
-	answer.Answer = r.filterRR(answer.Answer)
+	answer.Answer = r.filterRR(query, answer.Answer)
 	// If there's nothing left after applying the filter, return NXDOMAIN
 	if len(answer.Answer) == 0 {
 		return nxdomain(query), nil
 	}
-	answer.Ns = r.filterRR(answer.Ns)
-	answer.Extra = r.filterRR(answer.Extra)
+	answer.Ns = r.filterRR(query, answer.Ns)
+	answer.Extra = r.filterRR(query, answer.Extra)
 	return answer, nil
 }
 
-func (r *ResponseBlocklistIP) filterRR(rrs []dns.RR) []dns.RR {
+func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, rrs []dns.RR) []dns.RR {
 	newRRs := make([]dns.RR, 0, len(rrs))
 	for _, rr := range rrs {
 		var ip net.IP
@@ -145,7 +145,7 @@ func (r *ResponseBlocklistIP) filterRR(rrs []dns.RR) []dns.RR {
 			continue
 		}
 		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithFields(logrus.Fields{"rule": rule, "ip": ip}).Debug("filtering response")
+			Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)
