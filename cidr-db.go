@@ -54,6 +54,10 @@ func (m *CidrDB) Match(ip net.IP) (string, bool) {
 	return m.ip4.hasIP(ip)
 }
 
+func (m *CidrDB) Close() error {
+	return nil
+}
+
 func (m *CidrDB) String() string {
 	return "CIDR-blocklist"
 }

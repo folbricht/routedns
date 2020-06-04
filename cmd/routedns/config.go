@@ -77,6 +77,7 @@ type group struct {
 	AllowlistFormat   string   `toml:"allowlist-format"` // only used for static allowlists in the config
 	AllowlistSource   []list   `toml:"allowlist-source"`
 	AllowlistRefresh  int      `toml:"allowlist-refresh"`
+	LocationDB        string   `toml:"location-db"` // GeoIP database file for response blocklist. Default "/usr/share/GeoIP/GeoLite2-City.mmdb"
 
 	// Static responder options
 	Answer []string

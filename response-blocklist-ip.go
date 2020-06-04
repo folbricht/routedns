@@ -8,26 +8,28 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // IPBlocklistDB is a database containing IPs used in blocklists.
 type IPBlocklistDB interface {
 	Reload() (IPBlocklistDB, error)
 	Match(ip net.IP) (string, bool)
+	Close() error
 	fmt.Stringer
 }
 
-// ResponseBlocklistCIDR is a resolver that filters by matching the IPs in the response against
+// ResponseBlocklistIP is a resolver that filters by matching the IPs in the response against
 // a blocklist.
-type ResponseBlocklistCIDR struct {
-	ResponseBlocklistCIDROptions
+type ResponseBlocklistIP struct {
+	ResponseBlocklistIPOptions
 	resolver Resolver
 	mu       sync.RWMutex
 }
 
-var _ Resolver = &ResponseBlocklistCIDR{}
+var _ Resolver = &ResponseBlocklistIP{}
 
-type ResponseBlocklistCIDROptions struct {
+type ResponseBlocklistIPOptions struct {
 	// Optional, if the response is found to match the blocklist, send the query to this resolver.
 	BlocklistResolver Resolver
 
@@ -41,9 +43,9 @@ type ResponseBlocklistCIDROptions struct {
 	Filter bool
 }
 
-// NewResponseBlocklistCIDR returns a new instance of a response blocklist resolver.
-func NewResponseBlocklistCIDR(resolver Resolver, opt ResponseBlocklistCIDROptions) (*ResponseBlocklistCIDR, error) {
-	blocklist := &ResponseBlocklistCIDR{resolver: resolver, ResponseBlocklistCIDROptions: opt}
+// NewResponseBlocklistIP returns a new instance of a response blocklist resolver.
+func NewResponseBlocklistIP(resolver Resolver, opt ResponseBlocklistIPOptions) (*ResponseBlocklistIP, error) {
+	blocklist := &ResponseBlocklistIP{resolver: resolver, ResponseBlocklistIPOptions: opt}
 
 	if opt.Filter && opt.BlocklistResolver != nil {
 		return nil, errors.New("the 'filter' feature can not be used with 'blocklist-resolver'")
@@ -58,9 +60,12 @@ func NewResponseBlocklistCIDR(resolver Resolver, opt ResponseBlocklistCIDROption
 
 // Resolve a DNS query by first querying the upstream resolver, then checking any IP responses
 // against a blocklist. Responds with NXDOMAIN if the response IP is in the filter-list.
-func (r *ResponseBlocklistCIDR) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+func (r *ResponseBlocklistIP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
 	if err != nil {
+		return answer, err
+	}
+	if answer.Rcode != dns.RcodeSuccess {
 		return answer, err
 	}
 	if r.Filter {
@@ -69,14 +74,14 @@ func (r *ResponseBlocklistCIDR) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, er
 	return r.blockIfMatch(q, answer, ci)
 }
 
-func (r *ResponseBlocklistCIDR) String() string {
+func (r *ResponseBlocklistIP) String() string {
 	r.mu.RLock()
 	blocklistDB := r.BlocklistDB
 	r.mu.RUnlock()
-	return fmt.Sprintf("ResponseBlocklistCIDR(%s)", blocklistDB)
+	return fmt.Sprintf("ResponseBlocklistIP(%s)", blocklistDB)
 }
 
-func (r *ResponseBlocklistCIDR) refreshLoopBlocklist(refresh time.Duration) {
+func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
 		Log.Debug("reloading blocklist")
@@ -86,12 +91,13 @@ func (r *ResponseBlocklistCIDR) refreshLoopBlocklist(refresh time.Duration) {
 			continue
 		}
 		r.mu.Lock()
+		r.BlocklistDB.Close()
 		r.BlocklistDB = db
 		r.mu.Unlock()
 	}
 }
 
-func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
 		for _, rr := range records {
 			var ip net.IP
@@ -104,7 +110,7 @@ func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := Log.WithField("rule", rule)
+				log := Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -117,18 +123,18 @@ func (r *ResponseBlocklistCIDR) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 	return answer, nil
 }
 
-func (r *ResponseBlocklistCIDR) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
-	answer.Answer = r.filterRR(answer.Answer)
+func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
+	answer.Answer = r.filterRR(query, answer.Answer)
 	// If there's nothing left after applying the filter, return NXDOMAIN
 	if len(answer.Answer) == 0 {
 		return nxdomain(query), nil
 	}
-	answer.Ns = r.filterRR(answer.Ns)
-	answer.Extra = r.filterRR(answer.Extra)
+	answer.Ns = r.filterRR(query, answer.Ns)
+	answer.Extra = r.filterRR(query, answer.Extra)
 	return answer, nil
 }
 
-func (r *ResponseBlocklistCIDR) filterRR(rrs []dns.RR) []dns.RR {
+func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, rrs []dns.RR) []dns.RR {
 	newRRs := make([]dns.RR, 0, len(rrs))
 	for _, rr := range rrs {
 		var ip net.IP
@@ -142,7 +148,7 @@ func (r *ResponseBlocklistCIDR) filterRR(rrs []dns.RR) []dns.RR {
 			continue
 		}
 		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithField("rule", rule).Debug("filtering response")
+			Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)

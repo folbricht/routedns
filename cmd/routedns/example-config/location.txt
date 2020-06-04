@@ -1,0 +1,6 @@
+# Geo location blocklist example. Use # to comment the rest
+# of the line.
+
+continent:6255148 # Europe
+country:2017370   # Russia
+city:7839805      # Melbourne

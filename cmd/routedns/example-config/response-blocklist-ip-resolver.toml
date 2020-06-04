@@ -13,7 +13,7 @@ address = "8.8.8.8:853"
 protocol = "dot"
 
 [groups.cloudflare-blocklist]
-type               = "response-blocklist-cidr"
+type               = "response-blocklist-ip"
 resolvers          = ["default-dot"] # Default resolver, all queries are sent here first
 blocklist-resolver = "alternate-dot" # Use this resolver when a response matches the blocklist
 blocklist          = [

@@ -3,7 +3,7 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [groups.cloudflare-blocklist]
-type                = "response-blocklist-cidr"
+type                = "response-blocklist-ip"
 resolvers           = ["cloudflare-dot"]
 blocklist           = [
   '127.0.0.0/24',

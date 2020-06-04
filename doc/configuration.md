@@ -502,25 +502,30 @@ Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blo
 
 ### Response Blocklist
 
-Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-cidr` and `response-blocklist-name`.
+Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-ip` and `response-blocklist-name`.
 
-- `response-blocklist-cidr` blocks backed on IP networks (in CIDR notation) on A or AAAA responses.
+- `response-blocklist-ip` blocks backed on IP addresses in the response, by network IP (in CIDR notation) or geographical location.
 - `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PRT and SRV records.
 
 #### Configuration
 
 The configuration options of response blocklists are very similar to that of [query blocklists](#Query-Blocklist) with the exception of the `allowlists-*` options which are not supported in response blocklists.
 
-Query blocklists are instantiated with `type = "response-blocklist-cidr"` or `type = "response-blocklist-name"` in the groups section of the configuration.
+Query blocklists are instantiated with `type = "response-blocklist-ip"` or `type = "response-blocklist-name"` in the groups section of the configuration.
 
 Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
+- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided.
+  - For `response-blocklist-ip`, the value can be `cidr`, or `location`. Defaults to `cidr`.
+  - For `response-blocklist-name`, the value can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
 - `blocklist-source` - An array of blocklists, each with `format` and `source`.
-- `filter` - If set to `true` in `response-blocklist-cidr`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned.
+- `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned.
+- `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
+
+Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option.
 
 Examples:
 
@@ -528,7 +533,7 @@ Simple response blocklists with static rules in the configuration file.
 
 ```toml
 [groups.cloudflare-blocklist]
-type                = "response-blocklist-cidr"
+type                = "response-blocklist-ip"
 resolvers           = ["cloudflare-dot"]
 blocklist           = [
   '127.0.0.0/24',
@@ -551,7 +556,7 @@ Response blocklists that use local or remote rule-sets with periodic refresh.
 
 ```toml
 [groups.cloudflare-blocklist]
-type              = "response-blocklist-cidr"
+type              = "response-blocklist-ip"
 resolvers         = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source  = [
@@ -570,7 +575,21 @@ blocklist-source  = [
 ]
 ```
 
-Example config files: [response-blocklist-cidr.toml](../cmd/routedns/example-config/response-blocklist-cidr.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-cidr-remote.toml](../cmd/routedns/example-config/response-blocklist-cidr-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-cidr-resolver.toml](../cmd/routedns/example-config/response-blocklist-cidr-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml),
+Response blocklist based on IP geo-location. Remote and multiple blocklists are supported as well.
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "response-blocklist-ip"
+resolvers           = ["cloudflare-dot"]
+blocklist-format    = "location"
+blocklist           = [
+  "6255148", # Europe
+  "2017370", # Russia
+  "7839805", # Melbourne
+]
+```
+
+Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml)
 
 ### EDNS0 Client Subnet Modifier
 
