@@ -65,6 +65,9 @@ func (r *ResponseBlocklistIP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, erro
 	if err != nil {
 		return answer, err
 	}
+	if answer.Rcode != dns.RcodeSuccess {
+		return answer, err
+	}
 	if r.Filter {
 		return r.filterMatch(q, answer)
 	}

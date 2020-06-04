@@ -11,13 +11,14 @@ blocklist           = [
   "2017370", # Russia
   "7839805", # Melbourne
 ]
+filter=true
 
 [listeners.local-udp]
-address = ":53"
+address = ":1153"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
 
 [listeners.local-tcp]
-address = ":53"
+address = ":1153"
 protocol = "tcp"
 resolver = "cloudflare-blocklist"
