@@ -22,7 +22,7 @@ type DoTListenerOptions struct {
 	TLSConfig *tls.Config
 }
 
-// NewDoTListener returns an instance of either a UDP or TCP DNS listener.
+// NewDoTListener returns an instance of a DNS-over-TLS listener.
 func NewDoTListener(addr string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
 	return &DoTListener{
 		Server: &dns.Server{
