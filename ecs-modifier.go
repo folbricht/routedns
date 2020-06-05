@@ -89,7 +89,7 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		// Add a new record if there's no EDNS0 at all
 		edns0 := q.IsEdns0()
 		if edns0 == nil {
-			q.SetEdns0(4096, true)
+			q.SetEdns0(4096, false)
 			edns0 = q.IsEdns0()
 		}
 
