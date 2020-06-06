@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"regexp"
-	"strings"
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -13,6 +12,7 @@ import (
 
 // Router for DNS requests based on query type and/or name. Implements the Resolver interface.
 type Router struct {
+	id     string
 	routes []*route
 }
 
@@ -20,8 +20,8 @@ var _ Resolver = &Router{}
 
 // NewRouter returns a new router instance. The router won't have any routes and can only be used
 // once Add() is called to setup a route.
-func NewRouter() *Router {
-	return new(Router)
+func NewRouter(id string) *Router {
+	return &Router{id: id}
 }
 
 // Resolve a request by routing it to the right resolved based on the routes setup in the router.
@@ -30,7 +30,7 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, errors.New("no question in query")
 	}
 	question := q.Question[0]
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": question})
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": question.Name})
 	for _, route := range r.routes {
 		if route.typ != 0 && route.typ != question.Qtype {
 			continue
@@ -44,7 +44,7 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		if route.source != nil && !route.source.Contains(ci.SourceIP) {
 			continue
 		}
-		log.WithField("resolver", route.resolver.String()).Trace("routing query to resolver")
+		log.WithField("resolver", route.resolver.String()).Debug("routing query to resolver")
 		return route.resolver.Resolve(q, ci)
 	}
 	return nil, fmt.Errorf("no route for %s", question.String())
@@ -89,11 +89,7 @@ func (r *Router) Add(name, class, typ, source string, resolver Resolver) error {
 }
 
 func (r *Router) String() string {
-	var rs []string
-	for _, route := range r.routes {
-		rs = append(rs, route.String())
-	}
-	return fmt.Sprintf("Router(%s)", strings.Join(rs, ";"))
+	return r.id
 }
 
 // Convert DNS type strings into the numberical type, for example "A" -> 1.

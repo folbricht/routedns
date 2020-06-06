@@ -1,8 +1,6 @@
 package rdns
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/miekg/dns"
@@ -12,6 +10,7 @@ import (
 // RoundRobin is a group of recolvers that will receive equal amounts of queries.
 // Failed queries are not retried.
 type RoundRobin struct {
+	id        string
 	resolvers []Resolver
 	mu        sync.Mutex
 	current   int
@@ -20,8 +19,8 @@ type RoundRobin struct {
 var _ Resolver = &RoundRobin{}
 
 // NewRoundRobin returns a new instance of a round-robin resolver group.
-func NewRoundRobin(resolvers ...Resolver) *RoundRobin {
-	return &RoundRobin{resolvers: resolvers}
+func NewRoundRobin(id string, resolvers ...Resolver) *RoundRobin {
+	return &RoundRobin{id: id, resolvers: resolvers}
 }
 
 // Resolve a DNS query using a round-robin resolver group.
@@ -31,17 +30,14 @@ func (r *RoundRobin) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.current = (r.current + 1) % len(r.resolvers)
 	r.mu.Unlock()
 	Log.WithFields(logrus.Fields{
+		"id":       r.id,
 		"client":   ci.SourceIP,
 		"qname":    qName(q),
 		"resolver": resolver.String(),
-	}).Trace("forwarding query to resolver")
+	}).Debug("forwarding query to resolver")
 	return resolver.Resolve(q, ci)
 }
 
 func (r *RoundRobin) String() string {
-	var s []string
-	for _, resolver := range r.resolvers {
-		s = append(s, resolver.String())
-	}
-	return fmt.Sprintf("RoundRobin(%s)", strings.Join(s, ";"))
+	return r.id
 }

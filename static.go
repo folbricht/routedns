@@ -1,15 +1,15 @@
 package rdns
 
 import (
-	"fmt"
-
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // StaticResolver is a resolver that always returns the same answer, to any question.
 // Typically used in combination with a blocklist to define fixed block responses or
 // with a router when building a walled garden.
 type StaticResolver struct {
+	id     string
 	answer []dns.RR
 	ns     []dns.RR
 	extra  []dns.RR
@@ -27,8 +27,8 @@ type StaticResolverOptions struct {
 }
 
 // NewStaticResolver returns a new instance of a StaticResolver resolver.
-func NewStaticResolver(opt StaticResolverOptions) (*StaticResolver, error) {
-	r := new(StaticResolver)
+func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, error) {
+	r := &StaticResolver{id: id}
 
 	for _, record := range opt.Answer {
 		rr, err := dns.NewRR(record)
@@ -72,9 +72,11 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Extra = r.extra
 	answer.Rcode = r.rcode
 
+	Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("responding")
+
 	return answer, nil
 }
 
 func (r *StaticResolver) String() string {
-	return fmt.Sprintf("StaticResolver")
+	return r.id
 }

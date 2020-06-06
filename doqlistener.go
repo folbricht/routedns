@@ -3,7 +3,6 @@ package rdns
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"io/ioutil"
 	"net"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 // DoQListener is a DNS listener/server for QUIC.
 type DoQListener struct {
+	id   string
 	addr string
 	r    Resolver
 	opt  DoQListenerOptions
@@ -32,16 +32,17 @@ type DoQListenerOptions struct {
 }
 
 // NewQuicListener returns an instance of a QUIC listener.
-func NewQUICListener(addr string, opt DoQListenerOptions, resolver Resolver) *DoQListener {
+func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver) *DoQListener {
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)
 	}
 	opt.TLSConfig.NextProtos = []string{"dq"}
 	l := &DoQListener{
+		id:   id,
 		addr: addr,
 		r:    resolver,
 		opt:  opt,
-		log:  Log.WithFields(logrus.Fields{"protocol": "doq", "addr": addr}),
+		log:  Log.WithFields(logrus.Fields{"id": id, "protocol": "doq", "addr": addr}),
 	}
 	return l
 }
@@ -88,7 +89,7 @@ func (s DoQListener) handleSession(session quic.Session) {
 	log := s.log.WithField("client", session.RemoteAddr())
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
-		log.Trace("rejecting incoming session")
+		log.Debug("rejecting incoming session")
 		return
 	}
 	log.Trace("accepting incoming session")
@@ -163,5 +164,5 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 }
 
 func (s DoQListener) String() string {
-	return fmt.Sprintf("DoQ(%s)", s.addr)
+	return s.id
 }

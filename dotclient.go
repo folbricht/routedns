@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"crypto/tls"
-	"fmt"
 	"net"
 
 	"github.com/miekg/dns"
@@ -12,6 +11,7 @@ import (
 
 // DoTClient is a DNS-over-TLS resolver.
 type DoTClient struct {
+	id       string
 	endpoint string
 	pipeline *Pipeline
 }
@@ -28,7 +28,7 @@ type DoTClientOptions struct {
 var _ Resolver = &DoTClient{}
 
 // NewDoTClient instantiates a new DNS-over-TLS resolver.
-func NewDoTClient(endpoint string, opt DoTClientOptions) (*DoTClient, error) {
+func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error) {
 	client := &dns.Client{
 		Net:       "tcp-tls",
 		TLSConfig: opt.TLSConfig,
@@ -46,6 +46,7 @@ func NewDoTClient(endpoint string, opt DoTClientOptions) (*DoTClient, error) {
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)
 	}
 	return &DoTClient{
+		id:       id,
 		endpoint: endpoint,
 		pipeline: NewPipeline(endpoint, client),
 	}, nil
@@ -54,6 +55,7 @@ func NewDoTClient(endpoint string, opt DoTClientOptions) (*DoTClient, error) {
 // Resolve a DNS query.
 func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	Log.WithFields(logrus.Fields{
+		"id":       d.id,
 		"client":   ci.SourceIP,
 		"qname":    qName(q),
 		"resolver": d.endpoint,
@@ -66,5 +68,5 @@ func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (d *DoTClient) String() string {
-	return fmt.Sprintf("DoT(%s)", d.endpoint)
+	return d.id
 }

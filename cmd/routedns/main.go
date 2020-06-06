@@ -82,7 +82,7 @@ func start(opt options, args []string) error {
 				BootstrapAddr: r.BootstrapAddr,
 				TLSConfig:     tlsConfig,
 			}
-			resolvers[id], err = rdns.NewDoQClient(r.Address, opt)
+			resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
@@ -95,7 +95,7 @@ func start(opt options, args []string) error {
 				BootstrapAddr: r.BootstrapAddr,
 				TLSConfig:     tlsConfig,
 			}
-			resolvers[id], err = rdns.NewDoTClient(r.Address, opt)
+			resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
@@ -108,7 +108,7 @@ func start(opt options, args []string) error {
 				BootstrapAddr: r.BootstrapAddr,
 				DTLSConfig:    dtlsConfig,
 			}
-			resolvers[id], err = rdns.NewDTLSClient(r.Address, opt)
+			resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
@@ -123,14 +123,14 @@ func start(opt options, args []string) error {
 				BootstrapAddr: r.BootstrapAddr,
 				Transport:     r.Transport,
 			}
-			resolvers[id], err = rdns.NewDoHClient(r.Address, opt)
+			resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
 		case "tcp":
-			resolvers[id] = rdns.NewDNSClient(r.Address, "tcp")
+			resolvers[id] = rdns.NewDNSClient(id, r.Address, "tcp")
 		case "udp":
-			resolvers[id] = rdns.NewDNSClient(r.Address, "udp")
+			resolvers[id] = rdns.NewDNSClient(id, r.Address, "udp")
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
 		}
@@ -213,29 +213,29 @@ func start(opt options, args []string) error {
 
 		switch l.Protocol {
 		case "tcp":
-			listeners = append(listeners, rdns.NewDNSListener(l.Address, "tcp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "tcp", opt, resolver))
 		case "udp":
-			listeners = append(listeners, rdns.NewDNSListener(l.Address, "udp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "udp", opt, resolver))
 		case "dot":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDoTListener(id, l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "dtls":
 			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDTLSListener(l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "doh":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln, err := rdns.NewDoHListener(l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt, Transport: l.Transport}, resolver)
+			ln, err := rdns.NewDoHListener(id, l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt, Transport: l.Transport}, resolver)
 			if err != nil {
 				return err
 			}
@@ -245,7 +245,7 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewQUICListener(l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewQUICListener(id, l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
@@ -279,11 +279,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	}
 	switch g.Type {
 	case "round-robin":
-		resolvers[id] = rdns.NewRoundRobin(gr...)
+		resolvers[id] = rdns.NewRoundRobin(id, gr...)
 	case "fail-rotate":
-		resolvers[id] = rdns.NewFailRotate(gr...)
+		resolvers[id] = rdns.NewFailRotate(id, gr...)
 	case "fail-back":
-		resolvers[id] = rdns.NewFailBack(rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
+		resolvers[id] = rdns.NewFailBack(id, rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
 	case "blocklist":
 		if len(gr) != 1 {
 			return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
@@ -299,7 +299,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistDB:      blocklistDB,
 			BlocklistRefresh: time.Duration(g.Refresh) * time.Second,
 		}
-		resolvers[id], err = rdns.NewBlocklist(gr[0], opt)
+		resolvers[id], err = rdns.NewBlocklist(id, gr[0], opt)
 		if err != nil {
 			return err
 		}
@@ -361,7 +361,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			AllowlistDB:       allowlistDB,
 			AllowlistRefresh:  time.Duration(g.AllowlistRefresh) * time.Second,
 		}
-		resolvers[id], err = rdns.NewBlocklist(gr[0], opt)
+		resolvers[id], err = rdns.NewBlocklist(id, gr[0], opt)
 		if err != nil {
 			return err
 		}
@@ -369,7 +369,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(gr) != 1 {
 			return fmt.Errorf("type replace only supports one resolver in '%s'", id)
 		}
-		resolvers[id], err = rdns.NewReplace(gr[0], g.Replace...)
+		resolvers[id], err = rdns.NewReplace(id, gr[0], g.Replace...)
 		if err != nil {
 			return err
 		}
@@ -381,7 +381,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			MinTTL: g.TTLMin,
 			MaxTTL: g.TTLMax,
 		}
-		resolvers[id] = rdns.NewTTLModifier(gr[0], opt)
+		resolvers[id] = rdns.NewTTLModifier(id, gr[0], opt)
 	case "ecs-modifier":
 		if len(gr) != 1 {
 			return fmt.Errorf("type ecs-modifier only supports one resolver in '%s'", id)
@@ -398,7 +398,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		default:
 			return fmt.Errorf("unsupported ecs-modifier operation '%s'", g.ECSOp)
 		}
-		resolvers[id], err = rdns.NewECSModifier(gr[0], f)
+		resolvers[id], err = rdns.NewECSModifier(id, gr[0], f)
 		if err != nil {
 			return err
 		}
@@ -408,7 +408,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			Capacity:    g.CacheSize,
 			NegativeTTL: g.CacheNegativeTTL,
 		}
-		resolvers[id] = rdns.NewCache(gr[0], opt)
+		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-blocklist-ip only supports one resolver in '%s'", id)
@@ -442,7 +442,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
 			Filter:            g.Filter,
 		}
-		resolvers[id], err = rdns.NewResponseBlocklistIP(gr[0], opt)
+		resolvers[id], err = rdns.NewResponseBlocklistIP(id, gr[0], opt)
 		if err != nil {
 			return err
 		}
@@ -478,7 +478,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
 		}
-		resolvers[id], err = rdns.NewResponseBlocklistName(gr[0], opt)
+		resolvers[id], err = rdns.NewResponseBlocklistName(id, gr[0], opt)
 		if err != nil {
 			return err
 		}
@@ -489,7 +489,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			Extra:  g.Extra,
 			RCode:  g.RCode,
 		}
-		resolvers[id], err = rdns.NewStaticResolver(opt)
+		resolvers[id], err = rdns.NewStaticResolver(id, opt)
 		if err != nil {
 			return err
 		}
@@ -502,7 +502,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 
 // Instantiate a router object based on configuration and add to the map of resolvers by ID.
 func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) error {
-	router := rdns.NewRouter()
+	router := rdns.NewRouter(id)
 	for _, route := range r.Routes {
 		resolver, ok := resolvers[route.Resolver]
 		if !ok {

@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"fmt"
 	"net"
 
 	"github.com/miekg/dns"
@@ -10,6 +9,7 @@ import (
 
 // ECSModifier manipulates EDNS0 Client Subnet in queries.
 type ECSModifier struct {
+	id       string
 	resolver Resolver
 	modifier ECSModifierFunc
 }
@@ -20,8 +20,8 @@ var _ Resolver = &ECSModifier{}
 type ECSModifierFunc func(q *dns.Msg, ci ClientInfo)
 
 // NewECSModifier initializes an ECS modifier.
-func NewECSModifier(resolver Resolver, f ECSModifierFunc) (*ECSModifier, error) {
-	c := &ECSModifier{resolver: resolver, modifier: f}
+func NewECSModifier(id string, resolver Resolver, f ECSModifierFunc) (*ECSModifier, error) {
+	c := &ECSModifier{id: id, resolver: resolver, modifier: f}
 	return c, nil
 }
 
@@ -41,7 +41,7 @@ func (r *ECSModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *ECSModifier) String() string {
-	return fmt.Sprintf("ECSModifier(%s)", r.resolver)
+	return r.id
 }
 
 func ECSModifierDelete(q *dns.Msg, ci ClientInfo) {

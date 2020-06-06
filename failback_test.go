@@ -14,7 +14,7 @@ func TestFailBack(t *testing.T) {
 	r1 := new(TestResolver)
 	r2 := new(TestResolver)
 
-	g := NewFailBack(FailBackOptions{ResetAfter: time.Second}, r1, r2)
+	g := NewFailBack("test-fb", FailBackOptions{ResetAfter: time.Second}, r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 

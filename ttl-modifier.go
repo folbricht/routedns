@@ -1,14 +1,14 @@
 package rdns
 
 import (
-	"fmt"
-
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // TTLModifier passes queries to upstream resolvers and then modifies
 // the TTL in response RRs according to limits.
 type TTLModifier struct {
+	id string
 	TTLModifierOptions
 	resolver Resolver
 }
@@ -25,8 +25,9 @@ type TTLModifierOptions struct {
 }
 
 // NewTTLModifier returns a new instance of a TTL modifier.
-func NewTTLModifier(resolver Resolver, opt TTLModifierOptions) *TTLModifier {
+func NewTTLModifier(id string, resolver Resolver, opt TTLModifierOptions) *TTLModifier {
 	return &TTLModifier{
+		id:                 id,
 		TTLModifierOptions: opt,
 		resolver:           resolver,
 	}
@@ -40,6 +41,7 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return a, err
 	}
 
+	var modified bool
 	for _, rrs := range [][]dns.RR{a.Answer, a.Ns, a.Extra} {
 		for _, rr := range rrs {
 			if _, ok := rr.(*dns.OPT); ok {
@@ -48,15 +50,20 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			h := rr.Header()
 			if h.Ttl < r.MinTTL {
 				h.Ttl = r.MinTTL
+				modified = true
 			}
 			if r.MaxTTL > 0 && h.Ttl > r.MaxTTL {
 				h.Ttl = r.MaxTTL
+				modified = true
 			}
 		}
+	}
+	if modified {
+		Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("modified response ttl")
 	}
 	return a, nil
 }
 
 func (r *TTLModifier) String() string {
-	return fmt.Sprintf("TTLModifier(%s)", r.resolver)
+	return r.id
 }

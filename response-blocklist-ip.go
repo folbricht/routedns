@@ -22,6 +22,7 @@ type IPBlocklistDB interface {
 // ResponseBlocklistIP is a resolver that filters by matching the IPs in the response against
 // a blocklist.
 type ResponseBlocklistIP struct {
+	id string
 	ResponseBlocklistIPOptions
 	resolver Resolver
 	mu       sync.RWMutex
@@ -44,8 +45,8 @@ type ResponseBlocklistIPOptions struct {
 }
 
 // NewResponseBlocklistIP returns a new instance of a response blocklist resolver.
-func NewResponseBlocklistIP(resolver Resolver, opt ResponseBlocklistIPOptions) (*ResponseBlocklistIP, error) {
-	blocklist := &ResponseBlocklistIP{resolver: resolver, ResponseBlocklistIPOptions: opt}
+func NewResponseBlocklistIP(id string, resolver Resolver, opt ResponseBlocklistIPOptions) (*ResponseBlocklistIP, error) {
+	blocklist := &ResponseBlocklistIP{id: id, resolver: resolver, ResponseBlocklistIPOptions: opt}
 
 	if opt.Filter && opt.BlocklistResolver != nil {
 		return nil, errors.New("the 'filter' feature can not be used with 'blocklist-resolver'")
@@ -75,16 +76,14 @@ func (r *ResponseBlocklistIP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, erro
 }
 
 func (r *ResponseBlocklistIP) String() string {
-	r.mu.RLock()
-	blocklistDB := r.BlocklistDB
-	r.mu.RUnlock()
-	return fmt.Sprintf("ResponseBlocklistIP(%s)", blocklistDB)
+	return r.id
 }
 
 func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		Log.Debug("reloading blocklist")
+		log := Log.WithField("id", r.id)
+		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
 			Log.WithError(err).Error("failed to load rules")
@@ -110,7 +109,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip})
+				log := Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(query), "rule": rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -148,7 +147,7 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, rrs []dns.RR) []dns.RR {
 			continue
 		}
 		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithFields(logrus.Fields{"qname": qName(query), "rule": rule, "ip": ip}).Debug("filtering response")
+			Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(query), "rule": rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)

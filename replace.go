@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 
 	"github.com/miekg/dns"
@@ -13,6 +12,7 @@ import (
 // and forwards the modified queries to another resolver. Responses are then
 // mapped back to the original query string.
 type Replace struct {
+	id       string
 	resolver Resolver
 	exp      replaceExpressions
 }
@@ -39,7 +39,7 @@ type ReplaceOperation struct {
 }
 
 // NewReplace returns a new instance of a Replace resolver.
-func NewReplace(resolver Resolver, list ...ReplaceOperation) (*Replace, error) {
+func NewReplace(id string, resolver Resolver, list ...ReplaceOperation) (*Replace, error) {
 	var exp replaceExpressions
 	for _, o := range list {
 		re, err := regexp.Compile(o.From)
@@ -49,7 +49,7 @@ func NewReplace(resolver Resolver, list ...ReplaceOperation) (*Replace, error) {
 		exp = append(exp, replaceExp{re, o.To})
 	}
 
-	return &Replace{resolver: resolver, exp: exp}, nil
+	return &Replace{id: id, resolver: resolver, exp: exp}, nil
 }
 
 // Resolve a DNS query by first replacing the query string with another
@@ -61,11 +61,11 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	oldName := q.Question[0].Name
 	newName := r.exp.apply(oldName)
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": oldName, "resolver": r.resolver.String()})
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": oldName, "resolver": r.resolver.String()})
 
 	// if nothing needs modifying, we can stop here and use the original query
 	if newName == oldName {
-		log.Trace("forwarding unmodified query to resolver")
+		log.Debug("forwarding unmodified query to resolver")
 		return r.resolver.Resolve(q, ci)
 	}
 
@@ -73,7 +73,7 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	q.Question[0].Name = newName
 
 	// Send the query upstream
-	log.WithField("new-qname", newName).Trace("forwarding modified query to resolver")
+	log.WithField("new-qname", newName).Debug("forwarding modified query to resolver")
 	a, err := r.resolver.Resolve(q, ci)
 	if err != nil {
 		return nil, err
@@ -93,5 +93,5 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *Replace) String() string {
-	return fmt.Sprintf("Replace(resolver=%s)", r.resolver)
+	return r.id
 }

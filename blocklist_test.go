@@ -22,7 +22,7 @@ func TestBlocklistRegexp(t *testing.T) {
 	opt := BlocklistOptions{
 		BlocklistDB: m,
 	}
-	b, err := NewBlocklist(r, opt)
+	b, err := NewBlocklist("test-bl", r, opt)
 	require.NoError(t, err)
 
 	// First query a domain not blocked. Should be passed through to the resolver
@@ -60,7 +60,7 @@ func TestBlocklistAllow(t *testing.T) {
 		BlocklistDB: blockDB,
 		AllowlistDB: allowDB,
 	}
-	b, err := NewBlocklist(r, opt)
+	b, err := NewBlocklist("test-bl", r, opt)
 	require.NoError(t, err)
 
 	// First query a domain not blocked. Should be passed through to the resolver

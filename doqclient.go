@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"crypto/tls"
-	"fmt"
 	"io/ioutil"
 	"net"
 	"sync"
@@ -23,6 +22,7 @@ const (
 // DoQClient is a DNS-over-QUIC resolver.
 type DoQClient struct {
 	DoQClientOptions
+	id       string
 	endpoint string
 	requests chan *request
 	log      *logrus.Entry
@@ -42,7 +42,7 @@ type DoQClientOptions struct {
 var _ Resolver = &DoQClient{}
 
 // NewDoQClient instantiates a new DNS-over-QUIC resolver.
-func NewDoQClient(endpoint string, opt DoQClientOptions) (*DoQClient, error) {
+func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error) {
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)
 	}
@@ -62,6 +62,7 @@ func NewDoQClient(endpoint string, opt DoQClientOptions) (*DoQClient, error) {
 	}
 	log := Log.WithFields(logrus.Fields{"protocol": "doq", "endpoint": endpoint})
 	return &DoQClient{
+		id:               id,
 		endpoint:         endpoint,
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
@@ -77,6 +78,7 @@ func NewDoQClient(endpoint string, opt DoQClientOptions) (*DoQClient, error) {
 // Resolve a DNS query.
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	d.log.WithFields(logrus.Fields{
+		"id":     d.id,
 		"client": ci.SourceIP,
 		"qname":  qName(q),
 	}).Debug("querying upstream resolver")
@@ -146,7 +148,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (d *DoQClient) String() string {
-	return fmt.Sprintf("DoQ(%s)", d.endpoint)
+	return d.id
 }
 
 type doqSession struct {

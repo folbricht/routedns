@@ -9,7 +9,7 @@ import (
 
 func Example_resolver() {
 	// Define resolver
-	r, _ := rdns.NewDoTClient("dns.google:853", rdns.DoTClientOptions{})
+	r, _ := rdns.NewDoTClient("test-dot", "dns.google:853", rdns.DoTClientOptions{})
 
 	// Build a query
 	q := new(dns.Msg)
@@ -22,11 +22,11 @@ func Example_resolver() {
 
 func Example_group() {
 	// Define resolvers
-	r1 := rdns.NewDNSClient("8.8.8.8:53", "udp")
-	r2 := rdns.NewDNSClient("8.8.4.4:53", "udp")
+	r1 := rdns.NewDNSClient("google1", "8.8.8.8:53", "udp")
+	r2 := rdns.NewDNSClient("google2", "8.8.4.4:53", "udp")
 
 	// Combine them int a group that does round-robin over the two resolvers
-	g := rdns.NewRoundRobin(r1, r2)
+	g := rdns.NewRoundRobin("test-rr", r1, r2)
 
 	// Build a query
 	q := new(dns.Msg)
@@ -39,12 +39,12 @@ func Example_group() {
 
 func Example_router() {
 	// Define resolvers
-	google := rdns.NewDNSClient("8.8.8.8:53", "udp")
-	cloudflare := rdns.NewDNSClient("1.1.1.1:53", "udp")
+	google := rdns.NewDNSClient("g-dns", "8.8.8.8:53", "udp")
+	cloudflare := rdns.NewDNSClient("cf-dns", "1.1.1.1:53", "udp")
 
 	// Build a router that will send all "*.cloudflare.com" to the cloudflare
 	// resolvber while everything else goes to the google resolver (default)
-	r := rdns.NewRouter()
+	r := rdns.NewRouter("my-router")
 	_ = r.Add(`\.cloudflare\.com\.$`, "", "", "", cloudflare)
 	_ = r.Add("", "", "", "", google)
 

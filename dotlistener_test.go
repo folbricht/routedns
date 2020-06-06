@@ -20,7 +20,7 @@ func TestDoTListenerSimple(t *testing.T) {
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 
-	s := NewDoTListener(addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	go func() {
 		err := s.Start()
 		require.NoError(t, err)
@@ -31,7 +31,7 @@ func TestDoTListenerSimple(t *testing.T) {
 	// Make a client talking to the listener. Need to trust the issue of the server certificate.
 	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
 	require.NoError(t, err)
-	c, _ := NewDoTClient(addr, DoTClientOptions{TLSConfig: tlsConfig})
+	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsConfig})
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.
 	q := new(dns.Msg)
@@ -53,7 +53,7 @@ func TestDoTListenerMutual(t *testing.T) {
 	// Create the listener, expecting client certs to be presented.
 	tlsServerConfig, err := TLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true)
 	require.NoError(t, err)
-	s := NewDoTListener(addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 
 	go func() {
 		err := s.Start()
@@ -66,7 +66,7 @@ func TestDoTListenerMutual(t *testing.T) {
 	// present a client certificate.
 	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
 	require.NoError(t, err)
-	c, _ := NewDoTClient(addr, DoTClientOptions{TLSConfig: tlsClientConfig})
+	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsClientConfig})
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.
 	q := new(dns.Msg)
@@ -80,7 +80,7 @@ func TestDoTListenerMutual(t *testing.T) {
 
 func TestDoTListenerPadding(t *testing.T) {
 	// Define a listener that does not respond with padding
-	upstream := NewDNSClient("8.8.8.8:53", "udp")
+	upstream := NewDNSClient("test-dns", "8.8.8.8:53", "udp")
 
 	// Find a free port for the listener
 	addr, err := getLnAddress()
@@ -90,7 +90,7 @@ func TestDoTListenerPadding(t *testing.T) {
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 
-	s := NewDoTListener(addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	go func() {
 		err := s.Start()
 		require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestDoTListenerPadding(t *testing.T) {
 	// Make a client talking to the listener. Need to trust the issue of the server certificate.
 	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
 	require.NoError(t, err)
-	c, _ := NewDoTClient(addr, DoTClientOptions{TLSConfig: tlsConfig})
+	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsConfig})
 
 	// Send a query with the EDNS0 option set. This should cause the listener to add padding in the response.
 	q := new(dns.Msg)

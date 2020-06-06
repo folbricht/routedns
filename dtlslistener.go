@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -15,6 +14,7 @@ import (
 // DTLSListener is a DNS listener/server for DNS-over-DTLS.
 type DTLSListener struct {
 	*dns.Server
+	id string
 
 	opt DTLSListenerOptions
 }
@@ -29,11 +29,12 @@ type DTLSListenerOptions struct {
 }
 
 // NewDTLSListener returns an instance of a DNS-over-DTLS listener.
-func NewDTLSListener(addr string, opt DTLSListenerOptions, resolver Resolver) *DTLSListener {
+func NewDTLSListener(id, addr string, opt DTLSListenerOptions, resolver Resolver) *DTLSListener {
 	return &DTLSListener{
+		id: id,
 		Server: &dns.Server{
 			Addr:    addr,
-			Handler: listenHandler("dtls", addr, resolver, opt.AllowedNet),
+			Handler: listenHandler(id, "dtls", addr, resolver, opt.AllowedNet),
 		},
 		opt: opt,
 	}
@@ -41,7 +42,7 @@ func NewDTLSListener(addr string, opt DTLSListenerOptions, resolver Resolver) *D
 
 // Start the DTLS server.
 func (s *DTLSListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": "dtls", "addr": s.Addr}).Info("starting listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dtls", "addr": s.Addr}).Info("starting listener")
 
 	host, port, err := net.SplitHostPort(s.Server.Addr)
 	if err != nil {
@@ -67,10 +68,10 @@ func (s *DTLSListener) Start() error {
 
 // Stop the server.
 func (s *DTLSListener) Stop() error {
-	Log.WithFields(logrus.Fields{"protocol": "dtls", "addr": s.Addr}).Info("stopping listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dtls", "addr": s.Addr}).Info("stopping listener")
 	return s.Shutdown()
 }
 
 func (s *DTLSListener) String() string {
-	return fmt.Sprintf("DTLS(%s)", s.Addr)
+	return s.id
 }

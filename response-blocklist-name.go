@@ -1,16 +1,17 @@
 package rdns
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // ResponseBlocklistName is a resolver that filters by matching the strings in CNAME, MX,
 // NS, PTR and SRV response resocords against a blocklist.
 type ResponseBlocklistName struct {
+	id string
 	ResponseBlocklistNameOptions
 	resolver Resolver
 	mu       sync.RWMutex
@@ -29,8 +30,8 @@ type ResponseBlocklistNameOptions struct {
 }
 
 // NewResponseBlocklistName returns a new instance of a response blocklist resolver.
-func NewResponseBlocklistName(resolver Resolver, opt ResponseBlocklistNameOptions) (*ResponseBlocklistName, error) {
-	blocklist := &ResponseBlocklistName{resolver: resolver, ResponseBlocklistNameOptions: opt}
+func NewResponseBlocklistName(id string, resolver Resolver, opt ResponseBlocklistNameOptions) (*ResponseBlocklistName, error) {
+	blocklist := &ResponseBlocklistName{id: id, resolver: resolver, ResponseBlocklistNameOptions: opt}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
@@ -50,16 +51,14 @@ func (r *ResponseBlocklistName) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, er
 }
 
 func (r *ResponseBlocklistName) String() string {
-	r.mu.RLock()
-	blocklistDB := r.BlocklistDB
-	r.mu.RUnlock()
-	return fmt.Sprintf("ResponseBlocklistName(%s)", blocklistDB)
+	return r.id
 }
 
 func (r *ResponseBlocklistName) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		Log.Debug("reloading blocklist")
+		log := Log.WithField("id", r.id)
+		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
 			Log.WithError(err).Error("failed to load rules")
@@ -90,7 +89,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				continue
 			}
 			if _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
-				log := Log.WithField("rule", rule)
+				log := Log.WithFields(logrus.Fields{"id": r.id, "rule": rule})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)

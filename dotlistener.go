@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"crypto/tls"
-	"fmt"
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -11,6 +10,7 @@ import (
 // DoTListener is a DNS listener/server for DNS-over-TLS.
 type DoTListener struct {
 	*dns.Server
+	id string
 }
 
 var _ Listener = &DoTListener{}
@@ -23,29 +23,30 @@ type DoTListenerOptions struct {
 }
 
 // NewDoTListener returns an instance of a DNS-over-TLS listener.
-func NewDoTListener(addr string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
+func NewDoTListener(id, addr string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
 	return &DoTListener{
+		id: id,
 		Server: &dns.Server{
 			Addr:      addr,
 			Net:       "tcp-tls",
 			TLSConfig: opt.TLSConfig,
-			Handler:   listenHandler("dot", addr, resolver, opt.AllowedNet),
+			Handler:   listenHandler(id, "dot", addr, resolver, opt.AllowedNet),
 		},
 	}
 }
 
 // Start the Dot server.
 func (s DoTListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": "dot", "addr": s.Addr}).Info("starting listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dot", "addr": s.Addr}).Info("starting listener")
 	return s.ListenAndServe()
 }
 
 // Stop the server.
 func (s DoTListener) Stop() error {
-	Log.WithFields(logrus.Fields{"protocol": "dot", "addr": s.Addr}).Info("stopping listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dot", "addr": s.Addr}).Info("stopping listener")
 	return s.Shutdown()
 }
 
 func (s DoTListener) String() string {
-	return fmt.Sprintf("DoT(%s)", s.Addr)
+	return s.id
 }

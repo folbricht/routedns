@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 // up to TTL seconds in memory.
 type Cache struct {
 	CacheOptions
+	id       string
 	resolver Resolver
 	mu       sync.Mutex
 	lru      *lruCache
@@ -35,9 +35,10 @@ type CacheOptions struct {
 }
 
 // NewCache returns a new instance of a Cache resolver.
-func NewCache(resolver Resolver, opt CacheOptions) *Cache {
+func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 	c := &Cache{
 		CacheOptions: opt,
+		id:           id,
 		resolver:     resolver,
 		lru:          newLRUCache(opt.Capacity),
 	}
@@ -64,16 +65,16 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q)})
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
 
 	// Returned an answer from the cache if one exists
 	a, ok := r.answerFromCache(q)
 	if ok {
-		log.Trace("cache-hit")
+		log.Debug("cache-hit")
 		return a, nil
 	}
 
-	log.WithField("resolver", r.resolver.String()).Trace("cache-miss, forwarding")
+	log.WithField("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q, ci)
@@ -87,7 +88,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *Cache) String() string {
-	return fmt.Sprintf("Cache(%s)", r.resolver)
+	return r.id
 }
 
 // Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
