@@ -45,6 +45,10 @@ RouteDNS supports building complex DNS processing pipelines. A typically configu
 
 ![pipeline-overview](doc/pipeline-overview.svg)
 
+## QUIC support
+
+Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-00](https://www.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations.
+
 ## Use-cases / Examples
 
 ### Use case 1: Use DNS-over-TLS for all queries locally

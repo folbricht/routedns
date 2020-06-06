@@ -1,7 +1,7 @@
 # DNS-over-HTTPS using the QUIC protocol.
 
 [resolvers.cloudflare-doh-quic]
-address = "https://cloudflare-dns.com/dns-query{?dns}"
+address = "https://cloudflare-dns.com/dns-query"
 protocol = "doh"
 transport = "quic"
 
