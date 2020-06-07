@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -46,10 +45,6 @@ type ResponseBlocklistIPOptions struct {
 // NewResponseBlocklistIP returns a new instance of a response blocklist resolver.
 func NewResponseBlocklistIP(resolver Resolver, opt ResponseBlocklistIPOptions) (*ResponseBlocklistIP, error) {
 	blocklist := &ResponseBlocklistIP{resolver: resolver, ResponseBlocklistIPOptions: opt}
-
-	if opt.Filter && opt.BlocklistResolver != nil {
-		return nil, errors.New("the 'filter' feature can not be used with 'blocklist-resolver'")
-	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
