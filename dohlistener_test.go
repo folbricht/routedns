@@ -19,7 +19,7 @@ func TestDoHListenerSimple(t *testing.T) {
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 
-	s, err := NewDoHListener(addr, DoHListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	require.NoError(t, err)
 	go s.Start()
 	defer s.Stop()
@@ -29,7 +29,7 @@ func TestDoHListenerSimple(t *testing.T) {
 	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
-	cPost, err := NewDoHClient(u, DoHClientOptions{TLSConfig: tlsConfig, Method: "POST"})
+	cPost, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsConfig, Method: "POST"})
 	require.NoError(t, err)
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.
@@ -43,7 +43,7 @@ func TestDoHListenerSimple(t *testing.T) {
 
 	// Make a client that uses GET
 	u = "https://" + addr + "/dns-query{?dns}"
-	cGet, err := NewDoHClient(u, DoHClientOptions{TLSConfig: tlsConfig, Method: "GET"})
+	cGet, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsConfig, Method: "GET"})
 	require.NoError(t, err)
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.
@@ -64,7 +64,7 @@ func TestDoHListenerMutual(t *testing.T) {
 	// Create the listener, expecting client certs to be presented.
 	tlsServerConfig, err := TLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true)
 	require.NoError(t, err)
-	s, err := NewDoHListener(addr, DoHListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	require.NoError(t, err)
 	go s.Start()
 	defer s.Stop()
@@ -75,7 +75,7 @@ func TestDoHListenerMutual(t *testing.T) {
 	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
-	c, err := NewDoHClient(u, DoHClientOptions{TLSConfig: tlsClientConfig})
+	c, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsClientConfig})
 	require.NoError(t, err)
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.
@@ -98,7 +98,7 @@ func TestDoHListenerMutualQUIC(t *testing.T) {
 	// Create the listener, expecting client certs to be presented.
 	tlsServerConfig, err := TLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true)
 	require.NoError(t, err)
-	s, err := NewDoHListener(addr, DoHListenerOptions{TLSConfig: tlsServerConfig, Transport: "quic"}, upstream)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, Transport: "quic"}, upstream)
 	require.NoError(t, err)
 	go s.Start()
 	defer s.Stop()
@@ -109,7 +109,7 @@ func TestDoHListenerMutualQUIC(t *testing.T) {
 	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
-	c, err := NewDoHClient(u, DoHClientOptions{TLSConfig: tlsClientConfig, Transport: "quic"})
+	c, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsClientConfig, Transport: "quic"})
 	require.NoError(t, err)
 
 	// Send a query to the client. This should be proxied through the listener and hit the test resolver.

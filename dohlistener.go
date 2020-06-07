@@ -20,6 +20,7 @@ type DoHListener struct {
 	httpServer *http.Server
 	quicServer *http3.Server
 
+	id   string
 	addr string
 	r    Resolver
 	opt  DoHListenerOptions
@@ -40,7 +41,7 @@ type DoHListenerOptions struct {
 }
 
 // NewDoHListener returns an instance of a DNS-over-HTTPS listener.
-func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) (*DoHListener, error) {
+func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) (*DoHListener, error) {
 	switch opt.Transport {
 	case "tcp", "":
 		opt.Transport = "tcp"
@@ -51,6 +52,7 @@ func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) (*Do
 	}
 
 	l := &DoHListener{
+		id:   id,
 		addr: addr,
 		r:    resolver,
 		opt:  opt,
@@ -62,7 +64,7 @@ func NewDoHListener(addr string, opt DoHListenerOptions, resolver Resolver) (*Do
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.addr}).Info("starting listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "doh", "addr": s.addr}).Info("starting listener")
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -100,7 +102,7 @@ func (s *DoHListener) startQUIC() error {
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
-	Log.WithFields(logrus.Fields{"protocol": "doh", "addr": s.addr}).Info("stopping listener")
+	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "doh", "addr": s.addr}).Info("stopping listener")
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}
@@ -108,7 +110,7 @@ func (s *DoHListener) Stop() error {
 }
 
 func (s *DoHListener) String() string {
-	return fmt.Sprintf("DoH(%s)", s.addr)
+	return s.id
 }
 
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
@@ -159,13 +161,13 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	ci := ClientInfo{
 		SourceIP: net.ParseIP(host),
 	}
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
+	log := Log.WithFields(logrus.Fields{"id": s.id, "client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
 	log.Debug("received query")
 
 	var err error
 	a := new(dns.Msg)
 	if isAllowed(s.opt.AllowedNet, ci.SourceIP) {
-		log.WithField("resolver", s.r.String()).Trace("forwarding query to resolver")
+		log.WithField("resolver", s.r.String()).Debug("forwarding query to resolver")
 		a, err = s.r.Resolve(q, ci)
 		if err != nil {
 			log.WithError(err).Error("failed to resolve")

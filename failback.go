@@ -1,8 +1,6 @@
 package rdns
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 // active again. This group prefers the resolvers in the order they were added
 // but fails over as necessary with regular retry of the higher-priority ones.
 type FailBack struct {
+	id        string
 	resolvers []Resolver
 	mu        sync.RWMutex
 	failCh    chan struct{} // signal the timer to reset on failure
@@ -35,21 +34,21 @@ type FailBackOptions struct {
 var _ Resolver = &FailBack{}
 
 // NewFailBack returns a new instance of a failover resolver group.
-func NewFailBack(opt FailBackOptions, resolvers ...Resolver) *FailBack {
+func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
 	if opt.ResetAfter == 0 {
 		opt.ResetAfter = time.Minute
 	}
-	return &FailBack{resolvers: resolvers, opt: opt}
+	return &FailBack{id: id, resolvers: resolvers, opt: opt}
 }
 
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q)})
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
-		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
+		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
@@ -65,11 +64,7 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *FailBack) String() string {
-	var s []string
-	for _, resolver := range r.resolvers {
-		s = append(s, resolver.String())
-	}
-	return fmt.Sprintf("FailBack(%s)", strings.Join(s, ";"))
+	return r.id
 }
 
 // Thread-safe method to return the currently active resolver.
@@ -93,7 +88,10 @@ func (r *FailBack) errorFrom(i int) {
 		r.failCh = r.startResetTimer()
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing over to resolver")
+	Log.WithFields(logrus.Fields{
+		"id":       r.id,
+		"resolver": r.resolvers[r.active].String(),
+	}).Debug("failing over to resolver")
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
 

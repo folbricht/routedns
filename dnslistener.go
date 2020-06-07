@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/miekg/dns"
@@ -11,6 +10,7 @@ import (
 // DNSListener is a standard DNS listener for UDP or TCP.
 type DNSListener struct {
 	*dns.Server
+	id string
 }
 
 var _ Listener = &DNSListener{}
@@ -21,28 +21,32 @@ type ListenOptions struct {
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
-func NewDNSListener(addr, net string, opt ListenOptions, resolver Resolver) *DNSListener {
+func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) *DNSListener {
 	return &DNSListener{
+		id: id,
 		Server: &dns.Server{
 			Addr:    addr,
 			Net:     net,
-			Handler: listenHandler(net, addr, resolver, opt.AllowedNet),
+			Handler: listenHandler(id, net, addr, resolver, opt.AllowedNet),
 		},
 	}
 }
 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
-	Log.WithFields(logrus.Fields{"protocol": s.Net, "addr": s.Addr}).Info("starting listener")
+	Log.WithFields(logrus.Fields{
+		"id":       s.id,
+		"protocol": s.Net,
+		"addr":     s.Addr}).Info("starting listener")
 	return s.ListenAndServe()
 }
 
 func (s DNSListener) String() string {
-	return fmt.Sprintf("%s(%s)", s.Net, s.Addr)
+	return s.id
 }
 
 // DNS handler to forward all incoming requests to a given resolver.
-func listenHandler(protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
+func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		var (
 			ci  ClientInfo
@@ -56,7 +60,7 @@ func listenHandler(protocol, addr string, r Resolver, allowedNet []*net.IPNet) d
 			ci.SourceIP = addr.IP
 		}
 
-		log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
+		log := Log.WithFields(logrus.Fields{"id": id, "client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
 		log.Debug("received query")
 
 		a := new(dns.Msg)

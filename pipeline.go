@@ -71,7 +71,7 @@ func (c *Pipeline) start() {
 	log := Log.WithField("addr", c.addr)
 	for req := range c.requests { // Lazy connection. Only open a real connection if there's a request
 		done := make(chan struct{})
-		log.Debug("opening connection")
+		log.Trace("opening connection")
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
 			log.WithError(err).Error("failed to open connection")
@@ -114,16 +114,16 @@ func (c *Pipeline) start() {
 					switch e := err.(type) {
 					case net.Error:
 						if e.Timeout() {
-							log.Debug("connection terminated by idle timeout")
+							log.Trace("connection terminated by idle timeout")
 						} else {
-							log.Debug("connection terminated by server")
+							log.Trace("connection terminated by server")
 						}
 						close(done) // tell the writer to not use this connection anymore
 						wg.Done()
 						return
 					default:
 						if err == io.EOF {
-							log.Debug("connection terminated by server")
+							log.Trace("connection terminated by server")
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
 							return

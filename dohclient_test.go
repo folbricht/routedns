@@ -8,7 +8,7 @@ import (
 )
 
 func TestDoHClientSimplePOST(t *testing.T) {
-	d, err := NewDoHClient("https://1.1.1.1/dns-query{?dns}", DoHClientOptions{Method: "POST"})
+	d, err := NewDoHClient("test-doh", "https://1.1.1.1/dns-query{?dns}", DoHClientOptions{Method: "POST"})
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("cloudflare.com.", dns.TypeA)
@@ -18,7 +18,7 @@ func TestDoHClientSimplePOST(t *testing.T) {
 }
 
 func TestDoHClientSimpleGET(t *testing.T) {
-	d, err := NewDoHClient("https://cloudflare-dns.com/dns-query{?dns}", DoHClientOptions{Method: "GET"})
+	d, err := NewDoHClient("test-doh", "https://cloudflare-dns.com/dns-query{?dns}", DoHClientOptions{Method: "GET"})
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("cloudflare.com.", dns.TypeA)

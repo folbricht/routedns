@@ -1,8 +1,6 @@
 package rdns
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/miekg/dns"
@@ -15,6 +13,7 @@ import (
 // resolver fails, the first one in the list becomes the active one. This
 // group does not fail back automatically.
 type FailRotate struct {
+	id        string
 	resolvers []Resolver
 	mu        sync.RWMutex
 	active    int
@@ -23,14 +22,14 @@ type FailRotate struct {
 var _ Resolver = &FailRotate{}
 
 // NewFailRotate returns a new instance of a failover resolver group.
-func NewFailRotate(resolvers ...Resolver) *FailRotate {
-	return &FailRotate{resolvers: resolvers}
+func NewFailRotate(id string, resolvers ...Resolver) *FailRotate {
+	return &FailRotate{id: id, resolvers: resolvers}
 }
 
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "qname": qName(q)})
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
@@ -50,11 +49,7 @@ func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (r *FailRotate) String() string {
-	var s []string
-	for _, resolver := range r.resolvers {
-		s = append(s, resolver.String())
-	}
-	return fmt.Sprintf("FailRotate(%s)", strings.Join(s, ";"))
+	return r.id
 }
 
 // Thread-safe method to return the currently active resolver.
@@ -75,5 +70,8 @@ func (r *FailRotate) errorFrom(i int) {
 		return
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing over to resolver")
+	Log.WithFields(logrus.Fields{
+		"id":       r.id,
+		"resolver": r.resolvers[r.active].String(),
+	}).Debug("failing over to resolver")
 }

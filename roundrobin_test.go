@@ -12,7 +12,7 @@ func TestRoundRobin(t *testing.T) {
 	r1 := new(TestResolver)
 	r2 := new(TestResolver)
 
-	g := NewRoundRobin(r1, r2)
+	g := NewRoundRobin("test-rr", r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 

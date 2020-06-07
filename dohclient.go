@@ -38,6 +38,7 @@ type DoHClientOptions struct {
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
 type DoHClient struct {
+	id       string
 	endpoint string
 	template *uritemplates.UriTemplate
 	client   *http.Client
@@ -46,7 +47,7 @@ type DoHClient struct {
 
 var _ Resolver = &DoHClient{}
 
-func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
+func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	// Parse the URL template
 	template, err := uritemplates.Parse(endpoint)
 	if err != nil {
@@ -78,6 +79,7 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 	}
 
 	return &DoHClient{
+		id:       id,
 		endpoint: endpoint,
 		template: template,
 		client:   client,
@@ -88,6 +90,7 @@ func NewDoHClient(endpoint string, opt DoHClientOptions) (*DoHClient, error) {
 // Resolve a DNS query.
 func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := Log.WithFields(logrus.Fields{
+		"id":       d.id,
 		"client":   ci.SourceIP,
 		"qname":    qName(q),
 		"resolver": d.endpoint,
@@ -163,7 +166,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 }
 
 func (d *DoHClient) String() string {
-	return fmt.Sprintf("DoH-%s(%s)", d.opt.Method, d.endpoint)
+	return d.id
 }
 
 // Check the HTTP response status code and parse out the response DNS message.

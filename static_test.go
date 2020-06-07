@@ -20,7 +20,7 @@ func TestStaticResolver(t *testing.T) {
 			"ns1.example.com. IN A 1.1.1.1",
 		},
 	}
-	r, err := NewStaticResolver(opt)
+	r, err := NewStaticResolver("test-static", opt)
 	require.NoError(t, err)
 
 	q := new(dns.Msg)

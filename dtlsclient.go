@@ -12,6 +12,7 @@ import (
 
 // DTLSClient is a DNS-over-DTLS resolver.
 type DTLSClient struct {
+	id       string
 	endpoint string
 	pipeline *Pipeline
 }
@@ -28,7 +29,7 @@ type DTLSClientOptions struct {
 var _ Resolver = &DTLSClient{}
 
 // NewDTLSClient instantiates a new DNS-over-TLS resolver.
-func NewDTLSClient(endpoint string, opt DTLSClientOptions) (*DTLSClient, error) {
+func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, error) {
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		return nil, err
@@ -63,6 +64,7 @@ func NewDTLSClient(endpoint string, opt DTLSClientOptions) (*DTLSClient, error) 
 		dtlsConfig: opt.DTLSConfig,
 	}
 	return &DTLSClient{
+		id:       id,
 		endpoint: endpoint,
 		pipeline: NewPipeline(endpoint, client),
 	}, nil
@@ -71,6 +73,7 @@ func NewDTLSClient(endpoint string, opt DTLSClientOptions) (*DTLSClient, error) 
 // Resolve a DNS query.
 func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	Log.WithFields(logrus.Fields{
+		"id":       d.id,
 		"client":   ci.SourceIP,
 		"qname":    qName(q),
 		"resolver": d.endpoint,
@@ -83,7 +86,7 @@ func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 func (d *DTLSClient) String() string {
-	return fmt.Sprintf("DTLS(%s)", d.endpoint)
+	return d.id
 }
 
 type dtlsDialer struct {

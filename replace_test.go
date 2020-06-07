@@ -35,7 +35,7 @@ func TestReplace(t *testing.T) {
 		{From: `^my\.(.*)`, To: `your.${1}`},
 	}
 
-	b, err := NewReplace(r, exp...)
+	b, err := NewReplace("test-replace", r, exp...)
 	require.NoError(t, err)
 
 	// First query without any expected modifications
