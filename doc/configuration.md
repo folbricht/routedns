@@ -656,9 +656,13 @@ Round-Robin groups are instantiated with `type = "static-responder"` in the grou
 Options:
 
 - `rcode` - Response code: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3) for a more complete list. Defaults to 0 (No Error).
-- `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response.
+- `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response. The name in all answer records is replaced with the name in the query to create a match.
 - `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
 - `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
+
+Note:
+
+The default TTL of all records is 3600 unless provided in the configuration. To set the TTL in the answer, provide a placeholder for the name like so: `". 86400 IN A 1.2.3.4"`. Starting the line with the TTL value will not work.
 
 Examples:
 
