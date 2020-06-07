@@ -1,0 +1,28 @@
+# Example of how to use a Random group of resolvers. Queries are routed
+# to any of the available resolvers (randomly chosen). If a resolver fails,
+# it is taken out of action for a period of time, default 1min.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "random"
+
+[groups.random]
+type   = "random"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot", "unavailable"]
+
+[resolvers.cloudflare-dot-1]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-2]
+address = "1.0.0.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[resolvers.unavailable]
+address = "127.0.0.1:853"
+protocol = "dot"

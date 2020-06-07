@@ -284,6 +284,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		resolvers[id] = rdns.NewFailRotate(id, gr...)
 	case "fail-back":
 		resolvers[id] = rdns.NewFailBack(id, rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
+	case "random":
+		resolvers[id] = rdns.NewRandom(id, rdns.RandomOptions{ResetAfter: time.Minute}, gr...)
 	case "blocklist":
 		if len(gr) != 1 {
 			return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)

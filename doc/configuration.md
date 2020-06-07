@@ -16,6 +16,7 @@
   - [Round-Robin group](#Round-Robin-group)
   - [Fail-Rotate group](#Fail-Rotate-group)
   - [Fail-Back group](#Fail-Back-group)
+  - [Random group](#Random-group)
   - [Replace](#Replace)
   - [Query Blocklist](#Query-Blocklist)
   - [Response Blocklist](#Response-Blocklist)
@@ -362,6 +363,28 @@ Options:
 resolvers = ["company-dns", "cloudflare-dot"]
 type = "fail-back"
 ```
+
+### Random group
+
+This group will pick a resolver from it's list of upstream resolvers at random. Resolvers that fail will be deactivated for an amount of time before being re-tried.
+
+#### Configuration
+
+Random groups are instantiated with `type = "random"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - An array of upstream resolvers or modifiers.
+
+#### Examples
+
+```toml
+[groups.random]
+type   = "random"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+```
+
+Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
 
 ### Replace
 
