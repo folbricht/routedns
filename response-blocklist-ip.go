@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -47,10 +46,6 @@ type ResponseBlocklistIPOptions struct {
 func NewResponseBlocklistIP(resolver Resolver, opt ResponseBlocklistIPOptions) (*ResponseBlocklistIP, error) {
 	blocklist := &ResponseBlocklistIP{resolver: resolver, ResponseBlocklistIPOptions: opt}
 
-	if opt.Filter && opt.BlocklistResolver != nil {
-		return nil, errors.New("the 'filter' feature can not be used with 'blocklist-resolver'")
-	}
-
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
 		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
@@ -69,7 +64,7 @@ func (r *ResponseBlocklistIP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, erro
 		return answer, err
 	}
 	if r.Filter {
-		return r.filterMatch(q, answer)
+		return r.filterMatch(q, answer, ci)
 	}
 	return r.blockIfMatch(q, answer, ci)
 }
@@ -123,10 +118,16 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 	return answer, nil
 }
 
-func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg) (*dns.Msg, error) {
+func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Answer = r.filterRR(query, answer.Answer)
-	// If there's nothing left after applying the filter, return NXDOMAIN
+	// If there's nothing left after applying the filter, return NXDOMAIN or send to the alternative resolver
 	if len(answer.Answer) == 0 {
+		log := Log.WithFields(logrus.Fields{"qname": qName(query)})
+		if r.BlocklistResolver != nil {
+			log.WithField("resolver", r.BlocklistResolver).Debug("no answers after filtering, forwarding to blocklist-resolver")
+			return r.BlocklistResolver.Resolve(query, ci)
+		}
+		log.Debug("no answers after filtering, blocking response")
 		return nxdomain(query), nil
 	}
 	answer.Ns = r.filterRR(query, answer.Ns)
