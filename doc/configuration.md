@@ -21,6 +21,8 @@
   - [Response Blocklist](#Response-Blocklist)
   - [EDNS0 Client Subnet modifier](#EDNS0-Client-Subnet-Modifier)
   - [Static responder](#Static-responder)
+  - [Response Minimizer](#Response-Minimizer)
+  - [Response Collapse](#Response-Collapse)
   - [Router](#Router)
 - [Resolvers](#Resolvers)
   - [Plain DNS](#Plain-DNS-Resolver)
@@ -707,6 +709,57 @@ routes = [
 ```
 
 Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml),
+
+### Response Minimizer
+
+This element passes all queries to its upstream resolver and strips all Extra and NS records from the response, making responses smaller.
+
+#### Configuration
+
+A response minimizer is instantiated with `type = "response-minimize"` in the groups section of the configuration.
+
+Examples:
+
+```toml
+[groups.minimize]
+type = "response-minimize"
+resolvers = ["google-dot"]
+```
+
+Example config files: [response-minimize.toml](../cmd/routedns/example-config/response-minimize.toml)
+
+### Response Collapse
+
+This element passes all queries to its upstream resolver and collapses response chains in the answer records to just the query name and the queried type.
+
+A response chain like this:
+
+```text
+www.paypal.com. 2964 IN CNAME www.glb.paypal.com.
+www.glb.paypal.com. 251 IN CNAME www.paypal.com-a.edgekey.net.
+www.paypal.com-a.edgekey.net. 7199 IN CNAME e5308.x.akamaiedge.net.
+e5308.x.akamaiedge.net. 18 IN A 95.100.196.60
+```
+
+Becomes:
+
+```text
+www.paypal.com. 18 IN A 95.100.196.60
+```
+
+#### Configuration
+
+A response collapse element is instantiated with `type = "response-collape"` in the groups section of the configuration.
+
+Examples:
+
+```toml
+[groups.collapse]
+type = "response-collapse"
+resolvers = ["google-dot"]
+```
+
+Example config files: [response-collapse.toml](../cmd/routedns/example-config/response-collapse.toml)
 
 ### Router
 

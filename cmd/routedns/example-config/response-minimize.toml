@@ -1,0 +1,15 @@
+# Example of how to use a response minimizer that strips out Extra and NS
+# records from responses.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "minimize"
+
+[groups.minimize]
+type = "response-minimize"
+resolvers = ["google-dot"]
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"

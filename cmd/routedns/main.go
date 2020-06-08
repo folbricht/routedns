@@ -493,6 +493,16 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "response-minimize":
+		if len(gr) != 1 {
+			return fmt.Errorf("type response-minimize only supports one resolver in '%s'", id)
+		}
+		resolvers[id] = rdns.NewResponseMinimize(id, gr[0])
+	case "response-collapse":
+		if len(gr) != 1 {
+			return fmt.Errorf("type response-collapse only supports one resolver in '%s'", id)
+		}
+		resolvers[id] = rdns.NewResponseCollapse(id, gr[0])
 
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
