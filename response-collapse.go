@@ -37,7 +37,14 @@ func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 		}
 	}
 	answer.Answer = aRR
-	Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": name}).Debug("collapsing response")
+	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": name})
+
+	// If there's nothing left after collapsing, return NXDOMAIN
+	if len(answer.Answer) == 0 {
+		log.Debug("no answer left after collapse, returning nxdomain")
+		return nxdomain(q), nil
+	}
+	log.Debug("collapsing response")
 	return answer, nil
 }
 
