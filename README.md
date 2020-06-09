@@ -93,6 +93,20 @@ The [server configuration](cmd/routedns/example-config/use-case-5-server.toml) w
 
 The [client configuration](cmd/routedns/example-config/use-case-5-client.toml) acts as local DNS resolver, handling all queries from the local OS. Every query is then forwarded to the secure proxy using DoH. The client needs to have a signed certificate as the server is configured to require it.
 
+### Use case 6: Protecting the home-network from ads and malware domains using blocklists
+
+In this use-case, a whole internal network can be protected from unwanted content such as ads and malware. This can be achieved by running RouteDNS in the local network, filtering out known-bad domains or networks. There are 3 different types of filters applied:
+
+- Queries are filtered through a list of bad domains
+- Responses are filtered if they contain names on a blocklist
+- Responses that contain IPs in known-bad networks are blocked, regardless of what query name was used
+
+These blocklists are loaded and refreshed daily by RouteDNS daily over HTTP. Refresh happens transparently and does not impact query performance. In addition, this configuration caches responses and adjusts TTL values to reduce the amount of queries caused by TTL values that are set too low.
+
+![use-case-6](doc/use-case-6.svg)
+
+The configuration can be found [here](cmd/routedns/example-config/use-case-6.toml)
+
 ## Links
 
 - DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
