@@ -67,23 +67,24 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		ECSModifierDelete(q, ci)
 
 		// If no address is configured, use that of the client
-		if addr == nil {
-			addr = ci.SourceIP
+		sourceIP := addr
+		if sourceIP == nil {
+			sourceIP = ci.SourceIP
 		}
 
 		var (
 			family uint16
 			mask   uint8
 		)
-		if ip4 := addr.To4(); len(ip4) == net.IPv4len {
+		if ip4 := sourceIP.To4(); len(ip4) == net.IPv4len {
 			family = 1 // ip4
-			addr = ip4
+			sourceIP = ip4
 			mask = prefix4
-			addr = addr.Mask(net.CIDRMask(int(prefix4), 32))
+			sourceIP = sourceIP.Mask(net.CIDRMask(int(prefix4), 32))
 		} else {
 			family = 2 // ip6
 			mask = prefix6
-			addr = addr.Mask(net.CIDRMask(int(prefix6), 128))
+			sourceIP = sourceIP.Mask(net.CIDRMask(int(prefix6), 128))
 		}
 
 		// Add a new record if there's no EDNS0 at all
@@ -99,7 +100,7 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		ecs.Family = family      // 1 for IPv4 source address, 2 for IPv6
 		ecs.SourceNetmask = mask // 32 for IPV4, 128 for IPv6
 		ecs.SourceScope = 0
-		ecs.Address = addr
+		ecs.Address = sourceIP
 		edns0.Option = append(edns0.Option, ecs)
 	}
 }
