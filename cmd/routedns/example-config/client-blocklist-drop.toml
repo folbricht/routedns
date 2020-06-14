@@ -1,7 +1,7 @@
 # Filters based on client IP. Queries from matching clients will be dropped.
 
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
 
@@ -10,7 +10,6 @@ type                = "client-blocklist"
 resolvers           = ["cloudflare-dot"]
 blocklist-resolver  = "drop" # Any match is sent to a resolver that drops the query
 blocklist           = [
-  '127.0.0.0/16',
   '157.240.0.0/16',
 ]
 
