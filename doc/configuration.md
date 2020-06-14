@@ -20,6 +20,7 @@
   - [Replace](#Replace)
   - [Query Blocklist](#Query-Blocklist)
   - [Response Blocklist](#Response-Blocklist)
+  - [Client Blocklist](#Client-Blocklist)
   - [EDNS0 Client Subnet modifier](#EDNS0-Client-Subnet-Modifier)
   - [Static responder](#Static-responder)
   - [Response Minimizer](#Response-Minimizer)
@@ -616,6 +617,56 @@ blocklist           = [
 
 Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml)
 
+### Client Blocklist
+
+Client blocklists match the IP of the client instead of responses. The same options as with [response-blocklist-ip](#Response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
+
+#### Configuration
+
+The configuration options of client blocklists are very similar to that of [query blocklists](#Response-Blocklist) with the exception of the `filter` option.
+
+Client blocklists are instantiated with `type = "client-blocklist"`.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
+- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Values can be `cidr`, or `location`. Defaults to `cidr`.
+- `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
+- `blocklist-source` - An array of blocklists, each with `format` and `source`.
+- `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
+
+Examples:
+
+Simple client blocklists that responds with NXDOMAIN to all queries from one network source
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist           = [
+  '157.240.0.0/16',
+]
+```
+
+This client blocklist uses the `blocklist-resolver` option to send queries from matching clients to a static responder which replies with REFUSED.
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist-resolver  = "static-refused" # Any match is sent to a static responder
+blocklist           = [
+  '157.240.0.0/16',
+]
+
+[groups.static-refused]
+type  = "static-responder"
+rcode = 5 # REFUSED
+```
+
+Example config files: [client-blocklist.toml](../cmd/routedns/example-config/client-blocklist.toml), [client-blocklist-refused.toml](../cmd/routedns/example-config/client-blocklist-refused.toml), [client-blocklist-geo.toml](../cmd/routedns/example-config/client-blocklist-geo.toml)
+
 ### EDNS0 Client Subnet Modifier
 
 A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address. The following operation are supported by the subnet modifier:
@@ -712,9 +763,9 @@ extra = [
 Simple responder that'll reply with SERVFAIL to every query routed to it.
 
 ```toml
-[groups.static-nxdomain]
+[groups.static-servfail]
 type  = "static-responder"
-rcode = 3 # NXDOMAIN
+rcode = 2 # SERVFAIL
 ```
 
 Blocks requests for QTYPE ANY RRs by using a router and a static responder. The router sends all ANY queries to the static responder which replies with an HINFO RR.
