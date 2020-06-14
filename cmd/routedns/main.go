@@ -542,6 +542,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("type response-collapse only supports one resolver in '%s'", id)
 		}
 		resolvers[id] = rdns.NewResponseCollapse(id, gr[0])
+	case "drop":
+		resolvers[id] = rdns.NewDropResolver(id)
 
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)

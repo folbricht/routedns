@@ -77,6 +77,12 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			a.SetRcode(req, dns.RcodeRefused)
 		}
 
+		// A nil response from the resolvers means "drop", close the connection
+		if a == nil {
+			w.Close()
+			return
+		}
+
 		// If the client asked via DoT and EDNS0 is enabled, the response should be padded for extra security.
 		// See rfc7830 and rfc8467.
 		if protocol == "dot" || protocol == "dtls" {

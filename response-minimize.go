@@ -22,7 +22,7 @@ func NewResponseMinimize(id string, resolver Resolver) *ResponseMinimize {
 // Resolve a DNS query using a random resolver.
 func (r *ResponseMinimize) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || answer == nil {
 		return answer, err
 	}
 	Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("stripping response")

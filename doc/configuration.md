@@ -23,6 +23,7 @@
   - [Client Blocklist](#Client-Blocklist)
   - [EDNS0 Client Subnet modifier](#EDNS0-Client-Subnet-Modifier)
   - [Static responder](#Static-responder)
+  - [Drop](#Drop)
   - [Response Minimizer](#Response-Minimizer)
   - [Response Collapse](#Response-Collapse)
   - [Router](#Router)
@@ -782,7 +783,35 @@ routes = [
 ]
 ```
 
-Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml),
+Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml)
+
+### Drop
+
+Terminates a pipeline by dropping the request. Typically used with blocklists to abort queries that match block rules. UDP and TCP listeners close the connection without replying, while HTTP listeners will reply with an HTTP error.
+
+#### Configuration
+
+A drop group is instantiated with `type = "drop"` in the groups section of the configuration.
+
+Examples:
+
+Client blocklist that drops requests from clients on the blocklist.
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist-resolver  = "drop" # Any match is sent to a resolver that drops the query
+blocklist           = [
+  '157.240.0.0/16',
+]
+
+[groups.drop]
+type = "drop"
+
+```
+
+Example config files: [client-blocklist-drop.toml](../cmd/routedns/example-config/client-blocklist-drop.toml)
 
 ### Response Minimizer
 

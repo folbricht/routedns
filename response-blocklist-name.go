@@ -44,7 +44,7 @@ func NewResponseBlocklistName(id string, resolver Resolver, opt ResponseBlocklis
 // strings against a blocklist. Responds with NXDOMAIN if the response matches the filter.
 func (r *ResponseBlocklistName) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || answer == nil {
 		return answer, err
 	}
 	return r.blockIfMatch(q, answer, ci)
