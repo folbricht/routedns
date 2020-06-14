@@ -620,7 +620,7 @@ Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-confi
 
 ### Client Blocklist
 
-Client blocklists match the IP of the client instead of responses. The same options as with [response-blocklist-ip](#Response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
+Client blocklists match the IP of the client instead of responses. By default, a client on the blocklist will receive a REFUSED, though other responses can be configured by combining it with a `static-responder` The same options as with [response-blocklist-ip](#Response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
 
 #### Configuration
 
@@ -639,7 +639,7 @@ Options:
 
 Examples:
 
-Simple client blocklists that responds with NXDOMAIN to all queries from one network source
+Simple client blocklists that responds with DROP to all queries from one network source
 
 ```toml
 [groups.cloudflare-blocklist]
@@ -650,20 +650,19 @@ blocklist           = [
 ]
 ```
 
-This client blocklist uses the `blocklist-resolver` option to send queries from matching clients to a static responder which replies with REFUSED.
+This client blocklist uses the `blocklist-resolver` option to send queries from matching clients to a resolver that drops the query.
 
 ```toml
 [groups.cloudflare-blocklist]
 type                = "client-blocklist"
 resolvers           = ["cloudflare-dot"]
-blocklist-resolver  = "static-refused" # Any match is sent to a static responder
+blocklist-resolver  = "drop-all"
 blocklist           = [
   '157.240.0.0/16',
 ]
 
-[groups.static-refused]
-type  = "static-responder"
-rcode = 5 # REFUSED
+[groups.drop-all]
+type = "drop"
 ```
 
 Example config files: [client-blocklist.toml](../cmd/routedns/example-config/client-blocklist.toml), [client-blocklist-refused.toml](../cmd/routedns/example-config/client-blocklist-refused.toml), [client-blocklist-geo.toml](../cmd/routedns/example-config/client-blocklist-geo.toml)

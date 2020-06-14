@@ -40,7 +40,7 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 }
 
 // Resolve a DNS query after checking the client's IP against a blocklist. Responds with
-// NXDOMAIN if the client IP is on the blocklist, or sends the query to an alternative
+// REFUSED if the client IP is on the blocklist, or sends the query to an alternative
 // resolver if one is configured.
 func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if rule, ok := r.BlocklistDB.Match(ci.SourceIP); ok {
@@ -50,7 +50,7 @@ func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return r.BlocklistResolver.Resolve(q, ci)
 		}
 		log.Debug("blocking client")
-		return nxdomain(q), nil
+		return refused(q), nil
 	}
 
 	return r.resolver.Resolve(q, ci)

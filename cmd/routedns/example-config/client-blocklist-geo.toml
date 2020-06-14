@@ -9,16 +9,11 @@ resolver = "cloudflare-blocklist"
 [groups.cloudflare-blocklist]
 type                = "client-blocklist"
 resolvers           = ["cloudflare-dot"]
-blocklist-resolver  = "static-refused" # Any match is sent to a static responder
 blocklist-format    = "location"
 blocklist           = [
   "6255148", # Europe
   "2017370", # Russia
 ]
-
-[groups.static-refused]
-type  = "static-responder"
-rcode = 5 # REFUSED
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"

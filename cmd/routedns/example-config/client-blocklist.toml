@@ -1,4 +1,4 @@
-# Filters based on client IP. Matching clients will receive an NXDOMAIN in this
+# Filters based on client IP. Matching clients will receive a REFUSED in this
 # configuration.
 
 [listeners.local-udp]
