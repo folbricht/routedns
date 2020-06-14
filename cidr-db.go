@@ -30,6 +30,14 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 		if strings.HasPrefix(r, "#") || r == "" {
 			continue
 		}
+		// Append a mask suffix if there isn't one already
+		if !strings.Contains(r, "/") {
+			if strings.Contains(r, ".") { // ip4
+				r += "/32"
+			} else if strings.Contains(r, ":") { // ip6
+				r += "/128"
+			}
+		}
 		ip, n, err := net.ParseCIDR(r)
 		if err != nil {
 			return nil, err
