@@ -55,7 +55,7 @@ func NewDomainDB(loader BlocklistLoader) (*DomainDB, error) {
 			n = subNode
 		}
 	}
-	return &DomainDB{root: root}, nil
+	return &DomainDB{root, loader}, nil
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
