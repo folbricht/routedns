@@ -54,6 +54,7 @@ func NewGeoIPDB(loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
 		geoDB:     geoDB,
 		geoDBFile: geoDBFile,
 		db:        db,
+		loader:    loader,
 	}, nil
 }
 
