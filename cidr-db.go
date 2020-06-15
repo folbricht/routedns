@@ -22,8 +22,9 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 		return nil, err
 	}
 	db := &CidrDB{
-		ip4: new(ipBlocklistTrie),
-		ip6: new(ipBlocklistTrie),
+		ip4:    new(ipBlocklistTrie),
+		ip6:    new(ipBlocklistTrie),
+		loader: loader,
 	}
 	for _, r := range rules {
 		r = strings.TrimSpace(r)
