@@ -484,6 +484,43 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "client-blocklist":
+		if len(gr) != 1 {
+			return fmt.Errorf("type client-blocklist only supports one resolver in '%s'", id)
+		}
+		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
+			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
+		}
+		var blocklistDB rdns.IPBlocklistDB
+		if len(g.Blocklist) > 0 {
+			blocklistDB, err = newIPBlocklistDB(g.BlocklistFormat, "", g.LocationDB, g.Blocklist)
+			if err != nil {
+				return err
+			}
+		} else {
+			var dbs []rdns.IPBlocklistDB
+			for _, s := range g.BlocklistSource {
+				db, err := newIPBlocklistDB(s.Format, s.Source, g.LocationDB, nil)
+				if err != nil {
+					return fmt.Errorf("%s: %w", id, err)
+				}
+				dbs = append(dbs, db)
+			}
+			blocklistDB, err = rdns.NewMultiIPDB(dbs...)
+			if err != nil {
+				return err
+			}
+		}
+		opt := rdns.ClientBlocklistOptions{
+			BlocklistResolver: resolvers[g.BlockListResolver],
+			BlocklistDB:       blocklistDB,
+			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+		}
+		resolvers[id], err = rdns.NewClientBlocklist(id, gr[0], opt)
+		if err != nil {
+			return err
+		}
+
 	case "static-responder":
 		opt := rdns.StaticResolverOptions{
 			Answer: g.Answer,
@@ -505,6 +542,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("type response-collapse only supports one resolver in '%s'", id)
 		}
 		resolvers[id] = rdns.NewResponseCollapse(id, gr[0])
+	case "drop":
+		resolvers[id] = rdns.NewDropResolver(id)
 
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)

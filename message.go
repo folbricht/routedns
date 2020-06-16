@@ -17,3 +17,11 @@ func nxdomain(q *dns.Msg) *dns.Msg {
 	a.SetRcode(q, dns.RcodeNameError)
 	return a
 }
+
+// Returns a REFUSED answer for a query
+func refused(q *dns.Msg) *dns.Msg {
+	a := new(dns.Msg)
+	a.SetReply(q)
+	a.SetRcode(q, dns.RcodeRefused)
+	return a
+}

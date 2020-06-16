@@ -37,7 +37,7 @@ func NewTTLModifier(id string, resolver Resolver, opt TTLModifierOptions) *TTLMo
 // on the response.
 func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	a, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || a == nil {
 		return a, err
 	}
 

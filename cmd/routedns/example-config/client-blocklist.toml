@@ -1,0 +1,18 @@
+# Filters based on client IP. Matching clients will receive a REFUSED in this
+# configuration.
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist           = [
+  '157.240.0.0/16',
+]
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"

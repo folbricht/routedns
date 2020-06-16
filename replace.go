@@ -75,7 +75,7 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Send the query upstream
 	log.WithField("new-qname", newName).Debug("forwarding modified query to resolver")
 	a, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || a == nil {
 		return nil, err
 	}
 

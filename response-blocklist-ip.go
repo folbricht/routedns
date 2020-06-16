@@ -58,7 +58,7 @@ func NewResponseBlocklistIP(id string, resolver Resolver, opt ResponseBlocklistI
 // against a blocklist. Responds with NXDOMAIN if the response IP is in the filter-list.
 func (r *ResponseBlocklistIP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || answer == nil {
 		return answer, err
 	}
 	if answer.Rcode != dns.RcodeSuccess {

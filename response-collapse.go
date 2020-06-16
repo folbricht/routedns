@@ -22,7 +22,7 @@ func NewResponseCollapse(id string, resolver Resolver) *ResponseCollapse {
 // Resolve a DNS query using a random resolver.
 func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || answer == nil {
 		return answer, err
 	}
 	name := q.Question[0].Name

@@ -179,6 +179,12 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		a.SetRcode(q, dns.RcodeRefused)
 	}
 
+	// A nil response from the resolvers means "drop", return blank response
+	if a == nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	// Pad the packet according to rfc8467 and rfc7830
 	padAnswer(q, a)
 

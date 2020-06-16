@@ -78,7 +78,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || a == nil {
 		return nil, err
 	}
 

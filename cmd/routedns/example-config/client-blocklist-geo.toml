@@ -1,0 +1,20 @@
+# Filters client IPs based on geo location. Matching clients from
+# those locations will receive a REFUSED response.
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist-format    = "location"
+blocklist           = [
+  "6255148", # Europe
+  "2017370", # Russia
+]
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"

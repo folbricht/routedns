@@ -1,0 +1,22 @@
+# Filters based on client IP. Matching clients will receive a REFUSED response.
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[groups.cloudflare-blocklist]
+type                = "client-blocklist"
+resolvers           = ["cloudflare-dot"]
+blocklist-resolver  = "static-refused" # Any match is sent to a static responder
+blocklist           = [
+  '157.240.0.0/16',
+]
+
+[groups.static-refused]
+type  = "static-responder"
+rcode = 5 # REFUSED
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
