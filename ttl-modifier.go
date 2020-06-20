@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // TTLModifier passes queries to upstream resolvers and then modifies
@@ -59,7 +58,7 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 	if modified {
-		Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("modified response ttl")
+		logger(r.id, q, ci).Debug("modified response ttl")
 	}
 	return a, nil
 }

@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // ResponseMinimize is a resolver that strips Extra and Authority records
@@ -25,7 +24,7 @@ func (r *ResponseMinimize) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 	if err != nil || answer == nil {
 		return answer, err
 	}
-	Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("stripping response")
+	logger(r.id, q, ci).Debug("stripping response")
 	answer.Extra = nil
 	answer.Ns = nil
 	return answer, nil

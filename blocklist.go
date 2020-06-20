@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // Blocklist is a resolver that returns NXDOMAIN or a spoofed IP for every query that
@@ -63,7 +62,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, errors.New("no question in query")
 	}
 	question := q.Question[0]
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": question.Name})
+	log := logger(r.id, q, ci)
 
 	r.mu.RLock()
 	blocklistDB := r.BlocklistDB

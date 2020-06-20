@@ -39,7 +39,7 @@ func NewRandom(id string, opt RandomOptions, resolvers ...Resolver) *Random {
 
 // Resolve a DNS query using a random resolver.
 func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
+	log := logger(r.id, q, ci)
 	for {
 		resolver := r.pick()
 		if resolver == nil {

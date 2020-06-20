@@ -7,7 +7,6 @@ import (
 	"regexp"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // Router for DNS requests based on query type and/or name. Implements the Resolver interface.
@@ -30,7 +29,7 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, errors.New("no question in query")
 	}
 	question := q.Question[0]
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": question.Name})
+	log := logger(r.id, q, ci)
 	for _, route := range r.routes {
 		if route.typ != 0 && route.typ != question.Qtype {
 			continue

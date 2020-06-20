@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // ResponseCollapse is a resolver that collapses response records to just the type
@@ -37,7 +36,7 @@ func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 		}
 	}
 	answer.Answer = aRR
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": name})
+	log := logger(r.id, q, ci)
 
 	// If there's nothing left after collapsing, return NXDOMAIN
 	if len(answer.Answer) == 0 {

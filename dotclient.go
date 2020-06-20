@@ -54,10 +54,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 
 // Resolve a DNS query.
 func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.WithFields(logrus.Fields{
-		"id":       d.id,
-		"client":   ci.SourceIP,
-		"qname":    qName(q),
+	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "dot",
 	}).Debug("querying upstream resolver")
