@@ -1,0 +1,73 @@
+# RouteDNS config with caching and multiple blocklists that are loaded and refreshed from remote
+# locations daily. DNS queries are received on the local network, filtered, cached and forwarded
+# over DoT to upstream resolvers.
+
+# Listeners for the local network. Can be restricted further to specific networks
+# with the "allowed-net" option
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cache"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cache"
+
+# Cache
+[groups.cache]
+type = "cache"
+resolvers = ["ttl-update"]
+cache-size = 8192
+cache-negative-ttl = 120
+
+# Update TTL to avoid noise using values that are too low
+[groups.ttl-update]
+type = "ttl-modifier"
+resolvers = ["blocklist"]
+ttl-min = 1800  # 30 Minutes
+ttl-max = 43200 # 12 Hours
+
+# Block queries (by name) using lists loaded from remote locations with HTTP and refreshed once a day
+[groups.blocklist]
+type = "blocklist-v2"
+resolvers = ["blocklist-response"]
+blocklist-refresh = 86400
+blocklist-source = [
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/easylist/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
+]
+
+# Block responses that include certain names. Also loaded via HTTP and refreshed daily
+[groups.blocklist-response]
+type = "response-blocklist-name"
+resolvers = ["blocklist-ip"]
+blocklist-refresh = 86400
+blocklist-source = [
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/cloak/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
+]
+
+# Block responses by IP ranges
+[groups.blocklist-ip]
+type = "response-blocklist-ip"
+resolvers = ["cloudflare"]
+blocklist-refresh = 86400
+blocklist-source = [
+	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-ip/plain.black.ip4cidr.list"},
+	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-ip/plain.black.ip6cidr.list"},
+]
+
+# Resolver group that uses 2 cloudflare upstream resolvers, additional ones can be added
+[groups.cloudflare]
+type = "fail-rotate"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-1"]
+
+# Cloudflare DNS-over-TLS
+[resolvers.cloudflare-dot-1]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-2]
+address = "1.0.0.1:853"
+protocol = "dot"
