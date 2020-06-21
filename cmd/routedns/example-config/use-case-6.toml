@@ -5,12 +5,12 @@
 # Listeners for the local network. Can be restricted further to specific networks
 # with the "allowed-net" option
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "cache"
 
 [listeners.local-tcp]
-address = ":1153"
+address = ":53"
 protocol = "tcp"
 resolver = "cache"
 
@@ -28,16 +28,14 @@ resolvers = ["blocklist"]
 ttl-min = 1800  # 30 Minutes
 ttl-max = 43200 # 12 Hours
 
-# Block queries (by name) using lists loaded from remote locations with HTTP and
-# refreshed once a day
+# Block queries (by name) using lists loaded from remote locations with HTTP and refreshed once a day
 [groups.blocklist]
 type = "blocklist-v2"
 resolvers = ["blocklist-response"]
 blocklist-refresh = 86400
 blocklist-source = [
-	#{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/oisd/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/easylist/routedns.blocklist.domain.list"},
 	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/covid/routedns.blocklist.domain.list"},
 ]
 
 # Block responses that include certain names. Also loaded via HTTP and refreshed daily
@@ -48,7 +46,6 @@ blocklist-refresh = 86400
 blocklist-source = [
 	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/cloak/routedns.blocklist.domain.list"},
 	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/covid/routedns.blocklist.domain.list"},
 ]
 
 # Block responses by IP ranges
