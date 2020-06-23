@@ -84,6 +84,12 @@ type group struct {
 	NS     []string
 	Extra  []string
 	RCode  int
+
+	// Rate-limiting options
+	Requests uint  // Number of requests allowed
+	Window   uint  // Time period in seconds for the requests
+	Prefix4  uint8 // Prefix bits to identify IPv4 client
+	Prefix6  uint8 // Prefix bits to identify IPv6 client
 }
 
 // Block/Allowlist items for blocklist-v2

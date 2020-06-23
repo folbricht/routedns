@@ -544,6 +544,17 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		resolvers[id] = rdns.NewResponseCollapse(id, gr[0])
 	case "drop":
 		resolvers[id] = rdns.NewDropResolver(id)
+	case "rate-limiter":
+		if len(gr) != 1 {
+			return fmt.Errorf("type rate-limiter only supports one resolver in '%s'", id)
+		}
+		opt := rdns.RateLimiterOptions{
+			Requests: g.Requests,
+			Window:   g.Window,
+			Prefix4:  g.Prefix4,
+			Prefix6:  g.Prefix6,
+		}
+		resolvers[id] = rdns.NewRateLimiter(id, gr[0], opt)
 
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)

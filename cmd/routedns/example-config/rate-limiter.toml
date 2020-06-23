@@ -1,0 +1,19 @@
+# Simple proxy using a cache.
+
+[listeners.local-udp]
+address = "127.0.0.1:1153"
+protocol = "udp"
+resolver = "cloudflare-rrl"
+
+[groups.cloudflare-rrl]
+type = "rate-limiter"
+resolvers = ["cloudflare-dot"]
+requests = 0   # Number of requests allowed per time period
+window = 60    # Number of seconds in the time period, default 60
+prefix4 = 24   # Prefix length for identifying an IPv4 client, default 24
+prefix6 = 56   # Prefix length for identifying an IPv6 client, default 56
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
