@@ -104,7 +104,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(query), "rule": rule, "ip": ip})
+				log := logger(r.id, query, ci).WithFields(logrus.Fields{"rule": rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -118,7 +118,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 }
 
 func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	answer.Answer = r.filterRR(query, answer.Answer)
+	answer.Answer = r.filterRR(query, ci, answer.Answer)
 	// If there's nothing left after applying the filter, return NXDOMAIN or send to the alternative resolver
 	if len(answer.Answer) == 0 {
 		log := Log.WithFields(logrus.Fields{"qname": qName(query)})
@@ -129,12 +129,12 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 		log.Debug("no answers after filtering, blocking response")
 		return nxdomain(query), nil
 	}
-	answer.Ns = r.filterRR(query, answer.Ns)
-	answer.Extra = r.filterRR(query, answer.Extra)
+	answer.Ns = r.filterRR(query, ci, answer.Ns)
+	answer.Extra = r.filterRR(query, ci, answer.Extra)
 	return answer, nil
 }
 
-func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, rrs []dns.RR) []dns.RR {
+func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.RR) []dns.RR {
 	newRRs := make([]dns.RR, 0, len(rrs))
 	for _, rr := range rrs {
 		var ip net.IP
@@ -148,7 +148,7 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, rrs []dns.RR) []dns.RR {
 			continue
 		}
 		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(query), "rule": rule, "ip": ip}).Debug("filtering response")
+			logger(r.id, query, ci).WithFields(logrus.Fields{"rule": rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)

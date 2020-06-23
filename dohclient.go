@@ -89,15 +89,11 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 
 // Resolve a DNS query.
 func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	log := Log.WithFields(logrus.Fields{
-		"id":       d.id,
-		"client":   ci.SourceIP,
-		"qname":    qName(q),
+	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "doh",
 		"method":   d.opt.Method,
-	})
-	log.Debug("querying upstream resolver")
+	}).Debug("querying upstream resolver")
 
 	// Add padding before sending the query over HTTPS
 	padQuery(q)

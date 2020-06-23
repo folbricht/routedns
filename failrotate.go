@@ -29,7 +29,7 @@ func NewFailRotate(id string, resolvers ...Resolver) *FailRotate {
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
+	log := logger(r.id, q, ci)
 	var gErr error
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()

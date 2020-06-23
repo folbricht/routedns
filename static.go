@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // StaticResolver is a resolver that always returns the same answer, to any question.
@@ -72,7 +71,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Extra = r.extra
 	answer.Rcode = r.rcode
 
-	Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)}).Debug("responding")
+	logger(r.id, q, ci).Debug("responding")
 
 	return answer, nil
 }

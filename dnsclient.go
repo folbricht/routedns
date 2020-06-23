@@ -34,10 +34,7 @@ func NewDNSClient(id, endpoint, net string) *DNSClient {
 
 // Resolve a DNS query.
 func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.WithFields(logrus.Fields{
-		"id":       d.id,
-		"client":   ci.SourceIP,
-		"qname":    qName(q),
+	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": d.net,
 	}).Debug("querying upstream resolver")

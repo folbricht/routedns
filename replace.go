@@ -5,7 +5,6 @@ import (
 	"regexp"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // Replace is a resolver that modifies queries according to regular expressions
@@ -54,14 +53,14 @@ func NewReplace(id string, resolver Resolver, list ...ReplaceOperation) (*Replac
 
 // Resolve a DNS query by first replacing the query string with another
 // sending the query upstream and replace the name in the response with
-// the orignal query string again.
+// the original query string again.
 func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if len(q.Question) < 1 {
 		return nil, errors.New("no question in query")
 	}
 	oldName := q.Question[0].Name
 	newName := r.exp.apply(oldName)
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": oldName, "resolver": r.resolver.String()})
+	log := logger(r.id, q, ci)
 
 	// if nothing needs modifying, we can stop here and use the original query
 	if newName == oldName {
@@ -73,7 +72,7 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	q.Question[0].Name = newName
 
 	// Send the query upstream
-	log.WithField("new-qname", newName).Debug("forwarding modified query to resolver")
+	log.WithField("new-qname", newName).WithField("resolver", r.resolver).Debug("forwarding modified query to resolver")
 	a, err := r.resolver.Resolve(q, ci)
 	if err != nil || a == nil {
 		return nil, err

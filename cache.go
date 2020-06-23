@@ -65,7 +65,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	log := Log.WithFields(logrus.Fields{"id": r.id, "client": ci.SourceIP, "qname": qName(q)})
+	log := logger(r.id, q, ci)
 
 	// Returned an answer from the cache if one exists
 	a, ok := r.answerFromCache(q)

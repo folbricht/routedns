@@ -77,10 +77,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 
 // Resolve a DNS query.
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	d.log.WithFields(logrus.Fields{
-		"id":     d.id,
-		"client": ci.SourceIP,
-		"qname":  qName(q),
+	logger(d.id, q, ci).WithFields(logrus.Fields{
+		"resolver": d.endpoint,
+		"protocol": "doq",
 	}).Debug("querying upstream resolver")
 
 	// Sending a edns-tcp-keepalive EDNS(0) option over DoQ is an error. Filter it out.

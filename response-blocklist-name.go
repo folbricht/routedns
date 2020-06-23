@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // ResponseBlocklistName is a resolver that filters by matching the strings in CNAME, MX,
@@ -89,7 +88,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				continue
 			}
 			if _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
-				log := Log.WithFields(logrus.Fields{"id": r.id, "rule": rule})
+				log := logger(r.id, query, ci).WithField("rule", rule)
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)

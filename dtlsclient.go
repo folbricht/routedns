@@ -72,10 +72,7 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 
 // Resolve a DNS query.
 func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.WithFields(logrus.Fields{
-		"id":       d.id,
-		"client":   ci.SourceIP,
-		"qname":    qName(q),
+	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "dtls",
 	}).Debug("querying upstream resolver")
