@@ -86,10 +86,11 @@ type group struct {
 	RCode  int
 
 	// Rate-limiting options
-	Requests uint  // Number of requests allowed
-	Window   uint  // Time period in seconds for the requests
-	Prefix4  uint8 // Prefix bits to identify IPv4 client
-	Prefix6  uint8 // Prefix bits to identify IPv6 client
+	Requests      uint   // Number of requests allowed
+	Window        uint   // Time period in seconds for the requests
+	Prefix4       uint8  // Prefix bits to identify IPv4 client
+	Prefix6       uint8  // Prefix bits to identify IPv6 client
+	LimitResolver string `toml:"limit-resolver"` // Resolver to use when rate-limit exceeded
 }
 
 // Block/Allowlist items for blocklist-v2

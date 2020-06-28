@@ -23,10 +23,11 @@ type RateLimiter struct {
 var _ Resolver = &RateLimiter{}
 
 type RateLimiterOptions struct {
-	Requests uint
-	Window   uint
-	Prefix4  uint8
-	Prefix6  uint8
+	Requests      uint     // Number of requests allwed per time period
+	Window        uint     // Time period in seconds
+	Prefix4       uint8    // Netmask to identify IP4 clients
+	Prefix6       uint8    // Netmask to identify IP6 clients
+	LimitResolver Resolver // Alternate resolver for rate-limited requests
 }
 
 // NewRateLimiterIP returns a new instance of a query rate limiter.
@@ -87,6 +88,10 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.mu.Unlock()
 
 	if reject {
+		if r.LimitResolver != nil {
+			log.WithField("resolver", r.LimitResolver).Debug("rate-limit exceeded, forwarding to limit-resolver")
+			return r.LimitResolver.Resolve(q, ci)
+		}
 		log.Debug("rate-limit reached, dropping")
 		return nil, nil
 	}
