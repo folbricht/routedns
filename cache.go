@@ -83,7 +83,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	// Put the upstream response into the cache and return it
-	r.storeInCache(a)
+	r.storeInCache(q, a)
 	return a, nil
 }
 
@@ -93,11 +93,10 @@ func (r *Cache) String() string {
 
 // Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
 func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
-	question := q.Question[0]
 	var answer *dns.Msg
 	var timestamp time.Time
 	r.mu.Lock()
-	if a := r.lru.get(question); a != nil {
+	if a := r.lru.get(q); a != nil {
 		answer = a.Copy()
 		timestamp = a.timestamp
 	}
@@ -123,7 +122,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 			}
 			h := a.Header()
 			if age >= h.Ttl {
-				r.evictFromCache(question)
+				r.evictFromCache(q)
 				return nil, false
 			}
 			h.Ttl -= age
@@ -133,7 +132,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 	return answer, true
 }
 
-func (r *Cache) storeInCache(answer *dns.Msg) {
+func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	now := time.Now()
 
 	// Prepare an item for the cache, without expiry for now
@@ -161,14 +160,14 @@ func (r *Cache) storeInCache(answer *dns.Msg) {
 
 	// Store it in the cache
 	r.mu.Lock()
-	r.lru.add(item)
+	r.lru.add(query, item)
 	r.mu.Unlock()
 }
 
-func (r *Cache) evictFromCache(questions ...dns.Question) {
+func (r *Cache) evictFromCache(queries ...*dns.Msg) {
 	r.mu.Lock()
-	for _, question := range questions {
-		r.lru.delete(question)
+	for _, query := range queries {
+		r.lru.delete(query)
 	}
 	r.mu.Unlock()
 }
