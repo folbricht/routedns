@@ -8,12 +8,16 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
+
+// Read/Write timeout in the DoH server
+const dohServerTimeout = 10 * time.Second
 
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
 type DoHListener struct {
@@ -74,9 +78,11 @@ func (s *DoHListener) Start() error {
 // Start the DoH server with TCP transport.
 func (s *DoHListener) startTCP() error {
 	s.httpServer = &http.Server{
-		Addr:      s.addr,
-		TLSConfig: s.opt.TLSConfig,
-		Handler:   s.mux,
+		Addr:         s.addr,
+		TLSConfig:    s.opt.TLSConfig,
+		Handler:      s.mux,
+		ReadTimeout:  dohServerTimeout,
+		WriteTimeout: dohServerTimeout,
 	}
 
 	ln, err := net.Listen("tcp", s.addr)
@@ -91,9 +97,11 @@ func (s *DoHListener) startTCP() error {
 func (s *DoHListener) startQUIC() error {
 	s.quicServer = &http3.Server{
 		Server: &http.Server{
-			Addr:      s.addr,
-			TLSConfig: s.opt.TLSConfig,
-			Handler:   s.mux,
+			Addr:         s.addr,
+			TLSConfig:    s.opt.TLSConfig,
+			Handler:      s.mux,
+			ReadTimeout:  dohServerTimeout,
+			WriteTimeout: dohServerTimeout,
 		},
 		QuicConfig: &quic.Config{},
 	}
