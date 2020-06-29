@@ -27,6 +27,7 @@
   - [Response Minimizer](#Response-Minimizer)
   - [Response Collapse](#Response-Collapse)
   - [Router](#Router)
+  - [Rate Limiter](#Rate-Limiter)
 - [Resolvers](#Resolvers)
   - [Plain DNS](#Plain-DNS-Resolver)
   - [DNS-over-TLS](#DNS-over-TLS-Resolver)
@@ -906,6 +907,53 @@ routes = [
 ```
 
 Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml),[walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml)
+
+### Rate Limiter
+
+This element is used to limit the number of queries a client or network is allowed to make in a given time period. It uses a fixed window algorithm and by default drops any queries that exceed the configured maximum. Alternatively, a `limit-resolver` can be configured to route such queries to other elements such as [static responders](#Static-responder) or other resolvers.
+
+#### Configuration
+
+A rate limiter element is instantiated with `type = "rate-limiter"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `limit-resolver` - Upstream element to route rate-limited requests to. Optional, default behavior is to drop such queries.
+- `requests` - Number of requests allowed per time period.
+- `window` - Number of seconds in the time period, default 60.
+- `prefix4` - Prefix length for identifying an IPv4 client, default 24
+- `prefix6` - Prefix length for identifying an IPv6 client, default 56
+
+Examples:
+
+Simple rate-limiter allowing 200 requests per minute from the same /24 (or /56) networks.
+
+```toml
+[groups.rrl]
+type = "rate-limiter"
+resolvers = ["cloudflare-dot"]
+requests = 200
+```
+
+Rate-limiter allowing 100 queries from a /24 (or /56) network per 2 minutes. Queries that exceed the limit will be answered with REFUSED.
+
+```toml
+[groups.rrl]
+type = "rate-limiter"
+resolvers = ["cloudflare-dot"]
+limit-resolver = "static-refused"
+requests = 100
+window = 120
+prefix4 = 24
+prefix6 = 56
+
+[groups.static-refused]
+type  = "static-responder"
+rcode = 5 # REFUSED
+```
+
+Example config files: [rate-limiter.toml](../cmd/routedns/example-config/rate-limiter.toml)
 
 ## Resolvers
 
