@@ -12,7 +12,12 @@ import (
 func TestLRUAddGet(t *testing.T) {
 	c := newLRUCache(5)
 
-	var answers []*cacheAnswer
+	type item struct {
+		query  *dns.Msg
+		answer *cacheAnswer
+	}
+	var items []item
+
 	for i := 0; i < 10; i++ {
 		msg := new(dns.Msg)
 		msg.SetQuestion(fmt.Sprintf("test%d.com.", i), dns.TypeA)
@@ -27,28 +32,31 @@ func TestLRUAddGet(t *testing.T) {
 				A: net.IP{127, 0, 0, 1},
 			},
 		}
-		item := &cacheAnswer{Msg: msg}
-		answers = append(answers, item)
+		answer := &cacheAnswer{Msg: msg}
+		items = append(items, item{
+			query:  msg,
+			answer: answer,
+		})
 		// Load into the cache
-		c.add(item)
+		c.add(msg, answer)
 	}
 
 	// Since the capacity is only 5 and we loaded 10, only the last 5 should be in there
 	require.Equal(t, 5, c.size())
 
 	// Check it's the right items in the cache
-	for _, item := range answers[:5] {
-		answer := c.get(item.Question[0])
+	for _, item := range items[:5] {
+		answer := c.get(item.query)
 		require.Nil(t, answer)
 	}
-	for _, item := range answers[5:] {
-		answer := c.get(item.Question[0])
+	for _, item := range items[5:] {
+		answer := c.get(item.query)
 		require.NotNil(t, answer)
-		require.Equal(t, item, answer)
+		require.Equal(t, item.answer, answer)
 	}
 
 	// Delete one of the items directly
-	c.delete(answers[5].Question[0])
+	c.delete(items[5].query)
 	require.Equal(t, 4, c.size())
 
 	// Use an iterator to delete two more

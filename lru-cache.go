@@ -8,13 +8,19 @@ import (
 
 type lruCache struct {
 	maxItems   int
-	items      map[dns.Question]*cacheItem
+	items      map[lruKey]*cacheItem
 	head, tail *cacheItem
 }
 
 type cacheItem struct {
+	key lruKey
 	*cacheAnswer
 	prev, next *cacheItem
+}
+
+type lruKey struct {
+	question dns.Question
+	net      string
 }
 
 type cacheAnswer struct {
@@ -31,33 +37,34 @@ func newLRUCache(capacity int) *lruCache {
 
 	return &lruCache{
 		maxItems: capacity,
-		items:    make(map[dns.Question]*cacheItem),
+		items:    make(map[lruKey]*cacheItem),
 		head:     head,
 		tail:     tail,
 	}
 }
 
-func (c *lruCache) add(answer *cacheAnswer) {
-	question := answer.Question[0]
-	item := c.touch(question)
+func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) {
+	key := lruKeyFromQuery(query)
+	item := c.touch(key)
 	if item != nil {
 		return
 	}
 	// Add new item to the top of the linked list
 	item = &cacheItem{
+		key:         key,
 		cacheAnswer: answer,
 		next:        c.head.next,
 		prev:        c.head,
 	}
 	c.head.next.prev = item
 	c.head.next = item
-	c.items[question] = item
+	c.items[key] = item
 	c.resize()
 }
 
 // Loads a cache item and puts it to the top of the queue (most recent).
-func (c *lruCache) touch(question dns.Question) *cacheItem {
-	item := c.items[question]
+func (c *lruCache) touch(key lruKey) *cacheItem {
+	item := c.items[key]
 	if item == nil {
 		return nil
 	}
@@ -71,25 +78,27 @@ func (c *lruCache) touch(question dns.Question) *cacheItem {
 	return item
 }
 
-func (c *lruCache) delete(question dns.Question) {
-	item := c.items[question]
+func (c *lruCache) delete(q *dns.Msg) {
+	key := lruKeyFromQuery(q)
+	item := c.items[key]
 	if item == nil {
 		return
 	}
 	item.prev.next = item.next
 	item.next.prev = item.prev
-	delete(c.items, item.Question[0])
+	delete(c.items, key)
 }
 
-func (c *lruCache) get(question dns.Question) *cacheAnswer {
-	item := c.touch(question)
+func (c *lruCache) get(query *dns.Msg) *cacheAnswer {
+	key := lruKeyFromQuery(query)
+	item := c.touch(key)
 	if item != nil {
 		return item.cacheAnswer
 	}
 	return nil
 }
 
-// Shrink the cache down to the maximum number of itmes.
+// Shrink the cache down to the maximum number of items.
 func (c *lruCache) resize() {
 	if c.maxItems <= 0 { // no size limit
 		return
@@ -99,7 +108,7 @@ func (c *lruCache) resize() {
 		item := c.tail.prev
 		item.prev.next = c.tail
 		c.tail.prev = item.prev
-		delete(c.items, item.Question[0])
+		delete(c.items, item.key)
 	}
 }
 
@@ -111,7 +120,7 @@ func (c *lruCache) deleteFunc(f func(*cacheAnswer) bool) {
 		if f(item.cacheAnswer) {
 			item.prev.next = item.next
 			item.next.prev = item.prev
-			delete(c.items, item.Question[0])
+			delete(c.items, item.key)
 		}
 		item = item.next
 	}
@@ -119,4 +128,19 @@ func (c *lruCache) deleteFunc(f func(*cacheAnswer) bool) {
 
 func (c *lruCache) size() int {
 	return len(c.items)
+}
+
+func lruKeyFromQuery(q *dns.Msg) lruKey {
+	key := lruKey{question: q.Question[0]}
+
+	edns0 := q.IsEdns0()
+	if edns0 != nil {
+		// See if we have a subnet option
+		for _, opt := range edns0.Option {
+			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
+				key.net = subnet.Address.String()
+			}
+		}
+	}
+	return key
 }

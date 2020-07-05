@@ -14,8 +14,3 @@ cache-negative-ttl = 10         # Optional, TTL to apply to responses without a 
 address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cloudflare-cached"
-
-[listeners.local-tcp]
-address = "127.0.0.1:53"
-protocol = "tcp"
-resolver = "cloudflare-cached"
