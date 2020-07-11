@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"time"
@@ -122,6 +123,7 @@ func start(opt options, args []string) error {
 				TLSConfig:     tlsConfig,
 				BootstrapAddr: r.BootstrapAddr,
 				Transport:     r.Transport,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 			}
 			resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 			if err != nil {

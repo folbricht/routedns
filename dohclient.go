@@ -33,6 +33,9 @@ type DoHClientOptions struct {
 	// Transport protocol to run HTTPS over. "quic" or "tcp", defaults to "tcp".
 	Transport string
 
+	// Local IP to use for outbound connections. If nil, a local address is chosen.
+	LocalAddr net.IP
+
 	TLSConfig *tls.Config
 }
 
@@ -195,15 +198,17 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		}
 	}
 
-	// Use a custom dialer if a bootstrap address was provided
-	if opt.BootstrapAddr != "" {
-		var d net.Dialer
+	// Use a custom dialer if a bootstrap address or local address was provided
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil {
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
+			if opt.BootstrapAddr != "" {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
-			addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			return d.DialContext(ctx, network, addr)
 		}
 	}

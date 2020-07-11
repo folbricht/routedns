@@ -39,6 +39,7 @@ type resolver struct {
 	ClientKey     string `toml:"client-key"`
 	ClientCrt     string `toml:"client-crt"`
 	BootstrapAddr string `toml:"bootstrap-address"`
+	LocalAddr     string `toml:"local-address"`
 }
 
 // DoH-specific resolver options
