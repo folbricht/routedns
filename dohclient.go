@@ -26,7 +26,7 @@ type DoHClientOptions struct {
 	// Query method, either GET or POST. If empty, POST is used.
 	Method string
 
-	// Bootstrap address - IP to use for the serivce instead of looking up
+	// Bootstrap address - IP to use for the service instead of looking up
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
@@ -216,6 +216,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 }
 
 func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
+	if opt.LocalAddr != nil {
+		return nil, errors.New("quic transport does not support local address config")
+	}
 	tr := &http3.RoundTripper{
 		TLSClientConfig: opt.TLSConfig,
 		QuicConfig:      &quic.Config{},
