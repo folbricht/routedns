@@ -81,6 +81,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DoQClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				TLSConfig:     tlsConfig,
 			}
 			resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
@@ -94,6 +95,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DoTClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				TLSConfig:     tlsConfig,
 			}
 			resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
@@ -107,6 +109,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DTLSClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				DTLSConfig:    dtlsConfig,
 			}
 			resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)

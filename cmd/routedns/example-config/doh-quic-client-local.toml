@@ -12,8 +12,3 @@ ca = "example-config/server.crt"
 address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cloudflare-doh-quic"
-
-[listeners.local-tcp]
-address = "127.0.0.1:53"
-protocol = "tcp"
-resolver = "cloudflare-doh-quic"

@@ -23,6 +23,9 @@ type DTLSClientOptions struct {
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
+	// Local IP to use for outbound connections. If nil, a local address is chosen.
+	LocalAddr net.IP
+
 	DTLSConfig *dtls.Config
 }
 
@@ -59,8 +62,14 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	}
 	addr := &net.UDPAddr{IP: ip, Port: p}
 
+	var laddr *net.UDPAddr
+	if opt.LocalAddr != nil {
+		laddr = &net.UDPAddr{IP: opt.LocalAddr}
+	}
+
 	client := &dtlsDialer{
-		addr:       addr,
+		raddr:      addr,
+		laddr:      laddr,
 		dtlsConfig: opt.DTLSConfig,
 	}
 	return &DTLSClient{
@@ -87,11 +96,16 @@ func (d *DTLSClient) String() string {
 }
 
 type dtlsDialer struct {
-	addr       *net.UDPAddr
+	raddr      *net.UDPAddr
+	laddr      *net.UDPAddr
 	dtlsConfig *dtls.Config
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
-	c, err := dtls.Dial("udp", d.addr, d.dtlsConfig)
+	pConn, err := net.DialUDP("udp", d.laddr, d.raddr)
+	if err != nil {
+		return nil, err
+	}
+	c, err := dtls.Client(pConn, d.dtlsConfig)
 	return &dns.Conn{Conn: c}, err
 }

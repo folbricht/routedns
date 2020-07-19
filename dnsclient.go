@@ -26,7 +26,7 @@ var _ Resolver = &DNSClient{}
 // NewDNSClient returns a new instance of DNSClient which is a plain DNS resolver
 // that supports pipelining over a single connection.
 func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) *DNSClient {
-	// Use a custom dialer if a bootstrap address or local address was provided
+	// Use a custom dialer if a local address was provided
 	var dialer *net.Dialer
 	if opt.LocalAddr != nil {
 		switch network {
