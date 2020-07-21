@@ -26,12 +26,15 @@ type DoHClientOptions struct {
 	// Query method, either GET or POST. If empty, POST is used.
 	Method string
 
-	// Bootstrap address - IP to use for the serivce instead of looking up
+	// Bootstrap address - IP to use for the service instead of looking up
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
 	// Transport protocol to run HTTPS over. "quic" or "tcp", defaults to "tcp".
 	Transport string
+
+	// Local IP to use for outbound connections. If nil, a local address is chosen.
+	LocalAddr net.IP
 
 	TLSConfig *tls.Config
 }
@@ -195,15 +198,17 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		}
 	}
 
-	// Use a custom dialer if a bootstrap address was provided
-	if opt.BootstrapAddr != "" {
-		var d net.Dialer
+	// Use a custom dialer if a bootstrap address or local address was provided
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil {
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
+			if opt.BootstrapAddr != "" {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
-			addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			return d.DialContext(ctx, network, addr)
 		}
 	}
@@ -215,16 +220,16 @@ func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		TLSClientConfig: opt.TLSConfig,
 		QuicConfig:      &quic.Config{},
 		Dial: func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+			hostname, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
 			if opt.BootstrapAddr != "" {
-				hostname, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
 				tlsConfig = tlsConfig.Clone()
 				tlsConfig.ServerName = hostname
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
-			return newQuicSession(addr, tlsConfig, config)
+			return newQuicSession(hostname, addr, opt.LocalAddr, tlsConfig, config)
 		},
 	}
 	return tr, nil
@@ -237,7 +242,9 @@ func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 type quicSession struct {
 	quic.Session
 
-	addr      string
+	hostname  string
+	rAddr     string
+	lAddr     net.IP
 	tlsConfig *tls.Config
 	config    *quic.Config
 	mu        sync.Mutex
@@ -245,8 +252,8 @@ type quicSession struct {
 	expiredContext context.Context
 }
 
-func newQuicSession(addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
-	session, err := quic.DialAddr(addr, tlsConfig, config)
+func newQuicSession(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+	session, err := quicDial(hostname, rAddr, lAddr, tlsConfig, config)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +261,9 @@ func newQuicSession(addr string, tlsConfig *tls.Config, config *quic.Config) (qu
 	cancel()
 
 	return &quicSession{
-		addr:           addr,
+		hostname:       hostname,
+		rAddr:          rAddr,
+		lAddr:          lAddr,
 		tlsConfig:      tlsConfig,
 		config:         config,
 		Session:        session,
@@ -272,7 +281,8 @@ func (s *quicSession) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	stream, err := s.Session.OpenStreamSync(ctx)
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		s.Session, err = quic.DialAddr(s.addr, s.tlsConfig, s.config)
+
+		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
@@ -287,11 +297,23 @@ func (s *quicSession) OpenStream() (quic.Stream, error) {
 	stream, err := s.Session.OpenStream()
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		s.Session, err = quic.DialAddr(s.addr, s.tlsConfig, s.config)
+		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
 		stream, err = s.Session.OpenStream()
 	}
 	return stream, err
+}
+
+func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.Session, error) {
+	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
+	if err != nil {
+		return nil, err
+	}
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	if err != nil {
+		return nil, err
+	}
+	return quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
 }

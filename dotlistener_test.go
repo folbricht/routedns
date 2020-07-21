@@ -80,7 +80,7 @@ func TestDoTListenerMutual(t *testing.T) {
 
 func TestDoTListenerPadding(t *testing.T) {
 	// Define a listener that does not respond with padding
-	upstream := NewDNSClient("test-dns", "8.8.8.8:53", "udp")
+	upstream := NewDNSClient("test-dns", "8.8.8.8:53", "udp", DNSClientOptions{})
 
 	// Find a free port for the listener
 	addr, err := getLnAddress()

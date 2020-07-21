@@ -970,6 +970,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `address` - Remote server endpoint and port. Can be IP or hostname, or a full URL depending on the protocol. See the [Bootstrapping](#Bootstrapping) on how to handle hostnames that can't be resolved.
 - `protocol` - The DNS protocol used to send queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`.
 - `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
+- `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 

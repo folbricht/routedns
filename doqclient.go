@@ -36,6 +36,9 @@ type DoQClientOptions struct {
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
+	// Local IP to use for outbound connections. If nil, a local address is chosen.
+	LocalAddr net.IP
+
 	TLSConfig *tls.Config
 }
 
@@ -52,11 +55,11 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	// hostname in the TLS handshake. The library doesn't support custom dialers, so
 	// instead set the ServerName in the TLS config to the name in the endpoint config, and
 	// replace the name in the endpoint with the bootstrap IP.
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse dot endpoint '%s'", endpoint)
+	}
 	if opt.BootstrapAddr != "" {
-		host, port, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse dot endpoint '%s'", endpoint)
-		}
 		opt.TLSConfig.ServerName = host
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)
 	}
@@ -68,7 +71,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		requests:         make(chan *request),
 		log:              log,
 		session: doqSession{
+			hostname:  host,
 			endpoint:  endpoint,
+			lAddr:     opt.LocalAddr,
 			tlsConfig: opt.TLSConfig,
 			log:       log,
 		},
@@ -151,7 +156,9 @@ func (d *DoQClient) String() string {
 }
 
 type doqSession struct {
+	hostname  string
 	endpoint  string
+	lAddr     net.IP
 	tlsConfig *tls.Config
 	log       *logrus.Entry
 
@@ -167,7 +174,7 @@ func (s *doqSession) getStream() (quic.Stream, error) {
 	// If we don't have a session yet, make one
 	if s.session == nil {
 		var err error
-		s.session, err = quic.DialAddr(s.endpoint, s.tlsConfig, nil)
+		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, nil)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open session")
 			return nil, err
@@ -178,7 +185,7 @@ func (s *doqSession) getStream() (quic.Stream, error) {
 	if err != nil {
 		// Try to open a new session
 		_ = s.session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		s.session, err = quic.DialAddr(s.endpoint, s.tlsConfig, nil)
+		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, nil)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open session")
 			return nil, err

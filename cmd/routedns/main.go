@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"time"
@@ -80,6 +81,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DoQClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				TLSConfig:     tlsConfig,
 			}
 			resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
@@ -93,6 +95,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DoTClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				TLSConfig:     tlsConfig,
 			}
 			resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
@@ -106,6 +109,7 @@ func start(opt options, args []string) error {
 			}
 			opt := rdns.DTLSClientOptions{
 				BootstrapAddr: r.BootstrapAddr,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 				DTLSConfig:    dtlsConfig,
 			}
 			resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
@@ -122,15 +126,17 @@ func start(opt options, args []string) error {
 				TLSConfig:     tlsConfig,
 				BootstrapAddr: r.BootstrapAddr,
 				Transport:     r.Transport,
+				LocalAddr:     net.ParseIP(r.LocalAddr),
 			}
 			resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 			if err != nil {
 				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
 			}
-		case "tcp":
-			resolvers[id] = rdns.NewDNSClient(id, r.Address, "tcp")
-		case "udp":
-			resolvers[id] = rdns.NewDNSClient(id, r.Address, "udp")
+		case "tcp", "udp":
+			opt := rdns.DNSClientOptions{
+				LocalAddr: net.ParseIP(r.LocalAddr),
+			}
+			resolvers[id] = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
 		}
