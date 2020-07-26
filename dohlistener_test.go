@@ -204,6 +204,14 @@ func TestClientBehindProxy(t *testing.T) {
 	r.Header.Add("X-Forwarded-For", "192.168.1.2, 10.0.1.6")
 	client = s.extractClientAddress(r)
 	require.Equal(t, "10.0.1.6", client.String())
+
+	// Our proxy is behind an untrusted proxy (10.0.1.6), ignore XFF.
+	// In the future we might parse XFF to determine the client is 192.168.1.2.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.1.6:1234"
+	r.Header.Add("X-Forwarded-For", "192.168.1.2, 10.0.0.2")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "10.0.1.6", client.String())
 }
 
 func TestIPv6Proxy(t *testing.T) {
