@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -655,9 +656,12 @@ func newIPBlocklistDB(format, source, locationDB string, rules []string) (rdns.I
 
 // Returns nil if the endpoint address is a valid IP or name
 func validEndpoint(addr string) error {
-	host, _, err := net.SplitHostPort(addr)
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
+	}
+	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+		return fmt.Errorf("invalid port: %w", err)
 	}
 	// See if we have a valid IP
 	if ip := net.ParseIP(host); ip != nil {
