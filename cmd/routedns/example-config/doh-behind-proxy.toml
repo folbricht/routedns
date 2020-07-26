@@ -1,0 +1,15 @@
+# Server-side of a simple DNS-over-HTTPS proxy that is behind a reverse proxy.
+# The X-Forwarded-For header from the reverse proxy (trusted-proxy: 192.168.1.2)
+# will be used to determine the client address.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-doh-quic]
+address = ":443"
+protocol = "doh"
+resolver = "cloudflare-dot"
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"
+trusted-proxy = "192.168.1.2"

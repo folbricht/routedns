@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
@@ -42,6 +43,9 @@ type DoHListenerOptions struct {
 	Transport string
 
 	TLSConfig *tls.Config
+
+	// IP(v4/v6) of a known reverse proxy in front of this server.
+	ProxyAddr *net.IP
 }
 
 // NewDoHListener returns an instance of a DNS-over-HTTPS listener.
@@ -159,15 +163,53 @@ func (s *DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
 	s.parseAndRespond(b, w, r)
 }
 
+// Extract the client address from the HTTP headers, accounting for known
+// reverse proxies.
+func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
+	client, _, _ := net.SplitHostPort(r.RemoteAddr)
+	clientIP := net.ParseIP(client)
+
+	// TODO: Prefer RFC 7239 Forwarded once https://github.com/golang/go/issues/30963
+	//       is resolved and provides a safe parser.
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+
+	// Simple case: No proxy (or empty/long X-Forwarded-For).
+	if s.opt.ProxyAddr == nil || xForwardedFor == "" || len(xForwardedFor) >= 1024 {
+		return clientIP
+	}
+
+	// If our client is a reverse proxy then use the last entry in X-Forwarded-For.
+	chain := strings.Split(xForwardedFor, ", ")
+	if clientIP != nil && s.opt.ProxyAddr.Equal(clientIP) {
+		if ip := net.ParseIP(chain[len(chain)-1]); ip != nil {
+			// Ignore XFF whe the client is local to the proxy.
+			if !ip.IsLoopback() {
+				return ip
+			}
+		}
+	}
+
+	// TODO: Decide whether to go deeper into the XFF chain (eg. two reverse proxies).
+	//       We have to be careful if we do, because then we're trusting an XFF that
+	//       may have been provided externally.
+
+	return clientIP
+}
+
 func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	// Extract the remote host address from the HTTP headers.
+	clientIP := s.extractClientAddress(r)
+	if clientIP == nil {
+		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
+		return
+	}
 	ci := ClientInfo{
-		SourceIP: net.ParseIP(host),
+		SourceIP: clientIP,
 	}
 	log := Log.WithFields(logrus.Fields{"id": s.id, "client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
 	log.Debug("received query")

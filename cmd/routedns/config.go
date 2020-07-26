@@ -28,6 +28,12 @@ type listener struct {
 	ServerCrt  string   `toml:"server-crt"`
 	MutualTLS  bool     `toml:"mutual-tls"`
 	AllowedNet []string `toml:"allowed-net"`
+	DoH        dohListener
+}
+
+// DoH-specific resolver options
+type dohListener struct {
+	ProxyAddr  string   `toml:"trusted-proxy"`
 }
 
 type resolver struct {

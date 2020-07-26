@@ -244,7 +244,17 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			ln, err := rdns.NewDoHListener(id, l.Address, rdns.DoHListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt, Transport: l.Transport}, resolver)
+			proxyAddr := net.ParseIP(l.DoH.ProxyAddr)
+			if l.DoH.ProxyAddr != "" && proxyAddr == nil {
+				return fmt.Errorf("listener '%s' proxy-address '%s' is not an IPv4 or IPv6 address", id, l.DoH.ProxyAddr)
+			}
+			opt := rdns.DoHListenerOptions{
+				TLSConfig:     tlsConfig,
+				ListenOptions: opt,
+				Transport:     l.Transport,
+				ProxyAddr:     &proxyAddr,
+			}
+			ln, err := rdns.NewDoHListener(id, l.Address, opt, resolver)
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,8 @@
 package rdns
 
 import (
+	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -52,6 +54,14 @@ func TestDoHListenerSimple(t *testing.T) {
 
 	// The upstream resolver should have seen the query
 	require.Equal(t, 2, upstream.HitCount())
+
+	// The listener should not use X-Forwarded-For if ProxyAddr is not set.
+	require.Nil(t, s.opt.ProxyAddr)
+	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "10.0.1.3")
+	client := s.extractClientAddress(r)
+	require.Equal(t, "10.0.0.2", client.String())
 }
 
 func TestDoHListenerMutual(t *testing.T) {
@@ -120,4 +130,117 @@ func TestDoHListenerMutualQUIC(t *testing.T) {
 
 	// The upstream resolver should have seen the query
 	require.Equal(t, 1, upstream.HitCount())
+}
+
+func TestClientBehindProxy(t *testing.T) {
+	upstream := new(TestResolver)
+
+	// Find a free port for the listener
+	addr, err := getLnAddress()
+	require.NoError(t, err)
+
+	// Create the listener
+	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
+	require.NoError(t, err)
+
+	expectedProxyAddr := "10.0.0.2"
+	proxyAddr := net.ParseIP(expectedProxyAddr)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, ProxyAddr: &proxyAddr}, upstream)
+	require.NoError(t, err)
+
+	// Verify that the ProxyAddr has been set.
+	require.Equal(t, expectedProxyAddr, s.opt.ProxyAddr.String())
+
+	// There is no proxy.
+	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "192.168.1.2:1234"
+	client := s.extractClientAddress(r)
+	require.Equal(t, "192.168.1.2", client.String())
+
+	// The client is our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	client = s.extractClientAddress(r)
+	require.Equal(t, expectedProxyAddr, client.String())
+
+	// The client is running on and behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "127.0.0.1")
+	client = s.extractClientAddress(r)
+	require.Equal(t, expectedProxyAddr, client.String())
+
+	// The IPv6 client is running on and behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "::1")
+	client = s.extractClientAddress(r)
+	require.Equal(t, expectedProxyAddr, client.String())
+
+	// The client is behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "10.0.1.5")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "10.0.1.5", client.String())
+
+	// X-Forwarded-For is invalid.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "my-other-computer")
+	client = s.extractClientAddress(r)
+	require.Equal(t, expectedProxyAddr, client.String())
+
+	// The IPv6 client behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "2001:4860:4860::8")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "2001:4860:4860::8", client.String())
+
+	// The client is behind an untrusted proxy (10.0.1.6) behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "192.168.1.2, 10.0.1.6")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "10.0.1.6", client.String())
+}
+
+func TestIPv6Proxy(t *testing.T) {
+	upstream := new(TestResolver)
+
+	// Find a free port for the listener
+	addr, err := getLnAddress()
+	require.NoError(t, err)
+
+	// Create the listener
+	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
+	require.NoError(t, err)
+
+	expectedProxyAddr := "2001:4860:4860::8"
+	proxyAddr := net.ParseIP(expectedProxyAddr)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, ProxyAddr: &proxyAddr}, upstream)
+	require.NoError(t, err)
+
+	// Verify that the ProxyAddr has been set.
+	require.Equal(t, expectedProxyAddr, s.opt.ProxyAddr.String())
+
+	// There is no proxy.
+	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "[2001:4860:4860::8]:1234"
+	client := s.extractClientAddress(r)
+	require.Equal(t, "2001:4860:4860::8", client.String())
+
+	// The client is our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "[2001:4860:4860::8]:1234"
+	client = s.extractClientAddress(r)
+	require.Equal(t, expectedProxyAddr, client.String())
+
+	// The client is behind our proxy.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "[2001:4860:4860::8]:1234"
+	r.Header.Add("X-Forwarded-For", "10.0.1.5")
+	client = s.extractClientAddress(r)
+	require.Equal(t, net.IPv4(10, 0, 1, 5), client)
 }
