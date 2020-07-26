@@ -227,9 +227,9 @@ func TestIPv6Proxy(t *testing.T) {
 
 	// There is no proxy.
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
-	r.RemoteAddr = "[2001:4860:4860::8]:1234"
+	r.RemoteAddr = "[2001:4860:4860::1]:1234"
 	client := s.extractClientAddress(r)
-	require.Equal(t, "2001:4860:4860::8", client.String())
+	require.Equal(t, "2001:4860:4860::1", client.String())
 
 	// The client is our proxy.
 	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
