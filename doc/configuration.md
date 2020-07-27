@@ -118,6 +118,10 @@ Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-
 - `ca` - CA to validate client certificated. Optional. Uses the operating system's CA store by default.
 - `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional.
 
+The DNS-over-HTTPS listener also accepts the client IP address from a trusted reverse proxy. X-Forwarded-For headers are only used if they are provided from this address
+
+- `trusted-proxy` - IP address of trusted reverse proxy. Optional.
+
 ### Plain DNS
 
 Regular (insecure) DNS protocol over port 53, UDP and TCP. Setting `protocol` to `udp` will start a UDP listener, and `tcp` starts a TCP listener. In many cases both are present in a configuration if RouteDNS is used to provide DNS to local services over the loopback device.
@@ -197,7 +201,19 @@ server-crt = "example-config/server.crt"
 server-key = "example-config/server.key"
 ```
 
-Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml)
+DoH behind a reverse proxy. Clients are expected to connect to the reverse proxy, which will provide their IP address in the X-Forwarded-For header. RouteDNS will trust this header from the proxy listed in `trusted-proxy`
+
+```toml
+[listeners.local-doh]
+address = ":443"
+protocol = "doh"
+resolver = "cloudflare-dot"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+trusted-proxy = "192.168.1.2"
+```
+
+Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml), [doh-behind-proxy.toml](../cmd/routedns/example-config/doh-behind-proxy.toml)
 
 ### DNS-over-DTLS
 
