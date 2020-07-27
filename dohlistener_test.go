@@ -55,8 +55,8 @@ func TestDoHListenerSimple(t *testing.T) {
 	// The upstream resolver should have seen the query
 	require.Equal(t, 2, upstream.HitCount())
 
-	// The listener should not use X-Forwarded-For if ProxyAddr is not set.
-	require.Nil(t, s.opt.ProxyAddr)
+	// The listener should not use X-Forwarded-For if HTTPProxyAddr is not set.
+	require.Nil(t, s.opt.HTTPProxyAddr)
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
 	r.RemoteAddr = "10.0.0.2:1234"
 	r.Header.Add("X-Forwarded-For", "10.0.1.3")
@@ -145,11 +145,11 @@ func TestClientBehindProxy(t *testing.T) {
 
 	expectedProxyAddr := "10.0.0.2"
 	proxyAddr := net.ParseIP(expectedProxyAddr)
-	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, ProxyAddr: &proxyAddr}, upstream)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyAddr: proxyAddr}, upstream)
 	require.NoError(t, err)
 
 	// Verify that the ProxyAddr has been set.
-	require.Equal(t, expectedProxyAddr, s.opt.ProxyAddr.String())
+	require.Equal(t, expectedProxyAddr, s.opt.HTTPProxyAddr.String())
 
 	// There is no proxy.
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
@@ -227,11 +227,11 @@ func TestIPv6Proxy(t *testing.T) {
 
 	expectedProxyAddr := "2001:4860:4860::8"
 	proxyAddr := net.ParseIP(expectedProxyAddr)
-	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, ProxyAddr: &proxyAddr}, upstream)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyAddr: proxyAddr}, upstream)
 	require.NoError(t, err)
 
 	// Verify that the ProxyAddr has been set.
-	require.Equal(t, expectedProxyAddr, s.opt.ProxyAddr.String())
+	require.Equal(t, expectedProxyAddr, s.opt.HTTPProxyAddr.String())
 
 	// There is no proxy.
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)

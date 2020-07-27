@@ -33,7 +33,7 @@ type listener struct {
 
 // DoH-specific resolver options
 type dohListener struct {
-	ProxyAddr  string   `toml:"trusted-proxy"`
+	HTTPProxyAddr string `toml:"trusted-proxy"`
 }
 
 type resolver struct {
