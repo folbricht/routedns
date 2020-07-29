@@ -246,7 +246,7 @@ func start(opt options, args []string) error {
 			}
 			_, httpProxyNet, err := net.ParseCIDR(l.Frontend.HTTPProxyNet)
 			if l.Frontend.HTTPProxyNet != "" && httpProxyNet == nil {
-				return fmt.Errorf("listener '%s' proxy-address '%s': %v", id, l.Frontend.HTTPProxyNet, err)
+				return fmt.Errorf("listener '%s' trusted-proxy '%s': %v", id, l.Frontend.HTTPProxyNet, err)
 			}
 			opt := rdns.DoHListenerOptions{
 				TLSConfig:     tlsConfig,
