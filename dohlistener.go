@@ -44,8 +44,8 @@ type DoHListenerOptions struct {
 
 	TLSConfig *tls.Config
 
-	// IP(v4/v6) of a known reverse proxy in front of this server.
-	HTTPProxyAddr net.IP
+	// IP(v4/v6) subnet of known reverse proxies in front of this server.
+	HTTPProxyNet *net.IPNet
 }
 
 // NewDoHListener returns an instance of a DNS-over-HTTPS listener.
@@ -174,13 +174,13 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 	xForwardedFor := r.Header.Get("X-Forwarded-For")
 
 	// Simple case: No proxy (or empty/long X-Forwarded-For).
-	if s.opt.HTTPProxyAddr == nil || xForwardedFor == "" || len(xForwardedFor) >= 1024 {
+	if s.opt.HTTPProxyNet == nil || xForwardedFor == "" || len(xForwardedFor) >= 1024 {
 		return clientIP
 	}
 
 	// If our client is a reverse proxy then use the last entry in X-Forwarded-For.
 	chain := strings.Split(xForwardedFor, ", ")
-	if clientIP != nil && s.opt.HTTPProxyAddr.Equal(clientIP) {
+	if clientIP != nil && s.opt.HTTPProxyNet.Contains(clientIP) {
 		if ip := net.ParseIP(chain[len(chain)-1]); ip != nil {
 			// Ignore XFF whe the client is local to the proxy.
 			if !ip.IsLoopback() {

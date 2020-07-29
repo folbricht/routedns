@@ -1,5 +1,5 @@
 # Server-side of a DNS-over-HTTPS proxy that is behind an HTTP reverse proxy.
-# The X-Forwarded-For header provided by the trusted-proxy (on 192.168.1.2)
+# The X-Forwarded-For header provided by any trusted-proxy in 192.168.1.0/24
 # will be used to determine the client address.
 
 [resolvers.cloudflare-dot]
@@ -12,4 +12,4 @@ protocol = "doh"
 resolver = "cloudflare-dot"
 server-crt = "example-config/server.crt"
 server-key = "example-config/server.key"
-trusted-proxy = "192.168.1.2"
+frontend = { trusted-proxy = "192.168.1.0/24" }
