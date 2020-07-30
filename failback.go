@@ -22,6 +22,10 @@ type FailBack struct {
 	failCh    chan struct{} // signal the timer to reset on failure
 	active    int
 	opt       FailBackOptions
+
+	expRoute    *varMap // Next route chosen
+	expFailure  *varMap // RouteDNS failure reason
+	expFailover *varInt // Failover count
 }
 
 // FailBackOptions contain group-specific options.
@@ -38,7 +42,14 @@ func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBac
 	if opt.ResetAfter == 0 {
 		opt.ResetAfter = time.Minute
 	}
-	return &FailBack{id: id, resolvers: resolvers, opt: opt}
+	return &FailBack{
+		id:          id,
+		resolvers:   resolvers,
+		opt:         opt,
+		expRoute:    getVarMap("router", id, "route"),
+		expFailure:  getVarMap("router", id, "failure"),
+		expFailover: getVarInt("router", id, "failover"),
+	}
 }
 
 // Resolve a DNS query using a failover resolver group that switches to the next
@@ -49,11 +60,13 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
+		r.expRoute.Add(resolver.String(), 1)
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		r.expFailure.Add(resolver.String(), 1)
 
 		// Record the error to be returned when all requests fail
 		gErr = err
@@ -84,6 +97,7 @@ func (r *FailBack) errorFrom(i int) {
 	if i != r.active {
 		return
 	}
+	r.expFailover.Add(1)
 	if r.failCh == nil { // lazy start the reset timer
 		r.failCh = r.startResetTimer()
 	}

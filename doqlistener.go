@@ -20,6 +20,12 @@ type DoQListener struct {
 	opt  DoQListenerOptions
 	ln   quic.Listener
 	log  *logrus.Entry
+
+	expSession  *varMap // Transport query was received over.
+	expStream   *varInt // Number of streams seen in all sessions.
+	expError    *varMap // RouteDNS failure reason.
+	expResponse *varMap // DNS response code.
+	expDrop     *varInt // Number of queries dropped internally.
 }
 
 var _ Listener = &DoQListener{}
@@ -38,11 +44,16 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 	}
 	opt.TLSConfig.NextProtos = []string{"dq"}
 	l := &DoQListener{
-		id:   id,
-		addr: addr,
-		r:    resolver,
-		opt:  opt,
-		log:  Log.WithFields(logrus.Fields{"id": id, "protocol": "doq", "addr": addr}),
+		id:          id,
+		addr:        addr,
+		r:           resolver,
+		opt:         opt,
+		log:         Log.WithFields(logrus.Fields{"id": id, "protocol": "doq", "addr": addr}),
+		expSession:  getVarMap("listener", id, "session"),
+		expStream:   getVarInt("listener", id, "stream"),
+		expResponse: getVarMap("listener", id, "response"),
+		expError:    getVarMap("listener", id, "error"),
+		expDrop:     getVarInt("listener", id, "drop"),
 	}
 	return l
 }
@@ -82,14 +93,17 @@ func (s DoQListener) handleSession(session quic.Session) {
 	var ci ClientInfo
 	switch addr := session.RemoteAddr().(type) {
 	case *net.TCPAddr:
+		s.expSession.Add("tcp", 1)
 		ci.SourceIP = addr.IP
 	case *net.UDPAddr:
+		s.expSession.Add("udp", 1)
 		ci.SourceIP = addr.IP
 	}
 	log := s.log.WithField("client", session.RemoteAddr())
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
 		log.Debug("rejecting incoming session")
+		s.expDrop.Add(1)
 		return
 	}
 	log.Trace("accepting incoming session")
@@ -102,6 +116,7 @@ func (s DoQListener) handleSession(session quic.Session) {
 			break
 		}
 		log.WithField("stream", stream.StreamID()).Trace("opening stream")
+		s.expStream.Add(1)
 		go func() {
 			s.handleStream(stream, log, ci)
 			cancel()
@@ -118,6 +133,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	b, err := ioutil.ReadAll(stream)
 	if err != nil {
+		s.expError.Add("read", 1)
 		log.WithError(err).Error("failed to read query")
 		return
 	}
@@ -125,6 +141,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	// Decode the query
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
+		s.expError.Add("unpack", 1)
 		log.WithError(err).Error("failed to decode query")
 		return
 	}
@@ -137,6 +154,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 		for _, opt := range edns0.Option {
 			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
 				log.Error("received edns-tcp-keepalive, aborting")
+				s.expError.Add("keepalive", 1)
 				return
 			}
 		}
@@ -149,16 +167,19 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
+	s.expResponse.Add(dns.RcodeToString[a.Rcode], 1)
 
 	out, err := a.Pack()
 	if err != nil {
 		log.WithError(err).Error("failed to encode response")
+		s.expError.Add("encode", 1)
 		return
 	}
 
 	// Send the response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	if _, err = stream.Write(out); err != nil {
+		s.expError.Add("send", 1)
 		log.WithError(err).Error("failed to send response")
 	}
 }

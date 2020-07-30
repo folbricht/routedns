@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -31,6 +32,13 @@ type DoHListener struct {
 	opt  DoHListenerOptions
 
 	mux *http.ServeMux
+
+	expSession  *varMap // Transport query was received over.
+	expMethod   *varMap // HTTP method used for query.
+	expQuery    *varInt // DNS query count.
+	expResponse *varMap // DNS response code.
+	expError    *varMap // RouteDNS failure reason.
+	expDrop     *varInt // Number of queries dropped internally.
 }
 
 var _ Listener = &DoHListener{}
@@ -60,19 +68,27 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 	}
 
 	l := &DoHListener{
-		id:   id,
-		addr: addr,
-		r:    resolver,
-		opt:  opt,
-		mux:  http.NewServeMux(),
+		id:          id,
+		addr:        addr,
+		r:           resolver,
+		opt:         opt,
+		mux:         http.NewServeMux(),
+		expSession:  getVarMap("listener", id, "session"),
+		expMethod:   getVarMap("listener", id, "method"),
+		expQuery:    getVarInt("listener", id, "query"),
+		expResponse: getVarMap("listener", id, "response"),
+		expError:    getVarMap("listener", id, "error"),
+		expDrop:     getVarInt("listener", id, "drop"),
 	}
 	l.mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
+	l.mux.Handle("/routedns/vars", expvar.Handler())
 	return l, nil
 }
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
 	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "doh", "addr": s.addr}).Info("starting listener")
+
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -126,6 +142,8 @@ func (s *DoHListener) String() string {
 }
 
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
+	s.expSession.Add(s.opt.Transport, 1)
+	s.expMethod.Add(r.Method, 1)
 	switch r.Method {
 	case "GET":
 		s.getHandler(w, r)
@@ -197,14 +215,17 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 }
 
 func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
+	s.expQuery.Add(1)
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
+		s.expError.Add("unpack", 1)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Extract the remote host address from the HTTP headers.
 	clientIP := s.extractClientAddress(r)
 	if clientIP == nil {
+		s.expError.Add("remoteaddr", 1)
 		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
 		return
 	}
@@ -231,6 +252,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 
 	// A nil response from the resolvers means "drop", return blank response
 	if a == nil {
+		s.expDrop.Add(1)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -238,8 +260,10 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	// Pad the packet according to rfc8467 and rfc7830
 	padAnswer(q, a)
 
+	s.expResponse.Add(dns.RcodeToString[a.Rcode], 1)
 	out, err := a.Pack()
 	if err != nil {
+		s.expError.Add("pack", 1)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

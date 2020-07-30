@@ -13,6 +13,8 @@ import (
 type Router struct {
 	id     string
 	routes []*route
+
+	expRoute *varMap // Next route chosen.
 }
 
 var _ Resolver = &Router{}
@@ -20,7 +22,10 @@ var _ Resolver = &Router{}
 // NewRouter returns a new router instance. The router won't have any routes and can only be used
 // once Add() is called to setup a route.
 func NewRouter(id string) *Router {
-	return &Router{id: id}
+	return &Router{
+		id:       id,
+		expRoute: getVarMap("router", id, "route"),
+	}
 }
 
 // Resolve a request by routing it to the right resolved based on the routes setup in the router.
@@ -44,6 +49,7 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			continue
 		}
 		log.WithField("resolver", route.resolver.String()).Debug("routing query to resolver")
+		r.expRoute.Add(route.resolver.String(), 1)
 		return route.resolver.Resolve(q, ci)
 	}
 	return nil, fmt.Errorf("no route for %s", question.String())

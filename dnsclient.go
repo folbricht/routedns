@@ -14,6 +14,7 @@ type DNSClient struct {
 	endpoint string
 	net      string
 	pipeline *Pipeline
+	// Pipeline also provides operation counters.
 }
 
 type DNSClientOptions struct {
@@ -46,7 +47,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) *DNSClient
 		id:       id,
 		net:      network,
 		endpoint: endpoint,
-		pipeline: NewPipeline(endpoint, client),
+		pipeline: NewPipeline(id, endpoint, client),
 	}
 }
 

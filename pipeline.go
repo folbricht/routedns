@@ -16,7 +16,7 @@ const queryTimeout = time.Second
 // Tear down an upstream connection if nothing has been received for this long.
 const idleTimeout = 10 * time.Second
 
-// Pipeline is a DNS client that is able to use pipelining for ultiple requests over
+// Pipeline is a DNS client that is able to use pipelining for multiple requests over
 // one connection, handle out-of-order responses and deals with disconnects
 // gracefully. It opens a single connection on demand and uses it for all queries.
 // It can manage UDP, TCP, DNS-over-TLS, and DNS-over-DTLS connections.
@@ -24,6 +24,11 @@ type Pipeline struct {
 	addr     string
 	client   DNSDialer
 	requests chan *request
+
+	expQuery       *varInt
+	expResponse    *varMap
+	expError       *varMap
+	expMaxQueueLen *varInt
 }
 
 // DNSDialer is an abstraction for a dns.Client that returns a *dns.Conn.
@@ -32,11 +37,15 @@ type DNSDialer interface {
 }
 
 // NewPipeline returns an initialized (and running) DNS connection manager.
-func NewPipeline(addr string, client DNSDialer) *Pipeline {
+func NewPipeline(id string, addr string, client DNSDialer) *Pipeline {
 	c := &Pipeline{
-		addr:     addr,
-		client:   client,
-		requests: make(chan *request),
+		addr:           addr,
+		client:         client,
+		requests:       make(chan *request),
+		expQuery:       getVarInt("pipeline", id, "query"),
+		expResponse:    getVarMap("pipeline", id, "response"),
+		expError:       getVarMap("pipeline", id, "error"),
+		expMaxQueueLen: getVarInt("pipeline", id, "maxqlen"),
 	}
 	go c.start()
 	return c
@@ -54,6 +63,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	select {
 	case <-r.done:
 	case <-timeout.C:
+		c.expError.Add("querytimeout", 1)
 		return nil, QueryTimeoutError{q}
 	}
 
@@ -74,6 +84,7 @@ func (c *Pipeline) start() {
 		log.Trace("opening connection")
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
+			c.expError.Add("open", 1)
 			log.WithError(err).Error("failed to open connection")
 			req.markDone(nil, err)
 			continue
@@ -88,11 +99,17 @@ func (c *Pipeline) start() {
 				case req := <-c.requests:
 					query := inFlight.add(req)
 					log.WithField("qname", qName(query)).Trace("sending query")
+					c.expQuery.Add(1)
+					ql := (int64)(inFlight.maxLen)
+					if ql > c.expMaxQueueLen.Value() {
+						c.expMaxQueueLen.Set(ql)
+					}
 					if err := conn.WriteMsg(query); err != nil {
 						req.markDone(nil, err) // fail the request
 						inFlight.get(query)    // clean up the in-flight queue so it doesn't keep growing
 						conn.Close()           // throw away this connection, should wake up the reader as well
 						wg.Done()
+						c.expError.Add("send_query", 1)
 						log.WithField("qname", qName(query)).WithError(err).Trace("failed sending query")
 						return
 					}
@@ -114,8 +131,10 @@ func (c *Pipeline) start() {
 					switch e := err.(type) {
 					case net.Error:
 						if e.Timeout() {
+							c.expError.Add("idle_timeout", 1)
 							log.Trace("connection terminated by idle timeout")
 						} else {
+							c.expError.Add("server_term", 1)
 							log.Trace("connection terminated by server")
 						}
 						close(done) // tell the writer to not use this connection anymore
@@ -123,6 +142,7 @@ func (c *Pipeline) start() {
 						return
 					default:
 						if err == io.EOF {
+							c.expError.Add("server_eof", 1)
 							log.Trace("connection terminated by server")
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
@@ -132,6 +152,7 @@ func (c *Pipeline) start() {
 						// In this case, return it and carry on, don't terminate the connection because we
 						// got a bad packet (like a truncated one for example).
 						if a == nil {
+							c.expError.Add("read", 1)
 							log.WithError(err).Error("read failed")
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
@@ -142,9 +163,11 @@ func (c *Pipeline) start() {
 				}
 				req := inFlight.get(a) // match the answer to an in-flight query
 				if req == nil {
+					c.expError.Add("unexpected_a", 1)
 					log.WithField("qname", qName(a)).Warn("unexpected answer received, ignoring")
 					continue
 				}
+				c.expResponse.Add(dns.RcodeToString[a.Rcode], 1)
 				req.markDone(a, nil)
 			}
 		}()
@@ -204,6 +227,7 @@ type inFlightQueue struct {
 	requests  map[uint16]*request
 	mu        sync.Mutex
 	idCounter uint16
+	maxLen    int
 }
 
 // Add a request to the queue and return an updated DNS query with a new ID. The ID needs
@@ -220,6 +244,9 @@ func (q *inFlightQueue) add(r *request) *dns.Msg {
 	q.requests[q.idCounter] = r
 	query := r.q.Copy()
 	query.Id = q.idCounter
+	if len(q.requests) > q.maxLen {
+		q.maxLen = len(q.requests)
+	}
 	return query
 }
 

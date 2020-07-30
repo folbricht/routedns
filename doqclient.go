@@ -28,6 +28,10 @@ type DoQClient struct {
 	log      *logrus.Entry
 
 	session doqSession
+
+	expQuery    *varInt // Query count
+	expResponse *varMap // DNS Response codes
+	expError    *varMap // RouteDNS failure reasons
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -77,6 +81,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 			tlsConfig: opt.TLSConfig,
 			log:       log,
 		},
+		expQuery:    getVarInt("client", id, "query"),
+		expResponse: getVarMap("client", id, "response"),
+		expError:    getVarMap("client", id, "error"),
 	}, nil
 }
 
@@ -86,6 +93,8 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"resolver": d.endpoint,
 		"protocol": "doq",
 	}).Debug("querying upstream resolver")
+
+	d.expQuery.Add(1)
 
 	// Sending a edns-tcp-keepalive EDNS(0) option over DoQ is an error. Filter it out.
 	edns0 := q.IsEdns0()
@@ -107,21 +116,25 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Encode the query
 	b, err := q.Pack()
 	if err != nil {
+		d.expError.Add("pack", 1)
 		return nil, err
 	}
 
 	// Get a new stream in the session
 	stream, err := d.session.getStream()
 	if err != nil {
+		d.expError.Add("getstream", 1)
 		return nil, err
 	}
 
 	// Write the query into the stream and close is. Only one stream per query/response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err = stream.Write(b); err != nil {
+		d.expError.Add("write", 1)
 		return nil, err
 	}
 	if err = stream.Close(); err != nil {
+		d.expError.Add("close", 1)
 		return nil, err
 	}
 
@@ -129,6 +142,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second))
 	b, err = ioutil.ReadAll(stream)
 	if err != nil {
+		d.expError.Add("read", 1)
 		return nil, err
 	}
 
@@ -143,10 +157,12 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		for _, opt := range edns0.Option {
 			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
 				d.log.Error("received edns-tcp-keepalive from doq server, aborting")
+				d.expError.Add("keepalive", 1)
 				return nil, errors.New("received edns-tcp-keepalive over doq server")
 			}
 		}
 	}
+	d.expResponse.Add(dns.RcodeToString[a.Rcode], 1)
 
 	return a, err
 }

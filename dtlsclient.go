@@ -15,6 +15,7 @@ type DTLSClient struct {
 	id       string
 	endpoint string
 	pipeline *Pipeline
+	// Pipeline also provides operation counters.
 }
 
 // DTLSClientOptions contains options used by the DNS-over-DTLS resolver.
@@ -75,7 +76,7 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	return &DTLSClient{
 		id:       id,
 		endpoint: endpoint,
-		pipeline: NewPipeline(endpoint, client),
+		pipeline: NewPipeline(id, endpoint, client),
 	}, nil
 }
 

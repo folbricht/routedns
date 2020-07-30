@@ -47,6 +47,11 @@ func (s DNSListener) String() string {
 
 // DNS handler to forward all incoming requests to a given resolver.
 func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
+	expSession := getVarMap("listener", id, "session")
+	expQuery := getVarInt("listener", id, "query")
+	expResponse := getVarMap("listener", id, "response")
+	expDrop := getVarInt("listener", id, "drop")
+	expError := getVarMap("listener", id, "header")
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		var (
 			ci  ClientInfo
@@ -56,23 +61,28 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		switch addr := w.RemoteAddr().(type) {
 		case *net.TCPAddr:
 			ci.SourceIP = addr.IP
+			expSession.Add("tcp", 1)
 		case *net.UDPAddr:
 			ci.SourceIP = addr.IP
+			expSession.Add("udp", 1)
 		}
 
 		log := Log.WithFields(logrus.Fields{"id": id, "client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
 		log.Debug("received query")
+		expQuery.Add(1)
 
 		a := new(dns.Msg)
 		if isAllowed(allowedNet, ci.SourceIP) {
 			log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
 			a, err = r.Resolve(req, ci)
 			if err != nil {
+				expError.Add("resolve", 1)
 				log.WithError(err).Error("failed to resolve")
 				a = new(dns.Msg)
 				a.SetRcode(req, dns.RcodeServerFailure)
 			}
 		} else {
+			expError.Add("acl", 1)
 			log.Debug("refusing client ip")
 			a.SetRcode(req, dns.RcodeRefused)
 		}
@@ -80,6 +90,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		// A nil response from the resolvers means "drop", close the connection
 		if a == nil {
 			w.Close()
+			expDrop.Add(1)
 			return
 		}
 
@@ -90,6 +101,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		} else {
 			stripPadding(a)
 		}
+		expResponse.Add(dns.RcodeToString[a.Rcode], 1)
 		_ = w.WriteMsg(a)
 	}
 }
