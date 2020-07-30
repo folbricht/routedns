@@ -244,9 +244,12 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			_, httpProxyNet, err := net.ParseCIDR(l.Frontend.HTTPProxyNet)
-			if l.Frontend.HTTPProxyNet != "" && httpProxyNet == nil {
-				return fmt.Errorf("listener '%s' trusted-proxy '%s': %v", id, l.Frontend.HTTPProxyNet, err)
+			var httpProxyNet *net.IPNet
+			if l.Frontend.HTTPProxyNet != "" {
+				_, httpProxyNet, err = net.ParseCIDR(l.Frontend.HTTPProxyNet)
+				if err != nil {
+					return fmt.Errorf("listener '%s' trusted-proxy '%s': %v", id, l.Frontend.HTTPProxyNet, err)
+				}
 			}
 			opt := rdns.DoHListenerOptions{
 				TLSConfig:     tlsConfig,
