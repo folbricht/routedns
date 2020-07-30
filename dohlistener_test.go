@@ -55,8 +55,8 @@ func TestDoHListenerSimple(t *testing.T) {
 	// The upstream resolver should have seen the query
 	require.Equal(t, 2, upstream.HitCount())
 
-	// The listener should not use X-Forwarded-For if HTTPProxyAddr is not set.
-	require.Nil(t, s.opt.HTTPProxyAddr)
+	// The listener should not use X-Forwarded-For if HTTPProxyNet is not set.
+	require.Nil(t, s.opt.HTTPProxyNet)
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
 	r.RemoteAddr = "10.0.0.2:1234"
 	r.Header.Add("X-Forwarded-For", "10.0.1.3")
@@ -144,12 +144,14 @@ func TestClientBehindProxy(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedProxyAddr := "10.0.0.2"
-	proxyAddr := net.ParseIP(expectedProxyAddr)
-	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyAddr: proxyAddr}, upstream)
+	expectedProxyNet := "10.0.0.2/32"
+	_, proxyNet, err := net.ParseCIDR(expectedProxyNet)
+	require.NoError(t, err)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyNet: proxyNet}, upstream)
 	require.NoError(t, err)
 
-	// Verify that the ProxyAddr has been set.
-	require.Equal(t, expectedProxyAddr, s.opt.HTTPProxyAddr.String())
+	// Verify that the ProxyNet has been set.
+	require.Equal(t, expectedProxyNet, s.opt.HTTPProxyNet.String())
 
 	// There is no proxy.
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
@@ -226,12 +228,14 @@ func TestIPv6Proxy(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedProxyAddr := "2001:4860:4860::8"
-	proxyAddr := net.ParseIP(expectedProxyAddr)
-	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyAddr: proxyAddr}, upstream)
+	expectedProxyNet := "2001:4860:4860::8/128"
+	_, proxyNet, err := net.ParseCIDR(expectedProxyNet)
+	require.NoError(t, err)
+	s, err := NewDoHListener("test-doh", addr, DoHListenerOptions{TLSConfig: tlsServerConfig, HTTPProxyNet: proxyNet}, upstream)
 	require.NoError(t, err)
 
-	// Verify that the ProxyAddr has been set.
-	require.Equal(t, expectedProxyAddr, s.opt.HTTPProxyAddr.String())
+	// Verify that the ProxyNet has been set.
+	require.Equal(t, expectedProxyNet, s.opt.HTTPProxyNet.String())
 
 	// There is no proxy.
 	r, _ := http.NewRequest("GET", "https://www.example.com", nil)
