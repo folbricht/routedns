@@ -8,7 +8,7 @@ import (
 )
 
 func TestDNSClientSimpleTCP(t *testing.T) {
-	d := NewDNSClient("test-dns", "8.8.8.8:53", "tcp", DNSClientOptions{})
+	d, _ := NewDNSClient("test-dns", "8.8.8.8:53", "tcp", DNSClientOptions{})
 	q := new(dns.Msg)
 	q.SetQuestion("google.com.", dns.TypeA)
 	r, err := d.Resolve(q, ClientInfo{})
@@ -17,7 +17,7 @@ func TestDNSClientSimpleTCP(t *testing.T) {
 }
 
 func TestDNSClientSimpleUDP(t *testing.T) {
-	d := NewDNSClient("test-dns", "8.8.8.8:53", "udp", DNSClientOptions{})
+	d, _ := NewDNSClient("test-dns", "8.8.8.8:53", "udp", DNSClientOptions{})
 	q := new(dns.Msg)
 	q.SetQuestion("google.com.", dns.TypeA)
 	r, err := d.Resolve(q, ClientInfo{})

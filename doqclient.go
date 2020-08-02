@@ -46,6 +46,9 @@ var _ Resolver = &DoQClient{}
 
 // NewDoQClient instantiates a new DNS-over-QUIC resolver.
 func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error) {
+	if err := validEndpoint(endpoint); err != nil {
+		return nil, err
+	}
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)
 	}
