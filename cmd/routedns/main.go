@@ -73,6 +73,7 @@ func start(opt options, args []string) error {
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("group resolver with duplicate id '%s", id)
 		}
+
 		switch r.Protocol {
 		case "doq":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
@@ -136,7 +137,10 @@ func start(opt options, args []string) error {
 			opt := rdns.DNSClientOptions{
 				LocalAddr: net.ParseIP(r.LocalAddr),
 			}
-			resolvers[id] = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
+			resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
 		}

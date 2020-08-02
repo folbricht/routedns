@@ -32,6 +32,10 @@ var _ Resolver = &DoTClient{}
 
 // NewDoTClient instantiates a new DNS-over-TLS resolver.
 func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error) {
+	if err := validEndpoint(endpoint); err != nil {
+		return nil, err
+	}
+
 	// Use a custom dialer if a local address was provided
 	var dialer *net.Dialer
 	if opt.LocalAddr != nil {
