@@ -1,0 +1,32 @@
+# Configuration using a bootstrap resolver used to lookup any hostnames
+# in the config such as resolver endpoints, or remote blocklist addresses.
+
+# The bootstrap-resolver is loaded first and used for endpoint lookups
+# as well as blocklist addresses. If the bootstrap-resolver itself uses
+# a hostname, it's possible to configure a bootstrap-address for it.
+[bootstrap-resolver]
+address = "8.8.8.8:53"
+protocol = "udp"
+
+# This resolver references a hostname, unless a bootstrap-address property
+# is defined, that hostname will be resolved using the bootstrap-resolver
+# above. Setting bootstrap-address in the resolver bypasses the
+# bootstrap-resolver and may be beneficial for performance.
+[resolvers.google-doh]
+address = "https://dns.google/dns-query"
+protocol = "doh"
+
+# The blocklist is loaded from a remote server, and the server hostname will
+# be resolved with the bootstrap-resolver.
+[groups.cloudflare-blocklist]
+type = "blocklist-v2"
+resolvers = ["google-doh"]
+blocklist-refresh = 86400
+blocklist-source = [
+   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "google-doh"

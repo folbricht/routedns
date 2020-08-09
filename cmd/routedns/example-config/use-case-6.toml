@@ -2,6 +2,14 @@
 # locations daily. DNS queries are received on the local network, filtered, cached and forwarded
 # over DoT to upstream resolvers.
 
+# Since this configuration references remote blocklists, hostname resolution for them could
+# fail on startup if the system uses RouteDNS as only source of name resolution. Using
+# a bootstrap-resolver defines how hostnames in blocklists or resolvers should be looked up.
+# Here, use Cloudflare DNS-over-TLS to lookup blocklist addresses.
+[bootstrap-resolver]
+address = "1.1.1.1:853"
+protocol = "dot"
+
 # Listeners for the local network. Can be restricted further to specific networks
 # with the "allowed-net" option
 [listeners.local-udp]
