@@ -1,0 +1,21 @@
+# Config with a remote blocklist that is refreshed once a day and caches the list
+# for faster start up. After the list has been downloaded, it is stored on disk and
+# used during the next startup. The local cache is refreshed every time the list
+# is loaded.
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type = "blocklist-v2"
+resolvers = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source = [
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp"},
+   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list", cache-dir = "/var/tmp"},
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"

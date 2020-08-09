@@ -319,7 +319,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && g.Source != "" {
 			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
 		}
-		blocklistDB, err := newBlocklistDB(g.Format, g.Source, g.Blocklist)
+		blocklistDB, err := newBlocklistDB(list{Format: g.Format, Source: g.Source}, g.Blocklist)
 		if err != nil {
 			return err
 		}
@@ -343,14 +343,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.BlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newBlocklistDB(g.BlocklistFormat, "", g.Blocklist)
+			blocklistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Blocklist)
 			if err != nil {
 				return err
 			}
 		} else {
 			var dbs []rdns.BlocklistDB
 			for _, s := range g.BlocklistSource {
-				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				db, err := newBlocklistDB(s, nil)
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
 				}
@@ -363,14 +363,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var allowlistDB rdns.BlocklistDB
 		if len(g.Allowlist) > 0 {
-			allowlistDB, err = newBlocklistDB(g.AllowlistFormat, "", g.Allowlist)
+			allowlistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Allowlist)
 			if err != nil {
 				return err
 			}
 		} else {
 			var dbs []rdns.BlocklistDB
 			for _, s := range g.AllowlistSource {
-				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				db, err := newBlocklistDB(s, nil)
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
 				}
@@ -446,14 +446,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(g.BlocklistFormat, "", g.LocationDB, g.Blocklist)
+			blocklistDB, err = newIPBlocklistDB(list{Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
 			if err != nil {
 				return err
 			}
 		} else {
 			var dbs []rdns.IPBlocklistDB
 			for _, s := range g.BlocklistSource {
-				db, err := newIPBlocklistDB(s.Format, s.Source, g.LocationDB, nil)
+				db, err := newIPBlocklistDB(s, g.LocationDB, nil)
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
 				}
@@ -483,14 +483,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.BlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newBlocklistDB(g.BlocklistFormat, "", g.Blocklist)
+			blocklistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Blocklist)
 			if err != nil {
 				return err
 			}
 		} else {
 			var dbs []rdns.BlocklistDB
 			for _, s := range g.BlocklistSource {
-				db, err := newBlocklistDB(s.Format, s.Source, nil)
+				db, err := newBlocklistDB(s, nil)
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
 				}
@@ -519,14 +519,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(g.BlocklistFormat, "", g.LocationDB, g.Blocklist)
+			blocklistDB, err = newIPBlocklistDB(list{Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
 			if err != nil {
 				return err
 			}
 		} else {
 			var dbs []rdns.IPBlocklistDB
 			for _, s := range g.BlocklistSource {
-				db, err := newIPBlocklistDB(s.Format, s.Source, g.LocationDB, nil)
+				db, err := newIPBlocklistDB(s, g.LocationDB, nil)
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
 				}
@@ -605,8 +605,8 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 	return nil
 }
 
-func newBlocklistDB(format, source string, rules []string) (rdns.BlocklistDB, error) {
-	loc, err := url.Parse(source)
+func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
+	loc, err := url.Parse(l.Source)
 	if err != nil {
 		return nil, err
 	}
@@ -616,14 +616,17 @@ func newBlocklistDB(format, source string, rules []string) (rdns.BlocklistDB, er
 	} else {
 		switch loc.Scheme {
 		case "http", "https":
-			loader = rdns.NewHTTPLoader(source)
+			opt := rdns.HTTPLoaderOptions{
+				CacheDir: l.CacheDir,
+			}
+			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(source)
+			loader = rdns.NewFileLoader(l.Source)
 		default:
-			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, source)
+			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
-	switch format {
+	switch l.Format {
 	case "regexp", "":
 		return rdns.NewRegexpDB(loader)
 	case "domain":
@@ -631,12 +634,12 @@ func newBlocklistDB(format, source string, rules []string) (rdns.BlocklistDB, er
 	case "hosts":
 		return rdns.NewHostsDB(loader)
 	default:
-		return nil, fmt.Errorf("unsupported format '%s'", format)
+		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
 }
 
-func newIPBlocklistDB(format, source, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
-	loc, err := url.Parse(source)
+func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
+	loc, err := url.Parse(l.Source)
 	if err != nil {
 		return nil, err
 	}
@@ -646,20 +649,23 @@ func newIPBlocklistDB(format, source, locationDB string, rules []string) (rdns.I
 	} else {
 		switch loc.Scheme {
 		case "http", "https":
-			loader = rdns.NewHTTPLoader(source)
+			opt := rdns.HTTPLoaderOptions{
+				CacheDir: l.CacheDir,
+			}
+			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(source)
+			loader = rdns.NewFileLoader(l.Source)
 		default:
-			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, source)
+			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
 
-	switch format {
+	switch l.Format {
 	case "cidr", "":
 		return rdns.NewCidrDB(loader)
 	case "location":
 		return rdns.NewGeoIPDB(loader, locationDB)
 	default:
-		return nil, fmt.Errorf("unsupported format '%s'", format)
+		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
 }
