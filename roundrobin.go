@@ -23,7 +23,7 @@ func NewRoundRobin(id string, resolvers ...Resolver) *RoundRobin {
 	return &RoundRobin{
 		id:        id,
 		resolvers: resolvers,
-		metrics:   NewRouterMetrics(id),
+		metrics:   NewRouterMetrics(id, len(resolvers)),
 	}
 }
 

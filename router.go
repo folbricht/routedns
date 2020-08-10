@@ -20,16 +20,21 @@ type Router struct {
 var _ Resolver = &Router{}
 
 type RouterMetrics struct {
-	// Next route counts
+	// Next route counts.
 	route *expvar.Map
-	// Next route failure counts
+	// Next route failure counts.
 	failure *expvar.Map
+	// Count of available routes.
+	available *expvar.Int
 }
 
-func NewRouterMetrics(id string) *RouterMetrics {
+func NewRouterMetrics(id string, available int) *RouterMetrics {
+	avail := getVarInt("router", id, "available")
+	avail.Set(int64(available))
 	return &RouterMetrics{
-		route:   getVarMap("router", id, "route"),
-		failure: getVarMap("router", id, "failure"),
+		route:     getVarMap("router", id, "route"),
+		failure:   getVarMap("router", id, "failure"),
+		available: avail,
 	}
 }
 
@@ -38,7 +43,7 @@ func NewRouterMetrics(id string) *RouterMetrics {
 func NewRouter(id string) *Router {
 	return &Router{
 		id:      id,
-		metrics: NewRouterMetrics(id),
+		metrics: NewRouterMetrics(id, 0),
 	}
 }
 
@@ -108,6 +113,7 @@ func (r *Router) Add(name, class, typ, source string, resolver Resolver) error {
 	}
 
 	r.routes = append(r.routes, newRoute)
+	r.metrics.available.Add(1)
 	return nil
 }
 

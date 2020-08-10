@@ -39,8 +39,6 @@ type FailRouterMetrics struct {
 	RouterMetrics
 	// Failover count
 	failover *expvar.Int
-	// Available router count
-	available *expvar.Int
 }
 
 func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
@@ -48,11 +46,11 @@ func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
 	avail.Set(int64(available))
 	return &FailRouterMetrics{
 		RouterMetrics: RouterMetrics{
-			route:   getVarMap("router", id, "route"),
-			failure: getVarMap("router", id, "failure"),
+			route:     getVarMap("router", id, "route"),
+			failure:   getVarMap("router", id, "failure"),
+			available: avail,
 		},
-		failover:  getVarInt("router", id, "failover"),
-		available: avail,
+		failover: getVarInt("router", id, "failover"),
 	}
 }
 
