@@ -73,6 +73,7 @@ func start(opt options, args []string) error {
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("group resolver with duplicate id '%s'", id)
 		}
+
 		switch r.Protocol {
 		case "doq":
 			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
@@ -136,7 +137,10 @@ func start(opt options, args []string) error {
 			opt := rdns.DNSClientOptions{
 				LocalAddr: net.ParseIP(r.LocalAddr),
 			}
-			resolvers[id] = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
+			resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
+			if err != nil {
+				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
+			}
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
 		}
@@ -260,15 +264,18 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			httpProxyAddr := net.ParseIP(l.DoH.HTTPProxyAddr)
-			if l.DoH.HTTPProxyAddr != "" && httpProxyAddr == nil {
-				return fmt.Errorf("listener '%s' proxy-address '%s' is not an IPv4 or IPv6 address", id, l.DoH.HTTPProxyAddr)
+			var httpProxyNet *net.IPNet
+			if l.Frontend.HTTPProxyNet != "" {
+				_, httpProxyNet, err = net.ParseCIDR(l.Frontend.HTTPProxyNet)
+				if err != nil {
+					return fmt.Errorf("listener '%s' trusted-proxy '%s': %v", id, l.Frontend.HTTPProxyNet, err)
+				}
 			}
 			opt := rdns.DoHListenerOptions{
 				TLSConfig:     tlsConfig,
 				ListenOptions: opt,
 				Transport:     l.Transport,
-				HTTPProxyAddr: httpProxyAddr,
+				HTTPProxyNet:  httpProxyNet,
 			}
 			ln, err := rdns.NewDoHListener(id, l.Address, opt, resolver)
 			if err != nil {

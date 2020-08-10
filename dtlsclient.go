@@ -34,6 +34,9 @@ var _ Resolver = &DTLSClient{}
 
 // NewDTLSClient instantiates a new DNS-over-TLS resolver.
 func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, error) {
+	if err := validEndpoint(endpoint); err != nil {
+		return nil, err
+	}
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		return nil, err
