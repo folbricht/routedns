@@ -14,7 +14,7 @@ type ClientBlocklist struct {
 	ClientBlocklistOptions
 	resolver Resolver
 	mu       sync.RWMutex
-	expRoute *varMap
+	metrics  *BlocklistMetrics
 }
 
 var _ Resolver = &ClientBlocklist{}
@@ -35,7 +35,7 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 		id:                     id,
 		resolver:               resolver,
 		ClientBlocklistOptions: opt,
-		expRoute:               getVarMap("router", id, "route"),
+		metrics:                NewBlocklistMetrics(id),
 	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
@@ -51,17 +51,16 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if rule, ok := r.BlocklistDB.Match(ci.SourceIP); ok {
 		log := Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(q), "rule": rule, "ip": ci.SourceIP})
+		r.metrics.blocked.Add(1)
 		if r.BlocklistResolver != nil {
 			log.WithField("resolver", r.BlocklistResolver).Debug("client on blocklist, forwarding to blocklist-resolver")
-			r.expRoute.Add(r.BlocklistResolver.String(), 1)
 			return r.BlocklistResolver.Resolve(q, ci)
 		}
-		r.expRoute.Add("refused", 1)
 		log.Debug("blocking client")
 		return refused(q), nil
 	}
 
-	r.expRoute.Add(r.resolver.String(), 1)
+	r.metrics.allowed.Add(1)
 	return r.resolver.Resolve(q, ci)
 }
 

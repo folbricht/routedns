@@ -41,14 +41,12 @@ type DoHClientOptions struct {
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
 type DoHClient struct {
-	id          string
-	endpoint    string
-	template    *uritemplates.UriTemplate
-	client      *http.Client
-	opt         DoHClientOptions
-	expQuery    *varInt // Query count
-	expResponse *varMap // DNS Response codes
-	expError    *varMap // RouteDNS failure reasons
+	id       string
+	endpoint string
+	template *uritemplates.UriTemplate
+	client   *http.Client
+	opt      DoHClientOptions
+	metrics  *ListenerMetrics
 }
 
 var _ Resolver = &DoHClient{}
@@ -85,14 +83,12 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 	}
 
 	return &DoHClient{
-		id:          id,
-		endpoint:    endpoint,
-		template:    template,
-		client:      client,
-		opt:         opt,
-		expQuery:    getVarInt("client", id, "query"),
-		expResponse: getVarMap("client", id, "response"),
-		expError:    getVarMap("client", id, "error"),
+		id:       id,
+		endpoint: endpoint,
+		template: template,
+		client:   client,
+		opt:      opt,
+		metrics:  NewListenerMetrics("client", id),
 	}, nil
 }
 
@@ -107,7 +103,7 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Add padding before sending the query over HTTPS
 	padQuery(q)
 
-	d.expQuery.Add(1)
+	d.metrics.query.Add(1)
 	switch d.opt.Method {
 	case "POST":
 		return d.ResolvePOST(q)
@@ -122,25 +118,25 @@ func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 	// Pack the DNS query into wire format
 	b, err := q.Pack()
 	if err != nil {
-		d.expError.Add("pack", 1)
+		d.metrics.err.Add("pack", 1)
 		return nil, err
 	}
 	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
 	u, err := d.template.Expand(map[string]interface{}{})
 	if err != nil {
-		d.expError.Add("template", 1)
+		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
 	req, err := http.NewRequest("POST", u, bytes.NewReader(b))
 	if err != nil {
-		d.expError.Add("http", 1)
+		d.metrics.err.Add("http", 1)
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
 	req.Header.Add("content-type", "application/dns-message")
 	resp, err := d.client.Do(req)
 	if err != nil {
-		d.expError.Add("post", 1)
+		d.metrics.err.Add("post", 1)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -152,7 +148,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	// Pack the DNS query into wire format
 	b, err := q.Pack()
 	if err != nil {
-		d.expError.Add("pack", 1)
+		d.metrics.err.Add("pack", 1)
 		return nil, err
 	}
 	// Encode the query as base64url without padding
@@ -161,18 +157,18 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	// The URL must be a template. Process it with the "dns" param containing the encoded query.
 	u, err := d.template.Expand(map[string]interface{}{"dns": b64})
 	if err != nil {
-		d.expError.Add("template", 1)
+		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		d.expError.Add("http", 1)
+		d.metrics.err.Add("http", 1)
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
 	resp, err := d.client.Do(req)
 	if err != nil {
-		d.expError.Add("get", 1)
+		d.metrics.err.Add("get", 1)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -186,20 +182,20 @@ func (d *DoHClient) String() string {
 // Check the HTTP response status code and parse out the response DNS message.
 func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		d.expError.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
+		d.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 	rb, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		d.expError.Add("read", 1)
+		d.metrics.err.Add("read", 1)
 		return nil, err
 	}
 	a := new(dns.Msg)
 	err = a.Unpack(rb)
 	if err != nil {
-		d.expError.Add("unpack", 1)
+		d.metrics.err.Add("unpack", 1)
 	} else {
-		d.expResponse.Add(dns.RcodeToString[a.Rcode], 1)
+		d.metrics.response.Add(rCode(a), 1)
 	}
 	return a, err
 }

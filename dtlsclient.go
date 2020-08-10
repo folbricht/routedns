@@ -15,7 +15,7 @@ type DTLSClient struct {
 	id       string
 	endpoint string
 	pipeline *Pipeline
-	// Pipeline also provides operation counters.
+	// Pipeline also provides operation metrics.
 }
 
 // DTLSClientOptions contains options used by the DNS-over-DTLS resolver.

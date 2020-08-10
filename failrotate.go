@@ -17,13 +17,18 @@ type FailRotate struct {
 	resolvers []Resolver
 	mu        sync.RWMutex
 	active    int
+	metrics   *FailRouterMetrics
 }
 
 var _ Resolver = &FailRotate{}
 
 // NewFailRotate returns a new instance of a failover resolver group.
 func NewFailRotate(id string, resolvers ...Resolver) *FailRotate {
-	return &FailRotate{id: id, resolvers: resolvers}
+	return &FailRotate{
+		id:        id,
+		resolvers: resolvers,
+		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+	}
 }
 
 // Resolve a DNS query using a failover resolver group that switches to the next
@@ -34,11 +39,13 @@ func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
 		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
+		r.metrics.route.Add(resolver.String(), 1)
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		r.metrics.failure.Add(resolver.String(), 1)
 
 		// Record the error to be returned when all requests fail
 		gErr = err
@@ -69,6 +76,7 @@ func (r *FailRotate) errorFrom(i int) {
 	if i != r.active {
 		return
 	}
+	r.metrics.failover.Add(1)
 	r.active = (r.active + 1) % len(r.resolvers)
 	Log.WithFields(logrus.Fields{
 		"id":       r.id,

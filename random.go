@@ -18,6 +18,7 @@ type Random struct {
 	resolvers []Resolver
 	mu        sync.RWMutex
 	opt       RandomOptions
+	metrics   *FailRouterMetrics
 }
 
 var _ Resolver = &Random{}
@@ -34,7 +35,12 @@ func NewRandom(id string, opt RandomOptions, resolvers ...Resolver) *Random {
 	if opt.ResetAfter == 0 {
 		opt.ResetAfter = time.Minute
 	}
-	return &Random{id: id, resolvers: resolvers, opt: opt}
+	return &Random{
+		id:        id,
+		resolvers: resolvers,
+		opt:       opt,
+		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+	}
 }
 
 // Resolve a DNS query using a random resolver.
@@ -47,12 +53,14 @@ func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return nil, errors.New("no active resolvers left")
 		}
 
+		r.metrics.route.Add(resolver.String(), 1)
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		r.metrics.failure.Add(resolver.String(), 1)
 		r.deactivate(resolver)
 	}
 }
@@ -65,10 +73,13 @@ func (r *Random) String() string {
 func (r *Random) pick() Resolver {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if len(r.resolvers) == 0 {
+	available := len(r.resolvers)
+	r.metrics.available.Set(int64(available))
+	r.metrics.failover.Add(1)
+	if available == 0 {
 		return nil
 	}
-	return r.resolvers[rand.Intn(len(r.resolvers))]
+	return r.resolvers[rand.Intn(available)]
 }
 
 // Remove the resolver from the list of active ones and schedule it to
@@ -95,4 +106,5 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	defer r.mu.Unlock()
 	Log.WithFields(logrus.Fields{"id": r.id, "resolver": resolver}).Trace("re-activating resolver")
 	r.resolvers = append(r.resolvers, resolver)
+	r.metrics.available.Set(int64(len(r.resolvers)))
 }

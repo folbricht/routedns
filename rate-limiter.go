@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"expvar"
 	"net"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type RateLimiter struct {
 	mu        sync.RWMutex
 	currWinID int64
 	counters  map[string]*uint
+	metrics   *RateLimiterMetrics
 }
 
 var _ Resolver = &RateLimiter{}
@@ -28,6 +30,15 @@ type RateLimiterOptions struct {
 	Prefix4       uint8    // Netmask to identify IP4 clients
 	Prefix6       uint8    // Netmask to identify IP6 clients
 	LimitResolver Resolver // Alternate resolver for rate-limited requests
+}
+
+type RateLimiterMetrics struct {
+	// Count of queries.
+	query *expvar.Int
+	// Count of queries that have exceeded the rate limit.
+	exceed *expvar.Int
+	// Count of dropped queries.
+	drop *expvar.Int
 }
 
 // NewRateLimiterIP returns a new instance of a query rate limiter.
@@ -45,12 +56,18 @@ func NewRateLimiter(id string, resolver Resolver, opt RateLimiterOptions) *RateL
 		id:                 id,
 		resolver:           resolver,
 		RateLimiterOptions: opt,
+		metrics: &RateLimiterMetrics{
+			query:  getVarInt("router", id, "query"),
+			exceed: getVarInt("router", id, "exceed"),
+			drop:   getVarInt("router", id, "drop"),
+		},
 	}
 }
 
 // Resolve a DNS query while limiting the query rate per time period.
 func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(r.id, q, ci)
+	r.metrics.query.Add(1)
 
 	// Apply the desired mask to the client IP to build a key it identify the client (network)
 	source := ci.SourceIP
@@ -88,10 +105,12 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.mu.Unlock()
 
 	if reject {
+		r.metrics.exceed.Add(1)
 		if r.LimitResolver != nil {
 			log.WithField("resolver", r.LimitResolver).Debug("rate-limit exceeded, forwarding to limit-resolver")
 			return r.LimitResolver.Resolve(q, ci)
 		}
+		r.metrics.drop.Add(1)
 		log.Debug("rate-limit reached, dropping")
 		return nil, nil
 	}

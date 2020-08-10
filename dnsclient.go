@@ -14,7 +14,7 @@ type DNSClient struct {
 	endpoint string
 	net      string
 	pipeline *Pipeline
-	// Pipeline also provides operation counters.
+	// Pipeline also provides operation metrics.
 }
 
 type DNSClientOptions struct {

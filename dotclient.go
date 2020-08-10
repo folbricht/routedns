@@ -14,7 +14,7 @@ type DoTClient struct {
 	id       string
 	endpoint string
 	pipeline *Pipeline
-	// Pipeline also provides operation counters
+	// Pipeline also provides operation metrics.
 }
 
 // DoTClientOptions contains options used by the DNS-over-TLS resolver.

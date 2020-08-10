@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"expvar"
 	"sync"
 	"time"
 
@@ -22,10 +23,7 @@ type FailBack struct {
 	failCh    chan struct{} // signal the timer to reset on failure
 	active    int
 	opt       FailBackOptions
-
-	expRoute    *varMap // Next route chosen
-	expFailure  *varMap // RouteDNS failure reason
-	expFailover *varInt // Failover count
+	metrics   *FailRouterMetrics
 }
 
 // FailBackOptions contain group-specific options.
@@ -37,18 +35,37 @@ type FailBackOptions struct {
 
 var _ Resolver = &FailBack{}
 
+type FailRouterMetrics struct {
+	RouterMetrics
+	// Failover count
+	failover *expvar.Int
+	// Available router count
+	available *expvar.Int
+}
+
+func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
+	avail := getVarInt("router", id, "available")
+	avail.Set(int64(available))
+	return &FailRouterMetrics{
+		RouterMetrics: RouterMetrics{
+			route:   getVarMap("router", id, "route"),
+			failure: getVarMap("router", id, "failure"),
+		},
+		failover:  getVarInt("router", id, "failover"),
+		available: avail,
+	}
+}
+
 // NewFailBack returns a new instance of a failover resolver group.
 func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
 	if opt.ResetAfter == 0 {
 		opt.ResetAfter = time.Minute
 	}
 	return &FailBack{
-		id:          id,
-		resolvers:   resolvers,
-		opt:         opt,
-		expRoute:    getVarMap("router", id, "route"),
-		expFailure:  getVarMap("router", id, "failure"),
-		expFailover: getVarInt("router", id, "failover"),
+		id:        id,
+		resolvers: resolvers,
+		opt:       opt,
+		metrics:   NewFailRouterMetrics(id, len(resolvers)),
 	}
 }
 
@@ -60,13 +77,13 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
-		r.expRoute.Add(resolver.String(), 1)
+		r.metrics.route.Add(resolver.String(), 1)
 		a, err := resolver.Resolve(q, ci)
 		if err == nil { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
-		r.expFailure.Add(resolver.String(), 1)
+		r.metrics.failure.Add(resolver.String(), 1)
 
 		// Record the error to be returned when all requests fail
 		gErr = err
@@ -97,7 +114,6 @@ func (r *FailBack) errorFrom(i int) {
 	if i != r.active {
 		return
 	}
-	r.expFailover.Add(1)
 	if r.failCh == nil { // lazy start the reset timer
 		r.failCh = r.startResetTimer()
 	}
@@ -106,6 +122,8 @@ func (r *FailBack) errorFrom(i int) {
 		"id":       r.id,
 		"resolver": r.resolvers[r.active].String(),
 	}).Debug("failing over to resolver")
+	r.metrics.failover.Add(1)
+	r.metrics.available.Add(-1)
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
 
@@ -126,6 +144,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 				r.active = 0
 				Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing back to resolver")
 				r.mu.Unlock()
+				r.metrics.available.Add(1)
 				// we just reset to the first resolver, let's wait for another failure before running again
 				<-failCh
 			}

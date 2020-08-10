@@ -1,0 +1,22 @@
+# Simple proxy using a cache with metrics at https://127.0.0.2/routedns/vars/.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-size = 1000
+cache-negative-ttl = 10
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"
+
+[listeners.local-admin]
+address = "127.0.0.2:443"
+protocol = "admin"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"

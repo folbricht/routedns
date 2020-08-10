@@ -5,10 +5,8 @@ import (
 	"fmt"
 )
 
-type varInt = expvar.Int
-type varMap = expvar.Map
-
-func getVarInt(base string, id string, name string) *varInt {
+// Get an *expvar.Int with the given path.
+func getVarInt(base string, id string, name string) *expvar.Int {
 	fullname := fmt.Sprintf("routedns.%s.%s.%s", base, id, name)
 	if v := expvar.Get(fullname); v != nil {
 		return v.(*expvar.Int)
@@ -16,7 +14,8 @@ func getVarInt(base string, id string, name string) *varInt {
 	return expvar.NewInt(fullname)
 }
 
-func getVarMap(base string, id string, name string) *varMap {
+// Get an *expvar.Map with the given path.
+func getVarMap(base string, id string, name string) *expvar.Map {
 	fullname := fmt.Sprintf("routedns.%s.%s.%s", base, id, name)
 	if v := expvar.Get(fullname); v != nil {
 		return v.(*expvar.Map)

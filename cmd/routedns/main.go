@@ -71,7 +71,7 @@ func start(opt options, args []string) error {
 	// Parse resolver config from the config first since groups and routers reference them
 	for id, r := range config.Resolvers {
 		if _, ok := resolvers[id]; ok {
-			return fmt.Errorf("group resolver with duplicate id '%s", id)
+			return fmt.Errorf("group resolver with duplicate id '%s'", id)
 		}
 		switch r.Protocol {
 		case "doq":
@@ -209,8 +209,9 @@ func start(opt options, args []string) error {
 	var listeners []rdns.Listener
 	for id, l := range config.Listeners {
 		resolver, ok := resolvers[l.Resolver]
-		if !ok {
-			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s", id, l.Resolver)
+		// All Listeners should route queries (except the admin service).
+		if !ok && l.Protocol != "admin" {
+			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s'", id, l.Resolver)
 		}
 
 		allowedNet, err := parseCIDRList(l.AllowedNet)
@@ -225,6 +226,21 @@ func start(opt options, args []string) error {
 			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "tcp", opt, resolver))
 		case "udp":
 			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "udp", opt, resolver))
+		case "admin":
+			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			opt := rdns.AdminListenerOptions{
+				TLSConfig:     tlsConfig,
+				ListenOptions: opt,
+				Transport:     l.Transport,
+			}
+			ln, err := rdns.NewAdminListener(id, l.Address, opt)
+			if err != nil {
+				return err
+			}
+			listeners = append(listeners, ln)
 		case "dot":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
@@ -292,7 +308,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	for _, rid := range g.Resolvers {
 		resolver, ok := resolvers[rid]
 		if !ok {
-			return fmt.Errorf("group '%s' references non-existant resolver or group '%s", id, rid)
+			return fmt.Errorf("group '%s' references non-existant resolver or group '%s'", id, rid)
 		}
 		gr = append(gr, resolver)
 	}

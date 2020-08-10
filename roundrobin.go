@@ -13,13 +13,18 @@ type RoundRobin struct {
 	resolvers []Resolver
 	mu        sync.Mutex
 	current   int
+	metrics   *RouterMetrics
 }
 
 var _ Resolver = &RoundRobin{}
 
 // NewRoundRobin returns a new instance of a round-robin resolver group.
 func NewRoundRobin(id string, resolvers ...Resolver) *RoundRobin {
-	return &RoundRobin{id: id, resolvers: resolvers}
+	return &RoundRobin{
+		id:        id,
+		resolvers: resolvers,
+		metrics:   NewRouterMetrics(id),
+	}
 }
 
 // Resolve a DNS query using a round-robin resolver group.
@@ -29,7 +34,12 @@ func (r *RoundRobin) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.current = (r.current + 1) % len(r.resolvers)
 	r.mu.Unlock()
 	logger(r.id, q, ci).WithField("resolver", resolver).Debug("forwarding query to resolver")
-	return resolver.Resolve(q, ci)
+	r.metrics.route.Add(resolver.String(), 1)
+	msg, err := resolver.Resolve(q, ci)
+	if err != nil {
+		r.metrics.failure.Add(resolver.String(), 1)
+	}
+	return msg, err
 }
 
 func (r *RoundRobin) String() string {

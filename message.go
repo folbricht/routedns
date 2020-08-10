@@ -1,6 +1,10 @@
 package rdns
 
-import "github.com/miekg/dns"
+import (
+	"strconv"
+
+	"github.com/miekg/dns"
+)
 
 // Return the query name from a DNS query.
 func qName(q *dns.Msg) string {
@@ -8,6 +12,14 @@ func qName(q *dns.Msg) string {
 		return ""
 	}
 	return q.Question[0].Name
+}
+
+// Return the result code name from a DNS response.
+func rCode(r *dns.Msg) string {
+	if result, ok := dns.RcodeToString[r.Rcode]; ok {
+		return result
+	}
+	return strconv.Itoa(r.Rcode)
 }
 
 // Returns a NXDOMAIN answer for a query.
