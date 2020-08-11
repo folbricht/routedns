@@ -10,7 +10,9 @@ import (
 // TLSServerConfig is a convenience function that builds a tls.Config instance for TLS servers
 // based on common options and certificate+key files.
 func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Config, error) {
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 	if mutualTLS {
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
@@ -21,7 +23,7 @@ func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Conf
 			return nil, err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, fmt.Errorf("no CA certficates found in %s", caFile)
+			return nil, fmt.Errorf("no CA certificates found in %s", caFile)
 		}
 		tlsConfig.ClientCAs = certPool
 	}
@@ -40,7 +42,9 @@ func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Conf
 // TLSClientConfig is a convenience function that builds a tls.Config instance for TLS clients
 // based on common options and certificate+key files.
 func TLSClientConfig(caFile, crtFile, keyFile string) (*tls.Config, error) {
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 
 	// Add client key/cert if provided
 	if crtFile != "" && keyFile != "" {
@@ -59,7 +63,7 @@ func TLSClientConfig(caFile, crtFile, keyFile string) (*tls.Config, error) {
 			return nil, err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, fmt.Errorf("no CA certficates found in %s", caFile)
+			return nil, fmt.Errorf("no CA certificates found in %s", caFile)
 		}
 		tlsConfig.RootCAs = certPool
 	}
