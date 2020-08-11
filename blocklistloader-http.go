@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -99,19 +100,26 @@ func (l *HTTPLoader) loadFromDisk() ([]string, error) {
 	return rules, scanner.Err()
 }
 
-func (l *HTTPLoader) writeToDisk(rules []string) error {
-	// log.Tracef("writing list to cache file %q", filename)
-	f, err := os.Create(l.cacheFilename())
+func (l *HTTPLoader) writeToDisk(rules []string) (err error) {
+	f, err := ioutil.TempFile(l.opt.CacheDir, "routedns")
 	if err != nil {
-		// log.WithError(err).Error("failed to write to cache-dir")
-		return err
+		return
 	}
-	defer f.Close()
 	fb := bufio.NewWriter(f)
-	defer fb.Flush()
+
+	defer func() {
+		tmpFileName := f.Name()
+		fb.Flush()
+		f.Close() // Close the file before trying to rename (Windows needs it)
+		if err == nil {
+			err = os.Rename(tmpFileName, l.cacheFilename())
+		}
+		// Make sure to clean up even if the move above was successful
+		os.Remove(tmpFileName)
+	}()
+
 	for _, r := range rules {
 		if _, err := fb.WriteString(r + "\n"); err != nil {
-			// log.WithError(err).Error("failed to write cache file")
 			return err
 		}
 	}
