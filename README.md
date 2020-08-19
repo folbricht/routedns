@@ -26,7 +26,14 @@ Features:
 Install [Go](https://golang.org/dl) version 1.13+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
 
 ```text
-go get -u github.com/folbricht/routedns/cmd/routedns
+GO111MODULE=on go get -v github.com/folbricht/routedns/cmd/routedns
+```
+
+Alternative method using a clone, building from the tip of the master branch.
+
+```text
+git clone https://github.com/folbricht/routens.git
+cd routedns/cmd/routedns && go install
 ```
 
 Run it:
