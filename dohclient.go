@@ -187,7 +187,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
-		ResponseHeaderTimeout: time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       30 * time.Second,
 	}
 	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
