@@ -157,7 +157,7 @@ func (c *Pipeline) start() {
 				}
 				c.metrics.response.Add(rCode(a), 1)
 				req.markDone(a, nil)
-				ql := (int64)(inFlight.maxLen)
+				ql := inFlight.maxQueueLen()
 				if ql > c.metrics.maxQueueLen.Value() {
 					c.metrics.maxQueueLen.Set(ql)
 				}
@@ -254,4 +254,10 @@ func (q *inFlightQueue) get(a *dns.Msg) *request {
 	}
 	delete(q.requests, id)
 	return r
+}
+
+func (q *inFlightQueue) maxQueueLen() int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return int64(q.maxLen)
 }

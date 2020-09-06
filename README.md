@@ -19,6 +19,7 @@ Features:
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
+- Optional metrics export (expvar) to support monitoring and graphing
 - Written in Go - Platform independent
 
 ## Installation

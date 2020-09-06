@@ -16,7 +16,7 @@ protocol = "udp"
 resolver = "cloudflare-cached"
 
 [listeners.local-admin]
-address = "127.0.0.2:443"
+address = "127.0.0.1:443"
 protocol = "admin"
-server-crt = "/path/to/server.crt"
-server-key = "/path/to/server.key"
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"
