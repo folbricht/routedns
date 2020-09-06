@@ -10,6 +10,7 @@
   - [DNS-over-HTTPS](#DNS-over-HTTPS)
   - [DNS-over-DTLS](#DNS-over-DTLS)
   - [DNS-over-QUIC](#DNS-over-QUIC)
+  - [Admin](#Admin)
 - [Modifiers, Groups and Routers](#Modifiers-Groups-and-Routers)
   - [Cache](#Cache)
   - [TTL Modifier](#TTL-modifier)
@@ -111,7 +112,7 @@ Common options for all listeners:
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 
-Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC support additional options to configure certificate, keys and peer validation
+Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificate, keys and peer validation
 
 - `server-crt` - Server certificate file. Required.
 - `server-key` - Server key file. Required.
@@ -254,6 +255,22 @@ server-key = "example-config/server.key"
 ```
 
 Example config files: [doq-listener.toml](../cmd/routedns/example-config/doq-listener.toml)
+
+### Admin
+
+The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/.
+
+Examples:
+
+```toml
+[listeners.local-admin]
+address = "127.0.0.7:443"
+protocol = "admin"
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"
+```
+
+Example config files: [admin.toml](../cmd/routedns/example-config/admin.toml)
 
 ## Modifiers, Groups and Routers
 

@@ -3,6 +3,7 @@ package rdns
 import (
 	"context"
 	"crypto/tls"
+	"expvar"
 	"io/ioutil"
 	"net"
 	"time"
@@ -14,12 +15,13 @@ import (
 
 // DoQListener is a DNS listener/server for QUIC.
 type DoQListener struct {
-	id   string
-	addr string
-	r    Resolver
-	opt  DoQListenerOptions
-	ln   quic.Listener
-	log  *logrus.Entry
+	id      string
+	addr    string
+	r       Resolver
+	opt     DoQListenerOptions
+	ln      quic.Listener
+	log     *logrus.Entry
+	metrics *DoQListenerMetrics
 }
 
 var _ Listener = &DoQListener{}
@@ -31,6 +33,28 @@ type DoQListenerOptions struct {
 	TLSConfig *tls.Config
 }
 
+type DoQListenerMetrics struct {
+	ListenerMetrics
+
+	// Count of sessions initiated.
+	session *expvar.Int
+	// Count of streams seen in all sessions.
+	stream *expvar.Int
+}
+
+func NewDoQListenerMetrics(id string) *DoQListenerMetrics {
+	return &DoQListenerMetrics{
+		ListenerMetrics: ListenerMetrics{
+			query:    getVarInt("listener", id, "query"),
+			response: getVarMap("listener", id, "response"),
+			drop:     getVarInt("listener", id, "drop"),
+			err:      getVarMap("listener", id, "error"),
+		},
+		session: getVarInt("listener", id, "session"),
+		stream:  getVarInt("listener", id, "stream"),
+	}
+}
+
 // NewQuicListener returns an instance of a QUIC listener.
 func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver) *DoQListener {
 	if opt.TLSConfig == nil {
@@ -38,11 +62,12 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 	}
 	opt.TLSConfig.NextProtos = []string{"dq"}
 	l := &DoQListener{
-		id:   id,
-		addr: addr,
-		r:    resolver,
-		opt:  opt,
-		log:  Log.WithFields(logrus.Fields{"id": id, "protocol": "doq", "addr": addr}),
+		id:      id,
+		addr:    addr,
+		r:       resolver,
+		opt:     opt,
+		log:     Log.WithFields(logrus.Fields{"id": id, "protocol": "doq", "addr": addr}),
+		metrics: NewDoQListenerMetrics(id),
 	}
 	return l
 }
@@ -90,9 +115,11 @@ func (s DoQListener) handleSession(session quic.Session) {
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
 		log.Debug("rejecting incoming session")
+		s.metrics.drop.Add(1)
 		return
 	}
 	log.Trace("accepting incoming session")
+	s.metrics.session.Add(1)
 
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // TODO: configurable
@@ -113,11 +140,13 @@ func (s DoQListener) handleSession(session quic.Session) {
 func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
+	s.metrics.stream.Add(1)
 
 	// Read the raw query
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	b, err := ioutil.ReadAll(stream)
 	if err != nil {
+		s.metrics.err.Add("read", 1)
 		log.WithError(err).Error("failed to read query")
 		return
 	}
@@ -125,11 +154,13 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	// Decode the query
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
+		s.metrics.err.Add("unpack", 1)
 		log.WithError(err).Error("failed to decode query")
 		return
 	}
 	log = log.WithField("qname", qName(q))
 	log.Debug("received query")
+	s.metrics.query.Add(1)
 
 	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
 	edns0 := q.IsEdns0()
@@ -137,6 +168,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 		for _, opt := range edns0.Option {
 			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
 				log.Error("received edns-tcp-keepalive, aborting")
+				s.metrics.err.Add("keepalive", 1)
 				return
 			}
 		}
@@ -153,14 +185,17 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	out, err := a.Pack()
 	if err != nil {
 		log.WithError(err).Error("failed to encode response")
+		s.metrics.err.Add("encode", 1)
 		return
 	}
 
 	// Send the response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	if _, err = stream.Write(out); err != nil {
+		s.metrics.err.Add("send", 1)
 		log.WithError(err).Error("failed to send response")
 	}
+	s.metrics.response.Add(rCode(a), 1)
 }
 
 func (s DoQListener) String() string {

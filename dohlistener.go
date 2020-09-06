@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -31,6 +32,8 @@ type DoHListener struct {
 	opt  DoHListenerOptions
 
 	mux *http.ServeMux
+
+	metrics *DoHListenerMetrics
 }
 
 var _ Listener = &DoHListener{}
@@ -48,6 +51,27 @@ type DoHListenerOptions struct {
 	HTTPProxyNet *net.IPNet
 }
 
+type DoHListenerMetrics struct {
+	ListenerMetrics
+
+	// HTTP method used for query.
+	get  *expvar.Int
+	post *expvar.Int
+}
+
+func NewDoHListenerMetrics(id string) *DoHListenerMetrics {
+	return &DoHListenerMetrics{
+		ListenerMetrics: ListenerMetrics{
+			query:    getVarInt("listener", id, "query"),
+			response: getVarMap("listener", id, "response"),
+			err:      getVarMap("listener", id, "error"),
+			drop:     getVarInt("listener", id, "drop"),
+		},
+		get:  getVarInt("listener", id, "get"),
+		post: getVarInt("listener", id, "post"),
+	}
+}
+
 // NewDoHListener returns an instance of a DNS-over-HTTPS listener.
 func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) (*DoHListener, error) {
 	switch opt.Transport {
@@ -60,11 +84,12 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 	}
 
 	l := &DoHListener{
-		id:   id,
-		addr: addr,
-		r:    resolver,
-		opt:  opt,
-		mux:  http.NewServeMux(),
+		id:      id,
+		addr:    addr,
+		r:       resolver,
+		opt:     opt,
+		mux:     http.NewServeMux(),
+		metrics: NewDoHListenerMetrics(id),
 	}
 	l.mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
 	return l, nil
@@ -128,10 +153,13 @@ func (s *DoHListener) String() string {
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
+		s.metrics.get.Add(1)
 		s.getHandler(w, r)
 	case "POST":
+		s.metrics.post.Add(1)
 		s.postHandler(w, r)
 	default:
+		s.metrics.err.Add("httpmethod", 1)
 		http.Error(w, "only GET and POST allowed", http.StatusMethodNotAllowed)
 	}
 }
@@ -197,14 +225,17 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 }
 
 func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
+	s.metrics.query.Add(1)
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
+		s.metrics.err.Add("unpack", 1)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Extract the remote host address from the HTTP headers.
 	clientIP := s.extractClientAddress(r)
 	if clientIP == nil {
+		s.metrics.err.Add("remoteaddr", 1)
 		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
 		return
 	}
@@ -231,6 +262,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 
 	// A nil response from the resolvers means "drop", return blank response
 	if a == nil {
+		s.metrics.drop.Add(1)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -238,8 +270,10 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	// Pad the packet according to rfc8467 and rfc7830
 	padAnswer(q, a)
 
+	s.metrics.response.Add(rCode(a), 1)
 	out, err := a.Pack()
 	if err != nil {
+		s.metrics.err.Add("pack", 1)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

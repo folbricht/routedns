@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"expvar"
 	"math"
 	"sync"
 	"time"
@@ -18,6 +19,16 @@ type Cache struct {
 	resolver Resolver
 	mu       sync.Mutex
 	lru      *lruCache
+	metrics  *CacheMetrics
+}
+
+type CacheMetrics struct {
+	// Cache hit count.
+	hit *expvar.Int
+	// Cache miss count.
+	miss *expvar.Int
+	// Current cache entry count.
+	entries *expvar.Int
 }
 
 var _ Resolver = &Cache{}
@@ -41,6 +52,11 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 		id:           id,
 		resolver:     resolver,
 		lru:          newLRUCache(opt.Capacity),
+		metrics: &CacheMetrics{
+			hit:     getVarInt("cache", id, "hit"),
+			miss:    getVarInt("cache", id, "miss"),
+			entries: getVarInt("cache", id, "entries"),
+		},
 	}
 	if c.GCPeriod == 0 {
 		c.GCPeriod = time.Minute
@@ -71,8 +87,10 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	a, ok := r.answerFromCache(q)
 	if ok {
 		log.Debug("cache-hit")
+		r.metrics.hit.Add(1)
 		return a, nil
 	}
+	r.metrics.miss.Add(1)
 
 	log.WithField("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
@@ -193,6 +211,7 @@ func (r *Cache) startGC(period time.Duration) {
 		total = r.lru.size()
 		r.mu.Unlock()
 
+		r.metrics.entries.Set(int64(total))
 		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
 	}
 }

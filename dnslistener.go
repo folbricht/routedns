@@ -47,6 +47,7 @@ func (s DNSListener) String() string {
 
 // DNS handler to forward all incoming requests to a given resolver.
 func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
+	metrics := NewListenerMetrics("listener", id)
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		var (
 			ci  ClientInfo
@@ -62,17 +63,20 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 
 		log := Log.WithFields(logrus.Fields{"id": id, "client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
 		log.Debug("received query")
+		metrics.query.Add(1)
 
 		a := new(dns.Msg)
 		if isAllowed(allowedNet, ci.SourceIP) {
 			log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
 			a, err = r.Resolve(req, ci)
 			if err != nil {
+				metrics.err.Add("resolve", 1)
 				log.WithError(err).Error("failed to resolve")
 				a = new(dns.Msg)
 				a.SetRcode(req, dns.RcodeServerFailure)
 			}
 		} else {
+			metrics.err.Add("acl", 1)
 			log.Debug("refusing client ip")
 			a.SetRcode(req, dns.RcodeRefused)
 		}
@@ -80,6 +84,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		// A nil response from the resolvers means "drop", close the connection
 		if a == nil {
 			w.Close()
+			metrics.drop.Add(1)
 			return
 		}
 
@@ -90,6 +95,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		} else {
 			stripPadding(a)
 		}
+		metrics.response.Add(rCode(a), 1)
 		_ = w.WriteMsg(a)
 	}
 }

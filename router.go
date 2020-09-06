@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"net"
 	"regexp"
@@ -11,16 +12,39 @@ import (
 
 // Router for DNS requests based on query type and/or name. Implements the Resolver interface.
 type Router struct {
-	id     string
-	routes []*route
+	id      string
+	routes  []*route
+	metrics *RouterMetrics
 }
 
 var _ Resolver = &Router{}
 
+type RouterMetrics struct {
+	// Next route counts.
+	route *expvar.Map
+	// Next route failure counts.
+	failure *expvar.Map
+	// Count of available routes.
+	available *expvar.Int
+}
+
+func NewRouterMetrics(id string, available int) *RouterMetrics {
+	avail := getVarInt("router", id, "available")
+	avail.Set(int64(available))
+	return &RouterMetrics{
+		route:     getVarMap("router", id, "route"),
+		failure:   getVarMap("router", id, "failure"),
+		available: avail,
+	}
+}
+
 // NewRouter returns a new router instance. The router won't have any routes and can only be used
 // once Add() is called to setup a route.
 func NewRouter(id string) *Router {
-	return &Router{id: id}
+	return &Router{
+		id:      id,
+		metrics: NewRouterMetrics(id, 0),
+	}
 }
 
 // Resolve a request by routing it to the right resolved based on the routes setup in the router.
@@ -44,7 +68,12 @@ func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			continue
 		}
 		log.WithField("resolver", route.resolver.String()).Debug("routing query to resolver")
-		return route.resolver.Resolve(q, ci)
+		r.metrics.route.Add(route.resolver.String(), 1)
+		a, err := route.resolver.Resolve(q, ci)
+		if err != nil {
+			r.metrics.failure.Add(route.resolver.String(), 1)
+		}
+		return a, err
 	}
 	return nil, fmt.Errorf("no route for %s", question.String())
 }
@@ -84,6 +113,7 @@ func (r *Router) Add(name, class, typ, source string, resolver Resolver) error {
 	}
 
 	r.routes = append(r.routes, newRoute)
+	r.metrics.available.Add(1)
 	return nil
 }
 

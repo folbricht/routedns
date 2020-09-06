@@ -14,6 +14,7 @@ type DoTClient struct {
 	id       string
 	endpoint string
 	pipeline *Pipeline
+	// Pipeline also provides operation metrics.
 }
 
 // DoTClientOptions contains options used by the DNS-over-TLS resolver.
@@ -61,7 +62,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 	return &DoTClient{
 		id:       id,
 		endpoint: endpoint,
-		pipeline: NewPipeline(endpoint, client),
+		pipeline: NewPipeline(id, endpoint, client),
 	}, nil
 }
 

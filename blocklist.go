@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"expvar"
 	"net"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ type Blocklist struct {
 	BlocklistOptions
 	resolver Resolver
 	mu       sync.RWMutex
+	metrics  *BlocklistMetrics
 }
 
 var _ Resolver = &Blocklist{}
@@ -41,9 +43,28 @@ type BlocklistOptions struct {
 	AllowlistRefresh time.Duration
 }
 
+type BlocklistMetrics struct {
+	// Blocked queries count.
+	blocked *expvar.Int
+	// Allowed queries count.
+	allowed *expvar.Int
+}
+
+func NewBlocklistMetrics(id string) *BlocklistMetrics {
+	return &BlocklistMetrics{
+		allowed: getVarInt("router", id, "allow"),
+		blocked: getVarInt("router", id, "deny"),
+	}
+}
+
 // NewBlocklist returns a new instance of a blocklist resolver.
 func NewBlocklist(id string, resolver Resolver, opt BlocklistOptions) (*Blocklist, error) {
-	blocklist := &Blocklist{id: id, resolver: resolver, BlocklistOptions: opt}
+	blocklist := &Blocklist{
+		id:               id,
+		resolver:         resolver,
+		BlocklistOptions: opt,
+		metrics:          NewBlocklistMetrics(id),
+	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
@@ -73,6 +94,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if allowlistDB != nil {
 		if _, rule, ok := allowlistDB.Match(question); ok {
 			log = log.WithField("rule", rule)
+			r.metrics.allowed.Add(1)
 			if r.AllowListResolver != nil {
 				log.WithField("resolver", r.AllowListResolver.String()).Debug("matched allowlist, forwarding")
 				return r.AllowListResolver.Resolve(q, ci)
@@ -86,9 +108,11 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Debug("forwarding unmodified query to resolver")
+		r.metrics.allowed.Add(1)
 		return r.resolver.Resolve(q, ci)
 	}
 	log = log.WithField("rule", rule)
+	r.metrics.blocked.Add(1)
 
 	// If an optional blocklist-resolver was given, send the query to that instead of returning NXDOMAIN.
 	if r.BlocklistResolver != nil {
