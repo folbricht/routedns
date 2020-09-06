@@ -11,11 +11,12 @@ import (
 )
 
 type config struct {
-	Title     string
-	Listeners map[string]listener
-	Resolvers map[string]resolver
-	Groups    map[string]group
-	Routers   map[string]router
+	Title             string
+	BootstrapResolver resolver `toml:"bootstrap-resolver"`
+	Listeners         map[string]listener
+	Resolvers         map[string]resolver
+	Groups            map[string]group
+	Routers           map[string]router
 }
 
 type listener struct {

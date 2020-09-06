@@ -63,6 +63,17 @@ func start(opt options, args []string) error {
 		return err
 	}
 
+	// See if a bootstrap-resolver was defined in the config. If so, instantiate it,
+	// wrap it in a net.Resolver wrapper and replace the net.DefaultResolver with it
+	// for all other entities to use.
+	if config.BootstrapResolver.Address != "" {
+		bootstrap, err := resolverFromConfig("bootstrap-resolver", config.BootstrapResolver)
+		if err != nil {
+			return fmt.Errorf("failed to instantiate bootstrap-resolver: %w", err)
+		}
+		net.DefaultResolver = rdns.NewNetResolver(bootstrap)
+	}
+
 	// Map to hold all the resolvers extracted from the config, key'ed by resolver ID. It
 	// holds configured resolvers, groups, as well as routers (since they all implement
 	// rdns.Resolver)
@@ -73,76 +84,9 @@ func start(opt options, args []string) error {
 		if _, ok := resolvers[id]; ok {
 			return fmt.Errorf("group resolver with duplicate id '%s'", id)
 		}
-
-		switch r.Protocol {
-		case "doq":
-			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
-			if err != nil {
-				return err
-			}
-			opt := rdns.DoQClientOptions{
-				BootstrapAddr: r.BootstrapAddr,
-				LocalAddr:     net.ParseIP(r.LocalAddr),
-				TLSConfig:     tlsConfig,
-			}
-			resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
-			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
-			}
-		case "dot":
-			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
-			if err != nil {
-				return err
-			}
-			opt := rdns.DoTClientOptions{
-				BootstrapAddr: r.BootstrapAddr,
-				LocalAddr:     net.ParseIP(r.LocalAddr),
-				TLSConfig:     tlsConfig,
-			}
-			resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
-			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
-			}
-		case "dtls":
-			dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
-			if err != nil {
-				return err
-			}
-			opt := rdns.DTLSClientOptions{
-				BootstrapAddr: r.BootstrapAddr,
-				LocalAddr:     net.ParseIP(r.LocalAddr),
-				DTLSConfig:    dtlsConfig,
-			}
-			resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
-			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
-			}
-		case "doh":
-			tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
-			if err != nil {
-				return err
-			}
-			opt := rdns.DoHClientOptions{
-				Method:        r.DoH.Method,
-				TLSConfig:     tlsConfig,
-				BootstrapAddr: r.BootstrapAddr,
-				Transport:     r.Transport,
-				LocalAddr:     net.ParseIP(r.LocalAddr),
-			}
-			resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
-			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
-			}
-		case "tcp", "udp":
-			opt := rdns.DNSClientOptions{
-				LocalAddr: net.ParseIP(r.LocalAddr),
-			}
-			resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
-			if err != nil {
-				return fmt.Errorf("failed to parse resolver config for '%s' : %s", id, err)
-			}
-		default:
-			return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
+		resolvers[id], err = resolverFromConfig(id, r)
+		if err != nil {
+			return fmt.Errorf("failed to instantiate resolver %q : %s", id, err)
 		}
 	}
 

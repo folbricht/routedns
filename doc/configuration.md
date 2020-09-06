@@ -35,6 +35,7 @@
   - [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver)
   - [DNS-over-DTLS](#DNS-over-DTLS-Resolver)
   - [DNS-over-QUIC](#DNS-over-QUIC-Resolver)
+  - [Bootstrap Resolver](#Bootstrap-Resolver)
 
 ## Overview
 
@@ -1041,7 +1042,7 @@ When upstream services are configured using their hostnames, RouteDNS will first
 - The initial lookup is using the OS' resolver which could be using plain/un-encrypted DNS. This may not be desirable or even fail if no other DNS is available.
 - The service does not support querying it by IP directly and a hostname is needed. Google for example does not support DoH using `https://8.8.8.8/dns-query`. The endpoint has to be configured as `https://dns.google/dns-query`.
 
-To solve these issues, it is possible to add a bootstrap IP address to the config. This will use the IP to connect to the service without first having to perform a lookup while still preserving the DoH URL or DoT hostname for the TLS handshake. The `bootstrap-address` option is available on both, DoT and DoH resolvers.
+To solve these issues, it is possible to add a bootstrap IP address to the resolver config or to use a [bootstrap resolver](#Bootstrap-Resolver). This will use the IP to connect to the service without first having to perform a lookup while still preserving the DoH URL or DoT hostname for the TLS handshake. The `bootstrap-address` option is available on both, DoT and DoH resolvers.
 
 ```toml
 [resolvers.google-doh-post-bootstrap]
@@ -1171,3 +1172,20 @@ bootstrap-address = "127.0.0.1"
 ```
 
 Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-client.toml)
+
+### Bootstrap Resolver
+
+Some configuration contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
+Note: Resolvers (including the bootstrap resolver itself) also support a `bootstrap-address` property that sets the IP directly and bypasses the bootstrap resolver.
+
+Examples:
+
+Use Cloudflare DoT to resolve all hostnames in the configuration.
+
+```toml
+[bootstrap-resolver]
+address = "1.1.1.1:853"
+protocol = "dot"
+```
+
+Example config files: [bootstrap-resolver.toml](../cmd/routedns/example-config/bootstrap-resolver.toml), [use-case-6.toml](../cmd/routedns/example-config/use-case-6.toml)
