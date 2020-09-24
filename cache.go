@@ -161,17 +161,12 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 
 	// Calculate expiry for the whole record. Negative answers may not have a SOA to use the TTL from.
 	switch answer.Rcode {
-	case dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
+	case dns.RcodeSuccess, dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
 		if ok {
 			item.expiry = now.Add(time.Duration(min) * time.Second)
 		} else {
 			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}
-	case dns.RcodeSuccess:
-		if !ok {
-			return
-		}
-		item.expiry = now.Add(time.Duration(min) * time.Second)
 	default:
 		return
 	}
