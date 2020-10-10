@@ -82,6 +82,7 @@ func (c *Pipeline) start() {
 			req.markDone(nil, err)
 			continue
 		}
+		conn.UDPSize = 4096
 		wg.Add(2)
 
 		go func() { c.requests <- req }() // re-queue the request that triggered the upstream connection
