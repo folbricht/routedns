@@ -45,6 +45,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		Net:       network,
 		Dialer:    dialer,
 		TLSConfig: &tls.Config{},
+		UDPSize:   4096,
 	}
 	return &DNSClient{
 		id:       id,

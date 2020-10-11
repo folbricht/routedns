@@ -660,6 +660,7 @@ blocklist-refresh = 86400
 blocklist-source  = [
   {source = "https://host/block.cidr.txt", cache-dir="/var/tmp"},
 ]
+```
 
 Response blocklist based on IP geo-location. Remote and multiple blocklists are supported as well.
 
