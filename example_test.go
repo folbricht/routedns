@@ -43,10 +43,11 @@ func Example_router() {
 	cloudflare, _ := rdns.NewDNSClient("cf-dns", "1.1.1.1:53", "udp", rdns.DNSClientOptions{})
 
 	// Build a router that will send all "*.cloudflare.com" to the cloudflare
-	// resolvber while everything else goes to the google resolver (default)
+	// resolver while everything else goes to the google resolver (default)
+	route1, _ := rdns.NewRoute(`\.cloudflare\.com\.$`, "", nil, "", cloudflare)
+	route2, _ := rdns.NewRoute("", "", nil, "", google)
 	r := rdns.NewRouter("my-router")
-	_ = r.Add(`\.cloudflare\.com\.$`, "", "", "", cloudflare)
-	_ = r.Add("", "", "", "", google)
+	r.Add(route1, route2)
 
 	// Build a query
 	q := new(dns.Msg)

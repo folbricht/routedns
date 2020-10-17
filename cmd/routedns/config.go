@@ -113,10 +113,12 @@ type router struct {
 }
 
 type route struct {
-	Type     string
+	Type     string // Deprecated, use "Types" instead
+	Types    []string
 	Class    string
 	Name     string
 	Source   string
+	Invert   bool // Invert the result of the match
 	Resolver string
 }
 

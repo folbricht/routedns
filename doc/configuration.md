@@ -938,9 +938,11 @@ Options:
 A route has the following fields:
 
 - `type` - If defined, only matches queries of this type, `A`, `AAAA`, `MX`, etc. Optional.
+- `types` - List of types. If defined, only matches queries whose type is in this list. Optional.
 - `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
 - `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. Optional.
 - `source` - Network in CIDR notation. Used to route based on client IP. Optional.
+- `invert` - Invert the result of the matching if set to `true`. Optional.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
 
 Examples:
@@ -955,6 +957,16 @@ routes = [
 ]
 ```
 
+Send all queries for A, AAAA, and MX records under `google.com` to a non-default resolver. Note the plural in `types` which expects a list.
+
+```toml
+[routers.router1]
+routes = [
+  { name = '(^|\.)google\.com\.$', types = ["A", "AAAA", "MX"], resolver="google-udp" },
+  { resolver="cloudflare-dot" }, # default route
+]
+```
+
 Route queries from a specific IP to a different resolver.
 
 ```toml
@@ -965,7 +977,21 @@ routes = [
 ]
 ```
 
-Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml),[walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml)
+Disallow all queries for records that are not of type A, AAAA, or MX by responding with NXDOMAIN.
+
+```toml
+[routers.router1]
+routes = [
+  { invert = true, types = ["A", "AAAA", "MX"], resolver="static-nxdomain" },
+  { resolver="cloudflare-dot" },
+]
+
+[groups.static-nxdomain]
+type  = "static-responder"
+rcode = 3
+```
+
+Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [router.toml](../cmd/routedns/example-config/router.toml)
 
 ### Rate Limiter
 
