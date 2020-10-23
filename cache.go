@@ -167,6 +167,13 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 		} else {
 			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}
+	case dns.RcodeServerFailure:
+		// According to RFC2308, a SERVFAIL response must not be cached for longer than 5 minutes.
+		if r.NegativeTTL < 300 {
+			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
+		} else {
+			item.expiry = now.Add(300 * time.Second)
+		}
 	default:
 		return
 	}
