@@ -557,9 +557,16 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 		if !ok {
 			return fmt.Errorf("router '%s' references non-existant resolver or group '%s'", id, route.Resolver)
 		}
-		if err := router.Add(route.Name, route.Class, route.Type, route.Source, resolver); err != nil {
+		types := route.Types
+		if route.Type != "" { // Support the deprecated "Type" by just adding it to "Types" if defined
+			types = append(types, route.Type)
+		}
+		r, err := rdns.NewRoute(route.Name, route.Class, types, route.Source, resolver)
+		if err != nil {
 			return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
 		}
+		r.Invert(route.Invert)
+		router.Add(r)
 	}
 	resolvers[id] = router
 	return nil

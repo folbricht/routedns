@@ -14,9 +14,11 @@ func TestRouterType(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
+	route1, _ := NewRoute("", "", []string{"MX"}, "", r1)
+	route2, _ := NewRoute("", "", nil, "", r2)
+
 	router := NewRouter("my-router")
-	_ = router.Add("", "", "MX", "", r1)
-	_ = router.Add("", "", "", "", r2)
+	router.Add(route1, route2)
 
 	// Not MX record, should go to r2
 	q.SetQuestion("acme.test.", dns.TypeA)
@@ -39,9 +41,11 @@ func TestRouterClass(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
+	route1, _ := NewRoute("", "ANY", nil, "", r1)
+	route2, _ := NewRoute("", "", nil, "", r2)
+
 	router := NewRouter("my-router")
-	_ = router.Add("", "ANY", "", "", r1)
-	_ = router.Add("", "", "", "", r2)
+	router.Add(route1, route2)
 
 	// ClassINET question, should go to r2
 	q.SetQuestion("acme.test.", dns.TypeA)
@@ -50,7 +54,7 @@ func TestRouterClass(t *testing.T) {
 	require.Equal(t, 0, r1.HitCount())
 	require.Equal(t, 1, r2.HitCount())
 
-	// ClassAny shuold go to r1
+	// ClassAny should go to r1
 	q.Question = make([]dns.Question, 1)
 	q.Question[0] = dns.Question{"miek.nl.", dns.TypeMX, dns.ClassANY}
 	_, err = router.Resolve(q, ci)
@@ -65,9 +69,11 @@ func TestRouterName(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
+	route1, _ := NewRoute(`\.acme\.test\.$`, "", nil, "", r1)
+	route2, _ := NewRoute("", "", nil, "", r2)
+
 	router := NewRouter("my-router")
-	_ = router.Add(`\.acme\.test\.$`, "", "", "", r1)
-	_ = router.Add("", "", "", "", r2)
+	router.Add(route1, route2)
 
 	// No match, should go to r2
 	q.SetQuestion("bla.test.", dns.TypeA)
@@ -90,9 +96,11 @@ func TestRouterSource(t *testing.T) {
 	q := new(dns.Msg)
 	q.SetQuestion("acme.test.", dns.TypeA)
 
+	route1, _ := NewRoute("", "", nil, "192.168.1.100/32", r1)
+	route2, _ := NewRoute("", "", nil, "", r2)
+
 	router := NewRouter("my-router")
-	_ = router.Add("", "", "", "192.168.1.100/32", r1)
-	_ = router.Add("", "", "", "", r2)
+	router.Add(route1, route2)
 
 	// No match, should go to r2
 	_, err := router.Resolve(q, ClientInfo{SourceIP: net.ParseIP("192.168.1.50")})

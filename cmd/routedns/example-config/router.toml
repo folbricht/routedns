@@ -1,0 +1,33 @@
+# Simple example showing how to to use a router containing multi-type routes as well as
+# inverted routes. The first route only allows A, AAAA, MX record lookups past it. Then
+# everything under .google.com will be sent to Google DoT while everything else goes to
+# Cloudflare.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router1"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "router1"
+
+[routers.router1]
+routes = [
+  { invert = true, types = ["A", "AAAA", "MX"], resolver="static-nxdomain" }, # disallow anything that is not A, AAAA, or MX
+  { name = '(^|\.)google\.com\.$', resolver="google-dot" },
+  { resolver="cloudflare-dot" }, # default route
+]
+
+[groups.static-nxdomain]
+type  = "static-responder"
+rcode = 3
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
