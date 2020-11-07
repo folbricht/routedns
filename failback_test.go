@@ -47,3 +47,24 @@ func TestFailBack(t *testing.T) {
 	require.Equal(t, 5, r1.HitCount())
 	require.Equal(t, 1, r2.HitCount())
 }
+
+func TestFailBackSERVFAIL(t *testing.T) {
+	// Build 2 resolvers that count the number of invocations
+	var ci ClientInfo
+	opt := StaticResolverOptions{
+		RCode: dns.RcodeServerFailure,
+	}
+	r1, err := NewStaticResolver("test-static", opt)
+	require.NoError(t, err)
+
+	r2 := new(TestResolver)
+
+	g := NewFailBack("test-fb", FailBackOptions{ResetAfter: time.Second}, r1, r2)
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	// Send the first query, the first resolver will return SERVFAIL and the request will go to the 2nd
+	_, err = g.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r2.HitCount())
+}
