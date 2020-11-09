@@ -68,3 +68,18 @@ func TestFailBackSERVFAIL(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, r2.HitCount())
 }
+
+func TestFailBackDrop(t *testing.T) {
+	var ci ClientInfo
+	r1 := NewDropResolver("test-drop")
+	r2 := new(TestResolver)
+
+	g := NewFailBack("test-fb", FailBackOptions{ResetAfter: time.Second}, r1, r2)
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	// The query should be dropped, so no failover
+	_, err := g.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 0, r2.HitCount())
+}

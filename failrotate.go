@@ -41,7 +41,7 @@ func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err := resolver.Resolve(q, ci)
-		if err == nil && a.Rcode != dns.RcodeServerFailure { // Return immediately if successful
+		if err == nil && (a == nil || a.Rcode != dns.RcodeServerFailure) { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
