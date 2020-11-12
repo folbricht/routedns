@@ -365,7 +365,7 @@ type = "round-robin"
 
 ### Fail-Rotate group
 
-In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and receives all queries. If the active resolver fails, the next becomes active and the request is retried. If the last resolver fails the first becomes the active again. There's no time-based automatic fail-back.
+In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and receives all queries. If the active resolver fails, i.e. no response or returns SERVFAIL, the next becomes active and the request is retried. If the last resolver fails the first becomes the active again. There's no time-based automatic fail-back.
 
 #### Configuration
 
@@ -385,7 +385,7 @@ type = "fail-rotate"
 
 ### Fail-Back group
 
-Similar to [fail-rotate](#Fail-Rotate-group) but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
+Similar to [fail-rotate](#Fail-Rotate-group) but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute. Failure means either no response or it returns SERVFAIL.
 
 #### Configuration
 
