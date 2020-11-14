@@ -83,3 +83,21 @@ func TestFailBackDrop(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, r2.HitCount())
 }
+
+// Return SERVFAIL if all available resolvers return that
+func TestFailBackSERVFAILAll(t *testing.T) {
+	var ci ClientInfo
+	opt := StaticResolverOptions{
+		RCode: dns.RcodeServerFailure,
+	}
+	r, err := NewStaticResolver("test-static", opt)
+	require.NoError(t, err)
+
+	g := NewFailBack("test-fb", FailBackOptions{ResetAfter: time.Second}, r, r)
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	a, err := g.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
+}

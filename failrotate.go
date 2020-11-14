@@ -35,24 +35,24 @@ func NewFailRotate(id string, resolvers ...Resolver) *FailRotate {
 // resolver on error.
 func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(r.id, q, ci)
-	var gErr error
+	var (
+		err error
+		a   *dns.Msg
+	)
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
 		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
-		a, err := resolver.Resolve(q, ci)
+		a, err = resolver.Resolve(q, ci)
 		if err == nil && (a == nil || a.Rcode != dns.RcodeServerFailure) { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
 		r.metrics.failure.Add(resolver.String(), 1)
 
-		// Record the error to be returned when all requests fail
-		gErr = err
-
 		r.errorFrom(active)
 	}
-	return nil, gErr
+	return a, err
 }
 
 func (r *FailRotate) String() string {
