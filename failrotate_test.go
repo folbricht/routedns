@@ -63,7 +63,6 @@ func TestFailRotate(t *testing.T) {
 }
 
 func TestFailRotateSERVFAIL(t *testing.T) {
-	// Build 2 resolvers that count the number of invocations
 	var ci ClientInfo
 	opt := StaticResolverOptions{
 		RCode: dns.RcodeServerFailure,
@@ -96,4 +95,22 @@ func TestFailRotateDrop(t *testing.T) {
 	_, err := g.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 0, r2.HitCount())
+}
+
+// Return SERVFAIL if all available resolvers return that
+func TestFailRotateSERVFAILAll(t *testing.T) {
+	var ci ClientInfo
+	opt := StaticResolverOptions{
+		RCode: dns.RcodeServerFailure,
+	}
+	r, err := NewStaticResolver("test-static", opt)
+	require.NoError(t, err)
+
+	g := NewFailRotate("test-rotate", r, r)
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	a, err := g.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
 }
