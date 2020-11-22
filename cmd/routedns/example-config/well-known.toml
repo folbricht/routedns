@@ -129,6 +129,11 @@ protocol = "udp"
 address = "208.67.222.220:53"
 protocol = "udp"
 
+# Adguard DNS-over-QUIC
+[resolvers.adguard-doq]
+address = "dns-unfiltered.adguard.com:784"
+protocol = "doq"
+
 # Listeners
 
 [listeners.local-udp]

@@ -236,7 +236,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	tr := &http3.RoundTripper{
 		TLSClientConfig: opt.TLSConfig,
-		QuicConfig:      &quic.Config{},
+		QuicConfig: &quic.Config{
+			TokenStore: quic.NewLRUTokenStore(10, 10),
+		},
 		Dial: func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
 			hostname, port, err := net.SplitHostPort(addr)
 			if err != nil {
