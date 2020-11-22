@@ -1,0 +1,16 @@
+# Basic DNS proxy. Translate all plain DNS queries received on port 53
+# into DNS-over-TLS queries to Cloudflare's DNS server.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-dot"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-dot"
