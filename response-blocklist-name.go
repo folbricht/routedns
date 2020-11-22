@@ -8,7 +8,7 @@ import (
 )
 
 // ResponseBlocklistName is a resolver that filters by matching the strings in CNAME, MX,
-// NS, PTR and SRV response resocords against a blocklist.
+// NS, PTR and SRV response records against a blocklist.
 type ResponseBlocklistName struct {
 	id string
 	ResponseBlocklistNameOptions
