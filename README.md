@@ -47,6 +47,28 @@ An example systemd service file is provided [here](cmd/routedns/routedns.service
 
 Example configuration files for a number of use-cases can be found [here](cmd/routedns/example-config)
 
+### Docker container
+
+A container is available on [Docker Hub](https://hub.docker.com/r/folbricht/routedns). It comes with a very basic configuration which is expected to be overwritten with a custom config file.
+
+Use the default config (simple DNS -> DoT proxy):
+
+```text
+docker run -d --rm --network host folbricht/routedns
+```
+
+Override the default configuration (`/config.toml`) with a config file on the host:
+
+```text
+docker run -d --rm --network host -v /path/to/config.toml:/config.toml folbricht/routedns
+```
+
+Listen on non-standard ports:
+
+```text
+docker run -d --rm -p 5353:53/udp -p 5353:53/tcp -v /path/to/config.toml:/config.toml folbricht/routedns
+```
+
 ## Configuration
 
 RouteDNS supports building complex DNS processing pipelines. A typically configuration would have one or more listeners to receive queries, several modifiers and routers to process the query (or responses), and then several resolvers that pass the query to upstream DNS services. See the [Configuration Guide](doc/configuration.md) for details on how to setup a pipeline.

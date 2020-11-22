@@ -1,0 +1,10 @@
+# Simple config using a public DoQ server
+
+[resolvers.adguard-doq]
+address = "dns-unfiltered.adguard.com:784"
+protocol = "doq"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "adguard-doq"
