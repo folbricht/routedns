@@ -1,0 +1,15 @@
+[resolvers.opendns-udp]
+address = "208.67.222.220:53"
+protocol = "udp"
+
+[groups.opendns-mac]
+type = "edns0-modifier"
+resolvers = ["opendns-udp"]
+edns0-op = "add" # "add" or "delete". Defaults to "" which does nothing.
+edns0-code = 65001
+edns0-data = [1, 2, 3, 4, 5, 6] # These have to be decimal values
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "opendns-mac"

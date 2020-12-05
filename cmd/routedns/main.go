@@ -390,6 +390,24 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "edns0-modifier":
+		if len(gr) != 1 {
+			return fmt.Errorf("type edns0-modifier only supports one resolver in '%s'", id)
+		}
+		var f rdns.EDNS0ModifierFunc
+		switch g.EDNS0Op {
+		case "add":
+			f = rdns.EDNS0ModifierAdd(g.EDNS0Code, g.EDNS0Data)
+		case "delete":
+			f = rdns.EDNS0ModifierDelete(g.EDNS0Code)
+		case "":
+		default:
+			return fmt.Errorf("unsupported edns0-modifier operation '%s'", g.EDNS0Op)
+		}
+		resolvers[id], err = rdns.NewEDNS0Modifier(id, gr[0], f)
+		if err != nil {
+			return err
+		}
 	case "cache":
 		opt := rdns.CacheOptions{
 			GCPeriod:    time.Duration(g.GCPeriod) * time.Second,
