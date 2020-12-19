@@ -67,6 +67,9 @@ type group struct {
 	CacheNegativeTTL uint32                  `toml:"cache-negative-ttl"` // TTL to apply to negative responses, default 60.
 	TTLMin           uint32                  `toml:"ttl-min"`            // TTL minimum to apply to responses in the TTL-modifier
 	TTLMax           uint32                  `toml:"ttl-max"`            // TTL maximum to apply to responses in the TTL-modifier
+	EDNS0Op          string                  `toml:"edns0-op"`           // EDNS0 modifier operation, "add" or "delete"
+	EDNS0Code        uint16                  `toml:"edns0-code"`         // EDNS0 modifier option code
+	EDNS0Data        []byte                  `toml:"edns0-data"`         // EDNS0 modifier option data
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type

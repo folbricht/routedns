@@ -23,6 +23,7 @@
   - [Response Blocklist](#Response-Blocklist)
   - [Client Blocklist](#Client-Blocklist)
   - [EDNS0 Client Subnet modifier](#EDNS0-Client-Subnet-Modifier)
+  - [EDNS0 modifier](#EDNS0-Modifier)
   - [Static responder](#Static-responder)
   - [Drop](#Drop)
   - [Response Minimizer](#Response-Minimizer)
@@ -737,7 +738,7 @@ A client subnet modifier is used to either remove ECS options from a query, repl
 
 #### Configuration
 
-Round-Robin groups are instantiated with `type = "ecs-modifier"` in the groups section of the configuration.
+Client Subnet modifiers are instantiated with `type = "ecs-modifier"` in the groups section of the configuration.
 
 Options:
 
@@ -780,6 +781,39 @@ ecs-prefix6 = 64
 ```
 
 Example config files: [ecs-modifier-add.toml](../cmd/routedns/example-config/ecs-modifier-add.toml), [ecs-modifier-delete.toml](../cmd/routedns/example-config/ecs-modifier-delete.toml), [ecs-modifier-privacy.toml](../cmd/routedns/example-config/ecs-modifier-privacy.toml)
+
+### EDNS0 Modifier
+
+EDNS0 Modifier allows low-level operations on the EDNS0 option records in queries. It can be used to add or remove custom option codes with arbitrary data.
+
+- `add` - Add an EDNS0 option to a query. If there is one already it is replaced.
+- `delete` - Remove the specified option from the EDNS0 options.
+
+#### Configuration
+
+EDNS0 Subnet modifiers are instantiated with `type = "edns0-modifier"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `edns0-op` - Operation to be performed on query options. Either `add`, `delete`. Note that `add` replaces options with the same code if present.
+- `edns0-code` - EDNS0 option code to apply the modification to.
+- `edns0-data` - Raw data for the option expressed in an array of (decimal!) byte values. Only used for `add` operations.
+
+Examples:
+
+Add the MAC address 52:54:00:b6:49:60 to an EDNS0 option (code 65001) for identification with the upstream resolver.
+
+```toml
+[groups.opendns-mac]
+type = "edns0-modifier"
+resolvers = ["opendns"]
+edns0-op = "add" # "add" or "delete". Defaults to "" which does nothing.
+edns0-code = 65001
+edns0-data = [82, 84, 0, 182, 73, 96]
+```
+
+Example config files: [edns0-modifier.toml](../cmd/routedns/example-config/edns0-modifier.toml)
 
 ### Static responder
 
