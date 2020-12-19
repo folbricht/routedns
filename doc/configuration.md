@@ -802,7 +802,7 @@ Options:
 
 Examples:
 
-Add the MAC address to an EDNS0 option for identification with the upstream resolver.
+Add the MAC address 52:54:00:b6:49:60 to an EDNS0 option (code 65001) for identification with the upstream resolver.
 
 ```toml
 [groups.opendns-mac]
@@ -810,7 +810,7 @@ type = "edns0-modifier"
 resolvers = ["opendns"]
 edns0-op = "add" # "add" or "delete". Defaults to "" which does nothing.
 edns0-code = 65001
-edns0-data = [1, 2, 3, 4, 5, 6]
+edns0-data = [82, 84, 0, 182, 73, 96]
 ```
 
 Example config files: [edns0-modifier.toml](../cmd/routedns/example-config/edns0-modifier.toml)
