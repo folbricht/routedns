@@ -545,7 +545,10 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-collapse only supports one resolver in '%s'", id)
 		}
-		resolvers[id] = rdns.NewResponseCollapse(id, gr[0])
+		opt := rdns.ResponseCollapsOptions{
+			NullRCode: g.NullRCode,
+		}
+		resolvers[id] = rdns.NewResponseCollapse(id, gr[0], opt)
 	case "drop":
 		resolvers[id] = rdns.NewDropResolver(id)
 	case "rate-limiter":

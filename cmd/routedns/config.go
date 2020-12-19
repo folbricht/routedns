@@ -102,6 +102,9 @@ type group struct {
 	Prefix4       uint8  // Prefix bits to identify IPv4 client
 	Prefix6       uint8  // Prefix bits to identify IPv6 client
 	LimitResolver string `toml:"limit-resolver"` // Resolver to use when rate-limit exceeded
+
+	// Response Collapse options
+	NullRCode int `toml:"null-rcode"` // Response code if after collapsing, no answers are left
 }
 
 // Block/Allowlist items for blocklist-v2
