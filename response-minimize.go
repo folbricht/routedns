@@ -18,10 +18,11 @@ func NewResponseMinimize(id string, resolver Resolver) *ResponseMinimize {
 	return &ResponseMinimize{id: id, resolver: resolver}
 }
 
-// Resolve a DNS query using a random resolver.
+// Resolve a DNS query with the upstream resolver and strip out any extra or NS
+// records in the response.
 func (r *ResponseMinimize) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil || answer == nil {
+	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess {
 		return answer, err
 	}
 	logger(r.id, q, ci).Debug("stripping response")
