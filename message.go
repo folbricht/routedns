@@ -24,15 +24,18 @@ func rCode(r *dns.Msg) string {
 
 // Returns a NXDOMAIN answer for a query.
 func nxdomain(q *dns.Msg) *dns.Msg {
-	a := new(dns.Msg)
-	a.SetRcode(q, dns.RcodeNameError)
-	return a
+	return responseWithCode(q, dns.RcodeNameError)
 }
 
-// Returns a REFUSED answer for a query
+// Returns a REFUSED answer for a query.
 func refused(q *dns.Msg) *dns.Msg {
+	return responseWithCode(q, dns.RcodeRefused)
+}
+
+// Build a response for a query with the given responce code.
+func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 	a := new(dns.Msg)
-	a.SetRcode(q, dns.RcodeRefused)
+	a.SetRcode(q, rcode)
 	return a
 }
 

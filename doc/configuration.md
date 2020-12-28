@@ -968,7 +968,11 @@ www.paypal.com. 18 IN A 95.100.196.60
 
 #### Configuration
 
-A response collapse element is instantiated with `type = "response-collape"` in the groups section of the configuration.
+A response collapse element is instantiated with `type = "response-collapse"` in the groups section of the configuration.
+
+Options:
+
+- `null-rcode` - Response code if after collapsing there are no answer records left: 0 = NOERROR (default), 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3)
 
 Examples:
 

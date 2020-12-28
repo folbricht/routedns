@@ -9,19 +9,25 @@ import (
 type ResponseCollapse struct {
 	id       string
 	resolver Resolver
+	ResponseCollapsOptions
+}
+
+type ResponseCollapsOptions struct {
+	NullRCode int // Response code when there's nothing left after collapsing the response
 }
 
 var _ Resolver = &ResponseCollapse{}
 
 // NewResponseMinimize returns a new instance of a response minimizer.
-func NewResponseCollapse(id string, resolver Resolver) *ResponseCollapse {
-	return &ResponseCollapse{id: id, resolver: resolver}
+func NewResponseCollapse(id string, resolver Resolver, opt ResponseCollapsOptions) *ResponseCollapse {
+	return &ResponseCollapse{id: id, resolver: resolver, ResponseCollapsOptions: opt}
 }
 
-// Resolve a DNS query using a random resolver.
+// Resolve a DNS query, then collapse the response to remove anything from the
+// answer that wasn't asked for.
 func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil || answer == nil {
+	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess {
 		return answer, err
 	}
 	name := q.Question[0].Name
@@ -38,10 +44,10 @@ func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 	answer.Answer = aRR
 	log := logger(r.id, q, ci)
 
-	// If there's nothing left after collapsing, return NXDOMAIN
+	// If there's nothing left after collapsing, return the null response code
 	if len(answer.Answer) == 0 {
-		log.Debug("no answer left after collapse, returning nxdomain")
-		return nxdomain(q), nil
+		log.Debugf("no answer left after collapse, returning respose code %d", r.NullRCode)
+		return responseWithCode(q, r.NullRCode), nil
 	}
 	log.Debug("collapsing response")
 	return answer, nil
