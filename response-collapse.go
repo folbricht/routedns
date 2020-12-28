@@ -23,10 +23,11 @@ func NewResponseCollapse(id string, resolver Resolver, opt ResponseCollapsOption
 	return &ResponseCollapse{id: id, resolver: resolver, ResponseCollapsOptions: opt}
 }
 
-// Resolve a DNS query using a random resolver.
+// Resolve a DNS query, then collapse the response to remove anything from the
+// answer that wasn't asked for.
 func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil || answer == nil {
+	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess {
 		return answer, err
 	}
 	name := q.Question[0].Name
