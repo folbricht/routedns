@@ -47,7 +47,7 @@ func TestDomainDB(t *testing.T) {
 	}
 	for _, test := range tests {
 		q := dns.Question{Name: test.q, Qtype: dns.TypeA, Qclass: dns.ClassINET}
-		_, _, ok := m.Match(q)
+		_, _, _, ok := m.Match(q)
 		require.Equal(t, test.match, ok, "query: %s", test.q)
 	}
 }

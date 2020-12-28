@@ -42,13 +42,13 @@ func (m *RegexpDB) Reload() (BlocklistDB, error) {
 	return NewRegexpDB(m.loader)
 }
 
-func (m *RegexpDB) Match(q dns.Question) (net.IP, string, bool) {
+func (m *RegexpDB) Match(q dns.Question) (net.IP, string, string, bool) {
 	for _, rule := range m.rules {
 		if rule.MatchString(q.Name) {
-			return nil, rule.String(), true
+			return nil, "", rule.String(), true
 		}
 	}
-	return nil, "", false
+	return nil, "", "", false
 }
 
 func (m *RegexpDB) String() string {

@@ -25,7 +25,6 @@ func rCode(r *dns.Msg) string {
 // Returns a NXDOMAIN answer for a query.
 func nxdomain(q *dns.Msg) *dns.Msg {
 	a := new(dns.Msg)
-	a.SetReply(q)
 	a.SetRcode(q, dns.RcodeNameError)
 	return a
 }
@@ -33,7 +32,24 @@ func nxdomain(q *dns.Msg) *dns.Msg {
 // Returns a REFUSED answer for a query
 func refused(q *dns.Msg) *dns.Msg {
 	a := new(dns.Msg)
-	a.SetReply(q)
 	a.SetRcode(q, dns.RcodeRefused)
+	return a
+}
+
+// Answers a PTR query with a name
+func ptr(q *dns.Msg, name string) *dns.Msg {
+	a := new(dns.Msg)
+	a.SetReply(q)
+	a.Answer = []dns.RR{
+		&dns.PTR{
+			Hdr: dns.RR_Header{
+				Name:   q.Question[0].Name,
+				Rrtype: dns.TypePTR,
+				Class:  dns.ClassINET,
+				Ttl:    3600,
+			},
+			Ptr: dns.Fqdn(name),
+		},
+	}
 	return a
 }

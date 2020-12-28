@@ -12,6 +12,7 @@ import (
 // IP4 is given but no IP6, then a domain match will still result in an NXDOMAIN for the IP6 address.
 type HostsDB struct {
 	filters map[string]ipRecords
+	ptrMap  map[string]string // PTR lookup map
 	loader  BlocklistLoader
 }
 
@@ -29,6 +30,7 @@ func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
 		return nil, err
 	}
 	filters := make(map[string]ipRecords)
+	ptrMap := make(map[string]string)
 	for _, r := range rules {
 		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
@@ -38,6 +40,9 @@ func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
 		ipString := fields[0]
 		names := fields[1:]
 		if strings.HasPrefix(ipString, "#") {
+			continue
+		}
+		if len(names) == 0 {
 			continue
 		}
 		ip := net.ParseIP(ipString)
@@ -58,21 +63,30 @@ func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
 			}
 			filters[name] = ips
 		}
+		reverseAddr, err := dns.ReverseAddr(ipString)
+		if err != nil {
+			continue
+		}
+		ptrMap[reverseAddr] = names[0]
 	}
-	return &HostsDB{filters, loader}, nil
+	return &HostsDB{filters, ptrMap, loader}, nil
 }
 
 func (m *HostsDB) Reload() (BlocklistDB, error) {
 	return NewHostsDB(m.loader)
 }
 
-func (m *HostsDB) Match(q dns.Question) (net.IP, string, bool) {
+func (m *HostsDB) Match(q dns.Question) (net.IP, string, string, bool) {
+	if q.Qtype == dns.TypePTR {
+		name, ok := m.ptrMap[q.Name]
+		return nil, name, "", ok
+	}
 	name := strings.TrimSuffix(q.Name, ".")
 	ips, ok := m.filters[name]
 	if q.Qtype == dns.TypeA {
-		return ips.ip4, ips.ip4.String() + " " + name, ok
+		return ips.ip4, "", ips.ip4.String() + " " + name, ok
 	}
-	return ips.ip6, ips.ip6.String() + " " + name, ok
+	return ips.ip6, "", ips.ip6.String() + " " + name, ok
 }
 
 func (m *HostsDB) String() string {

@@ -36,7 +36,7 @@ type BlocklistOptions struct {
 	// alternative resolver rather than the default upstream one.
 	AllowListResolver Resolver
 
-	// Rules that override the blocklist rules, effecively negate them.
+	// Rules that override the blocklist rules, effectively negate them.
 	AllowlistDB BlocklistDB
 
 	// Refresh period for the allowlist. Disabled if 0.
@@ -92,7 +92,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
 	if allowlistDB != nil {
-		if _, rule, ok := allowlistDB.Match(question); ok {
+		if _, _, rule, ok := allowlistDB.Match(question); ok {
 			log = log.WithField("rule", rule)
 			r.metrics.allowed.Add(1)
 			if r.AllowListResolver != nil {
@@ -104,7 +104,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	ip, rule, ok := blocklistDB.Match(question)
+	ip, name, rule, ok := blocklistDB.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Debug("forwarding unmodified query to resolver")
@@ -113,6 +113,12 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	log = log.WithField("rule", rule)
 	r.metrics.blocked.Add(1)
+
+	// If we got a name for the PTR query, respond to it
+	if question.Qtype == dns.TypePTR && name != "" {
+		log.Debug("responding with ptr blocklist from blocklist")
+		return ptr(q, name), nil
+	}
 
 	// If an optional blocklist-resolver was given, send the query to that instead of returning NXDOMAIN.
 	if r.BlocklistResolver != nil {
