@@ -10,17 +10,16 @@ blocklist           = [                  # Define the names to be blocked
   '127.0.0.1 www.evil.com',    # Spoofed
   '0.0.0.0   www.blocked.com', # Blocked
   '127.0.0.1 www.domain.com',  # IP4 and IP6 addresses can be spoofed independently
-  '1.2.3.4 example.com',  # IP4 and IP6 addresses can be spoofed independently
   '::1       www.domain.com',
   '::        ads.com',
 ]
 
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
 
 [listeners.local-tcp]
-address = ":1153"
+address = ":53"
 protocol = "tcp"
 resolver = "cloudflare-blocklist"
