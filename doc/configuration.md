@@ -18,6 +18,7 @@
   - [Fail-Rotate group](#Fail-Rotate-group)
   - [Fail-Back group](#Fail-Back-group)
   - [Random group](#Random-group)
+  - [Fastest group](#Fastest-group)
   - [Replace](#Replace)
   - [Query Blocklist](#Query-Blocklist)
   - [Response Blocklist](#Response-Blocklist)
@@ -425,6 +426,28 @@ resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
 ```
 
 Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
+
+### Fastest group
+
+This group will send every query to all configured resolvers but only use the fastest (successful) response. Slower responses are discarded. Use sparingly as this increases the overall query load on upstream resolvers.
+
+#### Configuration
+
+Fastest groups are instantiated with `type = "fastest"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - An array of upstream resolvers or modifiers.
+
+#### Examples
+
+```toml
+[groups.fastest]
+type   = "fastest"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+```
+
+Example config files: [fastest.toml](../cmd/routedns/example-config/fastest.toml)
 
 ### Replace
 

@@ -1,0 +1,25 @@
+# Example of how to use a Fastest group of resolvers. Queries are routed
+# to all upstream resolvers concurrently and only the fastest (non-error)
+# response is used. Consider that this increases the overall query load.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "fastest"
+
+[groups.fastest]
+type   = "fastest"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+
+[resolvers.cloudflare-dot-1]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-2]
+address = "1.0.0.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+

@@ -270,6 +270,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		resolvers[id] = rdns.NewFailRotate(id, gr...)
 	case "fail-back":
 		resolvers[id] = rdns.NewFailBack(id, rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
+	case "fastest":
+		resolvers[id] = rdns.NewFastest(id, gr...)
 	case "random":
 		resolvers[id] = rdns.NewRandom(id, rdns.RandomOptions{ResetAfter: time.Minute}, gr...)
 	case "blocklist":
