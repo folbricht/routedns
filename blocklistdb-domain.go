@@ -62,7 +62,7 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 	return NewDomainDB(m.loader)
 }
 
-func (m *DomainDB) Match(q dns.Question) (net.IP, string, bool) {
+func (m *DomainDB) Match(q dns.Question) (net.IP, string, string, bool) {
 	s := strings.TrimSuffix(q.Name, ".")
 	var matched []string
 	parts := strings.Split(s, ".")
@@ -71,18 +71,18 @@ func (m *DomainDB) Match(q dns.Question) (net.IP, string, bool) {
 		part := parts[i]
 		subNode, ok := n[part]
 		if !ok {
-			return nil, "", false
+			return nil, "", "", false
 		}
 		matched = append(matched, part)
 		if _, ok := subNode[""]; ok { // exact and sub-domain match
-			return nil, matchedDomainParts(".", matched), true
+			return nil, "", matchedDomainParts(".", matched), true
 		}
 		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
-			return nil, matchedDomainParts("*.", matched), true
+			return nil, "", matchedDomainParts("*.", matched), true
 		}
 		n = subNode
 	}
-	return nil, matchedDomainParts("", matched), len(n) == 0 // exact match
+	return nil, "", matchedDomainParts("", matched), len(n) == 0 // exact match
 }
 
 func (m *DomainDB) String() string {

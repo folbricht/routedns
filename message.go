@@ -35,7 +35,24 @@ func refused(q *dns.Msg) *dns.Msg {
 // Build a response for a query with the given responce code.
 func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 	a := new(dns.Msg)
-	a.SetReply(q)
 	a.SetRcode(q, rcode)
+	return a
+}
+
+// Answers a PTR query with a name
+func ptr(q *dns.Msg, name string) *dns.Msg {
+	a := new(dns.Msg)
+	a.SetReply(q)
+	a.Answer = []dns.RR{
+		&dns.PTR{
+			Hdr: dns.RR_Header{
+				Name:   q.Question[0].Name,
+				Rrtype: dns.TypePTR,
+				Class:  dns.ClassINET,
+				Ttl:    3600,
+			},
+			Ptr: dns.Fqdn(name),
+		},
+	}
 	return a
 }
