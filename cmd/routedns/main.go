@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	rdns "github.com/folbricht/routedns"
+	"github.com/heimdalr/dag"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +51,17 @@ arguments.
 
 }
 
+type Node struct {
+	id    string
+	value interface{}
+}
+
+var _ dag.IDInterface = Node{}
+
+func (n Node) ID() string {
+	return n.id
+}
+
 func start(opt options, args []string) error {
 	// Set the log level in the library package
 	if opt.logLevel > 6 {
@@ -63,93 +74,83 @@ func start(opt options, args []string) error {
 		return err
 	}
 
-	// See if a bootstrap-resolver was defined in the config. If so, instantiate it,
-	// wrap it in a net.Resolver wrapper and replace the net.DefaultResolver with it
-	// for all other entities to use.
-	if config.BootstrapResolver.Address != "" {
-		bootstrap, err := resolverFromConfig("bootstrap-resolver", config.BootstrapResolver)
-		if err != nil {
-			return fmt.Errorf("failed to instantiate bootstrap-resolver: %w", err)
-		}
-		net.DefaultResolver = rdns.NewNetResolver(bootstrap)
-	}
-
 	// Map to hold all the resolvers extracted from the config, key'ed by resolver ID. It
 	// holds configured resolvers, groups, as well as routers (since they all implement
 	// rdns.Resolver)
 	resolvers := make(map[string]rdns.Resolver)
 
-	// Parse resolver config from the config first since groups and routers reference them
-	for id, r := range config.Resolvers {
-		if _, ok := resolvers[id]; ok {
-			return fmt.Errorf("group resolver with duplicate id '%s'", id)
+	// See if a bootstrap-resolver was defined in the config. If so, instantiate it,
+	// wrap it in a net.Resolver wrapper and replace the net.DefaultResolver with it
+	// for all other entities to use.
+	if config.BootstrapResolver.Address != "" {
+		if err := instantiateResolver("bootstrap-resolver", config.BootstrapResolver, resolvers); err != nil {
+			return fmt.Errorf("failed to instantiate bootstrap-resolver: %w", err)
 		}
-		resolvers[id], err = resolverFromConfig(id, r)
+		net.DefaultResolver = rdns.NewNetResolver(resolvers["bootstrap-resolver"])
+	}
+	// Add all types of nodes to a DAG, this is to find duplicates. Then populate the edges (dependencies).
+	graph := dag.NewDAG()
+	edges := make(map[string][]string)
+	for id, v := range config.Resolvers {
+		node := &Node{id, v}
+		_, err := graph.AddVertex(node)
 		if err != nil {
-			return fmt.Errorf("failed to instantiate resolver %q : %s", id, err)
+			return err
+		}
+	}
+	for id, v := range config.Groups {
+		node := &Node{id, v}
+		_, err := graph.AddVertex(node)
+		if err != nil {
+			return err
+		}
+		edges[id] = append(v.Resolvers, v.AllowListResolver, v.BlockListResolver, v.LimitResolver)
+	}
+	for id, v := range config.Routers {
+		node := &Node{id, v}
+		_, err := graph.AddVertex(node)
+		if err != nil {
+			return err
+		}
+		for _, route := range v.Routes {
+			edges[id] = append(edges[id], route.Resolver)
+		}
+	}
+	// Add the edges to the DAG. This will fail if there are duplicate edges, recursion or missing nodes
+	for id, es := range edges {
+		for _, e := range es {
+			if e == "" {
+				continue
+			}
+			if err := graph.AddEdge(id, e); err != nil {
+				return err
+			}
 		}
 	}
 
-	// Since routers depend on groups and vice-versa, build a map of IDs that reference a list of
-	// IDs as dependencies. If all dependencies of an ID have been resolved (exist in the map of
-	// resolvers), this entity can be instantiated in the following step.
-	deps := make(map[string][]string)
-	for id, g := range config.Groups {
-		_, ok := deps[id]
-		if ok {
-			return fmt.Errorf("duplicate name: %s", id)
-		}
-		deps[id] = g.Resolvers
-		// Some groups have additional resolvers, add those here.
-		if g.BlockListResolver != "" {
-			deps[id] = append(deps[id], g.BlockListResolver)
-		}
-		if g.AllowListResolver != "" {
-			deps[id] = append(deps[id], g.AllowListResolver)
-		}
-		if g.LimitResolver != "" {
-			deps[id] = append(deps[id], g.LimitResolver)
-		}
-	}
-	for id, r := range config.Routers {
-		_, ok := deps[id]
-		if ok {
-			return fmt.Errorf("duplicate name: %s", id)
-		}
-		for _, route := range r.Routes {
-			deps[id] = append(deps[id], route.Resolver)
-		}
-	}
-
-	// Repeatedly iterate over the map, checking if all dependencies are resolveable. If
-	// one is found, this node is instantiated and removed from the map. If nothing is found
-	// during an iteration, the dependencies are missing and we bail out.
-	for len(deps) > 0 {
-		found := false
-	node:
-		for id, dependencies := range deps {
-			for _, depID := range dependencies {
-				if _, ok := resolvers[depID]; !ok {
-					continue node
+	// Instantiate the elements from leaves to the root nodes
+	for graph.GetOrder() > 0 {
+		leaves := graph.GetLeaves()
+		for id, v := range leaves {
+			node := v.(*Node)
+			if r, ok := node.value.(resolver); ok {
+				if err := instantiateResolver(id, r, resolvers); err != nil {
+					return err
 				}
 			}
-			// We found the ID of a node that can be instantiated. It could be a group
-			// or a router. Try them both.
-			if g, ok := config.Groups[id]; ok {
+			if g, ok := node.value.(group); ok {
 				if err := instantiateGroup(id, g, resolvers); err != nil {
 					return err
 				}
 			}
-			if r, ok := config.Routers[id]; ok {
+			if r, ok := node.value.(router); ok {
 				if err := instantiateRouter(id, r, resolvers); err != nil {
 					return err
 				}
 			}
-			delete(deps, id)
-			found = true
-		}
-		if !found {
-			return errors.New("unable to resolve dependencies")
+			if err := graph.DeleteVertex(id); err != nil {
+				return err
+			}
 		}
 	}
 

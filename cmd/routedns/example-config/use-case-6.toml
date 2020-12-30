@@ -69,7 +69,7 @@ blocklist-source = [
 # Resolver group that uses 2 cloudflare upstream resolvers, additional ones can be added
 [groups.cloudflare]
 type = "fail-rotate"
-resolvers = ["cloudflare-dot-1", "cloudflare-dot-1"]
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2"]
 
 # Cloudflare DNS-over-TLS
 [resolvers.cloudflare-dot-1]
