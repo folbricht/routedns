@@ -72,8 +72,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			if err != nil {
 				metrics.err.Add("resolve", 1)
 				log.WithError(err).Error("failed to resolve")
-				a = new(dns.Msg)
-				a.SetRcode(req, dns.RcodeServerFailure)
+				a = servfail(req)
 			}
 		} else {
 			metrics.err.Add("acl", 1)
