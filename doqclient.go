@@ -33,7 +33,7 @@ type DoQClient struct {
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
 type DoQClientOptions struct {
-	// Bootstrap address - IP to use for the serivce instead of looking up
+	// Bootstrap address - IP to use for the service instead of looking up
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 
@@ -110,9 +110,12 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		edns0.Option = newOpt
 	}
 
-	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
+	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero. Don't forget
+	// to restore the ID in the original query, it could be needed for error responses further
+	// up
 	id := q.Id
 	q.Id = 0
+	defer func() { q.Id = id }()
 
 	// Encode the query
 	b, err := q.Pack()

@@ -27,6 +27,11 @@ func nxdomain(q *dns.Msg) *dns.Msg {
 	return responseWithCode(q, dns.RcodeNameError)
 }
 
+// Returns a SERVFAIL answer for a query.
+func servfail(q *dns.Msg) *dns.Msg {
+	return responseWithCode(q, dns.RcodeServerFailure)
+}
+
 // Returns a REFUSED answer for a query.
 func refused(q *dns.Msg) *dns.Msg {
 	return responseWithCode(q, dns.RcodeRefused)
