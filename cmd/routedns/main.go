@@ -112,8 +112,14 @@ func start(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
+		// One router can have multiple edges to the same resolver.
+		// Dedup them before adding to the list of edges.
+		dep := make(map[string]struct{})
 		for _, route := range v.Routes {
-			edges[id] = append(edges[id], route.Resolver)
+			dep[route.Resolver] = struct{}{}
+		}
+		for r := range dep {
+			edges[id] = append(edges[id], r)
 		}
 	}
 	// Add the edges to the DAG. This will fail if there are duplicate edges, recursion or missing nodes
