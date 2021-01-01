@@ -566,6 +566,7 @@ blocklist-source = [
    {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
    {format = "regexp", source = "/path/to/local/regexp.list"},
 ]
+```
 
 Remote blocklist that is cached to local disk (`cache-dir="/var/tmp"`) and loaded from it at startup.
 
