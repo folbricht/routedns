@@ -33,7 +33,7 @@ GO111MODULE=on go get -v github.com/folbricht/routedns/cmd/routedns
 Alternative method using a clone, building from the tip of the master branch.
 
 ```text
-git clone https://github.com/folbricht/routens.git
+git clone https://github.com/folbricht/routedns.git
 cd routedns/cmd/routedns && go install
 ```
 
