@@ -274,9 +274,6 @@ type quicSession struct {
 
 func newQuicSession(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
 	session, err := quicDial(hostname, rAddr, lAddr, tlsConfig, config)
-	if session == nil && err == nil {
-		err = errors.New("quickDial returned (nil,nil)")
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -304,11 +301,12 @@ func (s *quicSession) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	stream, err := s.Session.OpenStreamSync(ctx)
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-
-		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+		var session quic.Session
+		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
+		s.Session = session
 		stream, err = s.Session.OpenStreamSync(ctx)
 	}
 	return stream, err
@@ -320,10 +318,12 @@ func (s *quicSession) OpenStream() (quic.Stream, error) {
 	stream, err := s.Session.OpenStream()
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+		var session quic.Session
+		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
+		s.Session = session
 		stream, err = s.Session.OpenStream()
 	}
 	return stream, err
@@ -338,9 +338,5 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 	if err != nil {
 		return nil, err
 	}
-	s, err := quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
-	if s == nil && err == nil {
-		return nil, errors.New("upstream quic.Dial returned (nil,nil)")
-	}
-	return s, err
+	return quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
 }
