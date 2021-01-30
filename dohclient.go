@@ -274,6 +274,9 @@ type quicSession struct {
 
 func newQuicSession(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
 	session, err := quicDial(hostname, rAddr, lAddr, tlsConfig, config)
+	if session == nil && err == nil {
+		err = errors.New("quickDial returned (nil,nil)")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -335,5 +338,9 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 	if err != nil {
 		return nil, err
 	}
-	return quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
+	s, err := quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
+	if s == nil && err == nil {
+		return nil, errors.New("upstream quic.Dial returned (nil,nil)")
+	}
+	return s, err
 }
