@@ -301,11 +301,12 @@ func (s *quicSession) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	stream, err := s.Session.OpenStreamSync(ctx)
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-
-		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+		var session quic.Session
+		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
+		s.Session = session
 		stream, err = s.Session.OpenStreamSync(ctx)
 	}
 	return stream, err
@@ -317,10 +318,12 @@ func (s *quicSession) OpenStream() (quic.Stream, error) {
 	stream, err := s.Session.OpenStream()
 	if err != nil {
 		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		s.Session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+		var session quic.Session
+		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			return nil, err
 		}
+		s.Session = session
 		stream, err = s.Session.OpenStream()
 	}
 	return stream, err
