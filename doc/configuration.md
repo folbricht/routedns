@@ -292,7 +292,7 @@ Options:
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
-- `cache-answer-shuffle` - Specifies a method for changing the order of cached answers. Possible values `random` or `round-robin`. Defaults to static responses if not set.
+- `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
 
 #### Examples
 

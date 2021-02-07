@@ -247,23 +247,45 @@ func minTTL(answer *dns.Msg) (uint32, bool) {
 	return min, found
 }
 
-// Shuffles the order of answer RRs. Used to allow for some control
+// Shuffles the order of answer A/AAAA RRs. Used to allow for some control
 // over the records in the cache.
 type AnswerShuffleFunc func(*dns.Msg)
 
-// Randomly re-order the answer records.
+// Randomly re-order the A/AAAA answer records.
 func AnswerShuffleRandon(msg *dns.Msg) {
-	rand.Shuffle(len(msg.Answer), func(i, j int) {
-		msg.Answer[i], msg.Answer[j] = msg.Answer[j], msg.Answer[i]
+	if len(msg.Answer) < 2 {
+		return
+	}
+	// idx holds the indexes of A and AAAA records in the answer
+	idx := make([]int, 0, len(msg.Answer))
+	for i, rr := range msg.Answer {
+		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
+			idx = append(idx, i)
+		}
+	}
+	rand.Shuffle(len(idx), func(i, j int) {
+		msg.Answer[idx[i]], msg.Answer[idx[j]] = msg.Answer[idx[j]], msg.Answer[idx[i]]
 	})
 }
 
-// Shift the answer record order by one.
+// Shift the answer A/AAAA record order in an answer by one.
 func AnswerShuffleRoundRobin(msg *dns.Msg) {
 	if len(msg.Answer) < 2 {
 		return
 	}
-	last := msg.Answer[len(msg.Answer)-1]
-	copy(msg.Answer[1:], msg.Answer[:len(msg.Answer)-1])
-	msg.Answer[0] = last
+	var last dns.RR
+	var dst int
+	for i, rr := range msg.Answer {
+		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
+			if last == nil {
+				last = rr
+			} else {
+				msg.Answer[dst] = rr
+			}
+			dst = i
+		}
+	}
+	if last != nil {
+		msg.Answer[dst] = last
+	}
 }

@@ -98,3 +98,45 @@ func TestCacheNXDOMAIN(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
 }
+
+func TestRoundRobinShuffle(t *testing.T) {
+	msg := &dns.Msg{
+		Answer: []dns.RR{
+			&dns.CNAME{
+				Hdr: dns.RR_Header{
+					Name:   "test",
+					Rrtype: dns.TypeCNAME,
+					Class:  dns.ClassINET,
+				},
+				Target: "test",
+			},
+			&dns.A{
+				Hdr: dns.RR_Header{
+					Name:   "test",
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+				},
+				A: net.IP{0, 0, 0, 1},
+			},
+			&dns.A{
+				Hdr: dns.RR_Header{
+					Name:   "test",
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+				},
+				A: net.IP{0, 0, 0, 2},
+			},
+		},
+	}
+	// Shift the A records
+	AnswerShuffleRoundRobin(msg)
+
+	require.Equal(t, dns.TypeCNAME, msg.Answer[0].Header().Rrtype)
+	require.Equal(t, dns.TypeA, msg.Answer[1].Header().Rrtype)
+	require.Equal(t, dns.TypeA, msg.Answer[2].Header().Rrtype)
+
+	a1 := msg.Answer[1].(*dns.A)
+	a2 := msg.Answer[2].(*dns.A)
+	require.Equal(t, net.IP{0, 0, 0, 2}, a1.A)
+	require.Equal(t, net.IP{0, 0, 0, 1}, a2.A)
+}
