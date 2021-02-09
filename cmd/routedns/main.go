@@ -418,10 +418,20 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return err
 		}
 	case "cache":
+		var shuffleFunc rdns.AnswerShuffleFunc
+		switch g.CacheAnswerShuffle {
+		case "random":
+			shuffleFunc = rdns.AnswerShuffleRandon
+		case "round-robin":
+			shuffleFunc = rdns.AnswerShuffleRoundRobin
+		default:
+			return fmt.Errorf("unsupported shuffle function %q", g.CacheAnswerShuffle)
+		}
 		opt := rdns.CacheOptions{
-			GCPeriod:    time.Duration(g.GCPeriod) * time.Second,
-			Capacity:    g.CacheSize,
-			NegativeTTL: g.CacheNegativeTTL,
+			GCPeriod:          time.Duration(g.GCPeriod) * time.Second,
+			Capacity:          g.CacheSize,
+			NegativeTTL:       g.CacheNegativeTTL,
+			ShuffleAnswerFunc: shuffleFunc,
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"

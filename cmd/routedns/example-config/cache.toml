@@ -9,6 +9,7 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-size = 1000               # Optional, max number of responses to cache. Default unlimited
 cache-negative-ttl = 10         # Optional, TTL to apply to responses without a SOA
+cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached responses
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

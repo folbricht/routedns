@@ -292,6 +292,7 @@ Options:
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
+- `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
 
 #### Examples
 
@@ -303,7 +304,7 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 ```
 
-Cache that only stores up to 1000 records in memory and keeps negative responses for 1h.
+Cache that only stores up to 1000 records in memory and keeps negative responses for 1h. Responses are randomized for cached responses.
 
 ```toml
 [groups.cloudflare-cached]
@@ -311,6 +312,7 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-size = 1000
 cache-negative-ttl = 3600
+cache-answer-shuffle = "random"
 ```
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml)

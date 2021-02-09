@@ -4,6 +4,7 @@ import (
 	"errors"
 	"expvar"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -41,8 +42,12 @@ type CacheOptions struct {
 	// the limit is reached, the least-recently used entry is removed from the cache.
 	Capacity int
 
-	// TTL to use for negative responsed that do not have an SOA record, default 60
+	// TTL to use for negative responses that do not have an SOA record, default 60
 	NegativeTTL uint32
+
+	// Allows control over the order of answer RRs in cached responses. Default is to keep
+	// the order if nil.
+	ShuffleAnswerFunc AnswerShuffleFunc
 }
 
 // NewCache returns a new instance of a Cache resolver.
@@ -115,6 +120,9 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 	var timestamp time.Time
 	r.mu.Lock()
 	if a := r.lru.get(q); a != nil {
+		if r.ShuffleAnswerFunc != nil {
+			r.ShuffleAnswerFunc(a.Msg)
+		}
 		answer = a.Copy()
 		timestamp = a.timestamp
 	}
@@ -237,4 +245,47 @@ func minTTL(answer *dns.Msg) (uint32, bool) {
 		}
 	}
 	return min, found
+}
+
+// Shuffles the order of answer A/AAAA RRs. Used to allow for some control
+// over the records in the cache.
+type AnswerShuffleFunc func(*dns.Msg)
+
+// Randomly re-order the A/AAAA answer records.
+func AnswerShuffleRandon(msg *dns.Msg) {
+	if len(msg.Answer) < 2 {
+		return
+	}
+	// idx holds the indexes of A and AAAA records in the answer
+	idx := make([]int, 0, len(msg.Answer))
+	for i, rr := range msg.Answer {
+		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
+			idx = append(idx, i)
+		}
+	}
+	rand.Shuffle(len(idx), func(i, j int) {
+		msg.Answer[idx[i]], msg.Answer[idx[j]] = msg.Answer[idx[j]], msg.Answer[idx[i]]
+	})
+}
+
+// Shift the answer A/AAAA record order in an answer by one.
+func AnswerShuffleRoundRobin(msg *dns.Msg) {
+	if len(msg.Answer) < 2 {
+		return
+	}
+	var last dns.RR
+	var dst int
+	for i, rr := range msg.Answer {
+		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
+			if last == nil {
+				last = rr
+			} else {
+				msg.Answer[dst] = rr
+			}
+			dst = i
+		}
+	}
+	if last != nil {
+		msg.Answer[dst] = last
+	}
 }
