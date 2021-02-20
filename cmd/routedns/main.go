@@ -428,10 +428,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("unsupported shuffle function %q", g.CacheAnswerShuffle)
 		}
 		opt := rdns.CacheOptions{
-			GCPeriod:          time.Duration(g.GCPeriod) * time.Second,
-			Capacity:          g.CacheSize,
-			NegativeTTL:       g.CacheNegativeTTL,
-			ShuffleAnswerFunc: shuffleFunc,
+			GCPeriod:            time.Duration(g.GCPeriod) * time.Second,
+			Capacity:            g.CacheSize,
+			NegativeTTL:         g.CacheNegativeTTL,
+			ShuffleAnswerFunc:   shuffleFunc,
+			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
