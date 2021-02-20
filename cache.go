@@ -5,6 +5,7 @@ import (
 	"expvar"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,12 @@ type CacheOptions struct {
 	// Allows control over the order of answer RRs in cached responses. Default is to keep
 	// the order if nil.
 	ShuffleAnswerFunc AnswerShuffleFunc
+
+	// If enabled, will return NXDOMAIN for every name query under another name that is
+	// already cached as NXDOMAIN. For example, if example.com is in the cache with
+	// NXDOMAIN, a query for www.example.com will also immediately return NXDOMAIN.
+	// See RFC8020.
+	HardenBelowNXDOMAIN bool
 }
 
 // NewCache returns a new instance of a Cache resolver.
@@ -127,6 +134,26 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 		timestamp = a.timestamp
 	}
 	r.mu.Unlock()
+
+	// We couldn't find it in the cache, but a parent domain may already be with NXDOMAIN.
+	// Return that instead if enabled.
+	if answer == nil && r.HardenBelowNXDOMAIN {
+		name := q.Question[0].Name
+		newQ := q.Copy()
+		fragments := strings.Split(name, ".")
+		r.mu.Lock()
+		for i := 1; i < len(fragments)-1; i++ {
+			newQ.Question[0].Name = strings.Join(fragments[i:], ".")
+			if a := r.lru.get(newQ); a != nil {
+				if a.Rcode == dns.RcodeNameError {
+					r.mu.Unlock()
+					return nxdomain(q), true
+				}
+				break
+			}
+		}
+		r.mu.Unlock()
+	}
 
 	// Return a cache-miss if there's no answer record in the map
 	if answer == nil {

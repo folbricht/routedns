@@ -293,6 +293,7 @@ Options:
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
+- `cache-harden-below-nxdomain` - Return NXDOMAIN for sudomain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
 
 #### Examples
 
