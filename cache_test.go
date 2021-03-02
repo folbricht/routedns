@@ -99,6 +99,39 @@ func TestCacheNXDOMAIN(t *testing.T) {
 	require.Equal(t, 1, r.HitCount())
 }
 
+func TestCacheHardenBelowNXDOMAIN(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			a.SetRcode(q, dns.RcodeNameError)
+			return a, nil
+		},
+	}
+
+	opt := CacheOptions{
+		GCPeriod:            time.Minute,
+		HardenBelowNXDOMAIN: true,
+	}
+	c := NewCache("test-cache", r, opt)
+
+	// Cache an NXDOMAIN for the parent domain
+	q.SetQuestion("test.com.", dns.TypeA)
+	_, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+
+	// A sub-domain query should also return NXDOMAIN based on the cached
+	// record for the parent if HardenBelowNXDOMAIN is enabled.
+	q.SetQuestion("not.exist.test.com.", dns.TypeA)
+	a, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	require.Equal(t, dns.RcodeNameError, a.Rcode)
+}
+
 func TestRoundRobinShuffle(t *testing.T) {
 	msg := &dns.Msg{
 		Answer: []dns.RR{

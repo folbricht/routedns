@@ -70,9 +70,10 @@ type group struct {
 	EDNS0Data  []byte                  `toml:"edns0-data"`  // EDNS0 modifier option data
 
 	// Cache options
-	CacheSize          int    `toml:"cache-size"`           // Max number of items to keep in the cache. Default 0 == unlimited
-	CacheNegativeTTL   uint32 `toml:"cache-negative-ttl"`   // TTL to apply to negative responses, default 60.
-	CacheAnswerShuffle string `toml:"cache-answer-shuffle"` // Algorithm to use for modifying the response order of cached items
+	CacheSize                int    `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
+	CacheNegativeTTL         uint32 `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
+	CacheAnswerShuffle       string `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
+	CacheHardenBelowNXDOMAIN bool   `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
