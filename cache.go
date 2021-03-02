@@ -112,8 +112,9 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Put the upstream response into the cache and return it
-	r.storeInCache(q, a)
+	// Put the upstream response into the cache and return it. Need to store
+	// a copy since other elements might modify the response, like the replacer.
+	r.storeInCache(q, a.Copy())
 	return a, nil
 }
 
