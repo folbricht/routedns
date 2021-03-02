@@ -160,6 +160,9 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 	if answer == nil {
 		return nil, false
 	}
+
+	// Make a copy of the response before returning it. Some later
+	// elements might make changes.
 	answer = answer.Copy()
 	answer.Id = q.Id
 
