@@ -107,7 +107,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log.WithField("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
 	// Get a response from upstream
-	a, err := r.resolver.Resolve(q, ci)
+	a, err := r.resolver.Resolve(q.Copy(), ci)
 	if err != nil || a == nil {
 		return nil, err
 	}
