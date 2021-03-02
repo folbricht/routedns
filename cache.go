@@ -160,6 +160,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 	if answer == nil {
 		return nil, false
 	}
+	answer = answer.Copy()
 	answer.Id = q.Id
 
 	// Calculate the time the record spent in the cache. We need to
