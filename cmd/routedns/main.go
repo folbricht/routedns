@@ -420,6 +420,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	case "cache":
 		var shuffleFunc rdns.AnswerShuffleFunc
 		switch g.CacheAnswerShuffle {
+		case "": // default
 		case "random":
 			shuffleFunc = rdns.AnswerShuffleRandon
 		case "round-robin":
