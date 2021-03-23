@@ -3,6 +3,7 @@ package rdns
 import (
 	"crypto/tls"
 	"net"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -20,6 +21,10 @@ type DNSClient struct {
 type DNSClientOptions struct {
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
 	LocalAddr net.IP
+
+	// Timeout is the maximum amount of time a dial will wait for
+	// a connect to complete.
+	Timeout time.Duration
 }
 
 var _ Resolver = &DNSClient{}
@@ -30,14 +35,13 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 	if err := validEndpoint(endpoint); err != nil {
 		return nil, err
 	}
-	// Use a custom dialer if a local address was provided
-	var dialer *net.Dialer
+	dialer := &net.Dialer{Timeout: opt.Timeout}
 	if opt.LocalAddr != nil {
 		switch network {
 		case "tcp":
-			dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
+			dialer.LocalAddr = &net.TCPAddr{IP: opt.LocalAddr}
 		case "udp":
-			dialer = &net.Dialer{LocalAddr: &net.UDPAddr{IP: opt.LocalAddr}}
+			dialer.LocalAddr = &net.UDPAddr{IP: opt.LocalAddr}
 		}
 	}
 

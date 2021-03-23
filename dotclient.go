@@ -3,6 +3,7 @@ package rdns
 import (
 	"crypto/tls"
 	"net"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
@@ -26,6 +27,10 @@ type DoTClientOptions struct {
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
 	LocalAddr net.IP
 
+	// Timeout is the maximum amount of time a dial will wait for
+	// a connect to complete.
+	Timeout time.Duration
+
 	TLSConfig *tls.Config
 }
 
@@ -37,10 +42,9 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 		return nil, err
 	}
 
-	// Use a custom dialer if a local address was provided
-	var dialer *net.Dialer
+	dialer := &net.Dialer{Timeout: opt.Timeout}
 	if opt.LocalAddr != nil {
-		dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
+		dialer.LocalAddr = &net.TCPAddr{IP: opt.LocalAddr}
 	}
 	client := &dns.Client{
 		Net:       "tcp-tls",
