@@ -47,10 +47,17 @@ func NewPipeline(id string, addr string, client DNSDialer) *Pipeline {
 // Resolve a single query using this connection.
 func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	r := newRequest(q)
-	c.requests <- r // Queue up the request
 
 	timeout := time.NewTimer(queryTimeout)
 	defer timeout.Stop()
+
+	// Queue up the request or time out
+	select {
+	case c.requests <- r:
+	case <-timeout.C:
+		c.metrics.err.Add("querytimeout", 1)
+		return nil, QueryTimeoutError{q}
+	}
 
 	// Wait for the request to complete or time out
 	select {
