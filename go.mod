@@ -7,7 +7,6 @@ require (
 	github.com/heimdalr/dag v1.0.1
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/lucas-clemente/quic-go v0.20.0
-	github.com/marten-seemann/qtls v0.10.0 // indirect
 	github.com/miekg/dns v1.1.41
 	github.com/oschwald/maxminddb-golang v1.8.0
 	github.com/pion/dtls/v2 v2.0.8
