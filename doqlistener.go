@@ -60,7 +60,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)
 	}
-	opt.TLSConfig.NextProtos = []string{"dq"}
+	opt.TLSConfig.NextProtos = []string{"doq"}
 	l := &DoQListener{
 		id:      id,
 		addr:    addr,
