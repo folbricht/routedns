@@ -53,7 +53,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)
 	}
-	opt.TLSConfig.NextProtos = []string{"dq"}
+	opt.TLSConfig.NextProtos = []string{"doq"}
 
 	// If a bootstrap address was provided, we need to use the IP for the connection but the
 	// hostname in the TLS handshake. The library doesn't support custom dialers, so
