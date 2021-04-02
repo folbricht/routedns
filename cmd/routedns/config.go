@@ -47,6 +47,7 @@ type resolver struct {
 	ClientCrt     string `toml:"client-crt"`
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
+	Target        string // URL for Oblivious DNS target
 }
 
 // DoH-specific resolver options
