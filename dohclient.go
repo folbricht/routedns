@@ -329,6 +329,10 @@ func (s *quicSession) OpenStream() (quic.Stream, error) {
 	return stream, err
 }
 
+func (s *quicSession) NextSession() quic.Session {
+	return nil
+}
+
 func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.Session, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
