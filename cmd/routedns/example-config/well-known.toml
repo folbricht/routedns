@@ -131,7 +131,7 @@ protocol = "udp"
 
 # Adguard DNS-over-QUIC
 [resolvers.adguard-doq]
-address = "dns-unfiltered.adguard.com:784"
+address = "dns-unfiltered.adguard.com:8853"
 protocol = "doq"
 
 # Listeners

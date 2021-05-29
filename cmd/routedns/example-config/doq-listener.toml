@@ -5,7 +5,7 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [listeners.local-doq]
-address = ":1784"
+address = ":8853"
 protocol = "doq"
 resolver = "cloudflare-dot"
 server-crt = "example-config/server.crt"
