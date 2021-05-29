@@ -240,9 +240,9 @@ Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-ser
 
 ### DNS-over-QUIC
 
-Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-00](https://www.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS) for how to configure this.
+Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS) for how to configure this.
 
-Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-00](https://tools.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
+Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
 
 Examples:
 
@@ -250,7 +250,7 @@ DoQ listener accepting queries from all clients.
 
 ```toml
 [listeners.local-doq]
-address = ":1784"
+address = ":8853"
 protocol = "doq"
 resolver = "cloudflare-dot"
 server-crt = "example-config/server.crt"
@@ -1275,13 +1275,13 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 
 ### DNS-over-QUIC Resolver
 
-Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-00](https://tools.ietf.org/id/draft-ietf-dprive-dnsoquic-00.txt). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
+Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
 
 Examples:
 
 ```toml
 [resolvers.local-doq]
-address = "server.acme.test:1784"
+address = "server.acme.test:8853"
 protocol = "doq"
 ca = "example-config/server.crt"
 bootstrap-address = "127.0.0.1"

@@ -2,7 +2,7 @@
 # All queries are forwarded to a local DNS-over-QUIC server.
 
 [resolvers.local-doq]
-address = "server.acme.test:1784"
+address = "server.acme.test:8853"
 protocol = "doq"
 ca = "example-config/server.crt"
 bootstrap-address = "127.0.0.1"

@@ -8,7 +8,7 @@ import (
 )
 
 func TestDOQSimple(t *testing.T) {
-	d, err := NewDoQClient("test-doq", "dns-unfiltered.adguard.com:784", DoQClientOptions{})
+	d, err := NewDoQClient("test-doq", "dns-unfiltered.adguard.com:8853", DoQClientOptions{})
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("google.com.", dns.TypeA)
