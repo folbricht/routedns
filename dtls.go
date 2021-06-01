@@ -23,7 +23,7 @@ func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*dtls.Co
 			return nil, err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, fmt.Errorf("no CA certficates found in %s", caFile)
+			return nil, fmt.Errorf("no CA certificates found in %s", caFile)
 		}
 		dtlsConfig.ClientCAs = certPool
 	}
@@ -62,7 +62,7 @@ func DTLSClientConfig(caFile, crtFile, keyFile string) (*dtls.Config, error) {
 			return nil, err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, fmt.Errorf("no CA certficates found in %s", caFile)
+			return nil, fmt.Errorf("no CA certificates found in %s", caFile)
 		}
 		dtlsConfig.RootCAs = certPool
 	}
