@@ -1,0 +1,18 @@
+# This is the server-side of a secure DOH-over-QUIC proxy where the server
+# expects the client to present a signed certificate it trusts (mutual-TLS).
+# Any query received from the client this way, will then be forwarded to
+# Cloudflare via DoT by the server.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-doh]
+address = ":8443"
+protocol = "doh"
+transport = "quic"
+resolver = "cloudflare-dot"
+server-crt = "../../testdata/server.crt"
+server-key = "../../testdata/server.key"
+ca = "../../testdata/ca.crt"
+mutual-tls = true
