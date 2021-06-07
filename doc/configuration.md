@@ -4,6 +4,7 @@
 
 - [Overview](#Overview)
   - [Split Configuration](#Split-Configuration)
+  - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
 - [Listeners](#Listeners)
   - [Plain DNS](#Plain-DNS)
   - [DNS-over-TLS](#DNS-over-TLS)
