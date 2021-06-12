@@ -91,7 +91,7 @@ func (s DoQListener) Start() error {
 
 		go func() {
 			s.handleSession(session)
-			_ = session.CloseWithError(quic.ErrorCode(DOQNoError), "")
+			_ = session.CloseWithError(DOQNoError, "")
 			s.log.Trace("closing session")
 		}()
 	}

@@ -10,7 +10,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"sync"
+	"net/url"
 	"time"
 
 	"github.com/jtacoma/uritemplates"
@@ -63,7 +63,7 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 	case "tcp", "":
 		tr, err = dohTcpTransport(opt)
 	case "quic":
-		tr, err = dohQuicTransport(opt)
+		tr, err = dohQuicTransport(endpoint, opt)
 	default:
 		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
 	}
@@ -233,107 +233,48 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	return tr, nil
 }
 
-func dohQuicTransport(opt DoHClientOptions) (http.RoundTripper, error) {
-	tr := &http3.RoundTripper{
-		TLSClientConfig: opt.TLSConfig,
-		QuicConfig: &quic.Config{
-			TokenStore: quic.NewLRUTokenStore(10, 10),
-		},
-		Dial: func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
-			hostname, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			if opt.BootstrapAddr != "" {
-				tlsConfig = tlsConfig.Clone()
-				tlsConfig.ServerName = hostname
-				addr = net.JoinHostPort(opt.BootstrapAddr, port)
-			}
-			return newQuicSession(hostname, addr, opt.LocalAddr, tlsConfig, config)
-		},
+func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper, error) {
+	var tlsConfig *tls.Config
+	if opt.TLSConfig == nil {
+		tlsConfig = new(tls.Config)
+	} else {
+		tlsConfig = opt.TLSConfig.Clone()
 	}
-	return tr, nil
-}
-
-// QUIC session that automatically restarts when it's used after having timed out. Needed
-// since the quic-go RoundTripper doesn't have any session management and timed out
-// sessions aren't restarted. This one doesn't support Early sessions, and instead just
-// uses a regular session.
-type quicSession struct {
-	quic.Session
-
-	hostname  string
-	rAddr     string
-	lAddr     net.IP
-	tlsConfig *tls.Config
-	config    *quic.Config
-	mu        sync.Mutex
-
-	expiredContext context.Context
-}
-
-func newQuicSession(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
-	session, err := quicDial(hostname, rAddr, lAddr, tlsConfig, config)
+	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
 	}
-	expired, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	return &quicSession{
-		hostname:       hostname,
-		rAddr:          rAddr,
-		lAddr:          lAddr,
-		tlsConfig:      tlsConfig,
-		config:         config,
-		Session:        session,
-		expiredContext: expired,
-	}, nil
-}
-
-func (s *quicSession) HandshakeComplete() context.Context {
-	return s.expiredContext
-}
-
-func (s *quicSession) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	stream, err := s.Session.OpenStreamSync(ctx)
-	if err != nil {
-		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		var session quic.Session
-		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
-		if err != nil {
-			return nil, err
-		}
-		s.Session = session
-		stream, err = s.Session.OpenStreamSync(ctx)
+	tlsConfig.ServerName = u.Hostname()
+	lAddr := net.IPv4zero
+	if opt.LocalAddr != nil {
+		lAddr = opt.LocalAddr
 	}
-	return stream, err
-}
 
-func (s *quicSession) OpenStream() (quic.Stream, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	stream, err := s.Session.OpenStream()
-	if err != nil {
-		_ = s.Session.CloseWithError(quic.ErrorCode(DOQNoError), "")
-		var session quic.Session
-		session, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
-		if err != nil {
-			return nil, err
-		}
-		s.Session = session
-		stream, err = s.Session.OpenStream()
+	dialer := func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+		return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config)
 	}
-	return stream, err
+	if opt.BootstrapAddr != "" {
+		dialer = func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			addr = net.JoinHostPort(opt.BootstrapAddr, port)
+			return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config)
+		}
+	}
+
+	tr := &http3.RoundTripper{
+		TLSClientConfig: tlsConfig,
+		QuicConfig: &quic.Config{
+			TokenStore: quic.NewLRUTokenStore(10, 10),
+		},
+		Dial: dialer,
+	}
+	return &http3ReliableRoundTripper{tr}, nil
 }
 
-func (s *quicSession) NextSession() quic.Session {
-	return nil
-}
-
-func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.Session, error) {
+func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		return nil, err
@@ -342,5 +283,21 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 	if err != nil {
 		return nil, err
 	}
-	return quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
+	return quic.DialEarly(udpConn, udpAddr, hostname, tlsConfig, config)
+}
+
+// Wrapper for http3.RoundTripper due to https://github.com/lucas-clemente/quic-go/issues/765
+// This wrapper will transparently re-open expired connections. Should be removed once the issue
+// has been fixed upstream.
+type http3ReliableRoundTripper struct {
+	*http3.RoundTripper
+}
+
+func (r *http3ReliableRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := r.RoundTripper.RoundTrip(req)
+	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+		r.RoundTripper.Close()
+		resp, err = r.RoundTripper.RoundTrip(req)
+	}
+	return resp, err
 }

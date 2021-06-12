@@ -1,0 +1,17 @@
+# This is the client-half of a fully secure DoH-over-QUIC configuration
+# where the server is private and expects the client to present a cert
+# by a CA it trusts. All queries received locally will be forwarded over
+# DOH to the server, which then passes it on to its upstream servers.
+
+[resolvers.myserver-doh]
+address = "https://127.0.0.1:8443/dns-query"
+protocol = "doh"
+transport = "quic"
+ca = "../../testdata/ca.crt"
+client-crt = "../../testdata/client.crt"
+client-key = "../../testdata/client.key"
+
+[listeners.local]
+address = ":53"
+protocol = "udp"
+resolver = "myserver-doh"
