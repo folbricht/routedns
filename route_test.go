@@ -79,7 +79,7 @@ func TestRoute(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		r, err := NewRoute(test.rName, test.rClass, test.rType, "", &TestResolver{})
+		r, err := NewRoute(test.rName, test.rClass, test.rType, nil, "", "", "", &TestResolver{})
 		require.NoError(t, err)
 		r.Invert(test.rInvert)
 

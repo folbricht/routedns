@@ -123,13 +123,15 @@ type router struct {
 }
 
 type route struct {
-	Type     string // Deprecated, use "Types" instead
-	Types    []string
-	Class    string
-	Name     string
-	Source   string
-	Invert   bool // Invert the result of the match
-	Resolver string
+	Type          string // Deprecated, use "Types" instead
+	Types         []string
+	Class         string
+	Name          string
+	Source        string
+	Weekdays      []string // 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'
+	After, Before string   // Hour:Minute in 24h format, for example "14:30"
+	Invert        bool     // Invert the result of the match
+	Resolver      string
 }
 
 // LoadConfig reads a config file and returns the decoded structure.

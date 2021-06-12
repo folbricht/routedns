@@ -1,0 +1,20 @@
+# Routing traffic based on time of day and a weekday.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router1"
+
+[routers.router1]
+routes = [
+  { name = '(^|\.)twitter\.com\.$', weekdays = ["sat", "sun"], after = "09:00", before = "17:00", resolver="static-nxdomain" }, # No Twitter on weekends from 9am-5pm!
+  { resolver="cloudflare-dot" }, # default route
+]
+
+[groups.static-nxdomain]
+type  = "static-responder"
+rcode = 3
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"

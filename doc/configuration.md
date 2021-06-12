@@ -991,7 +991,7 @@ Example config files: [response-collapse.toml](../cmd/routedns/example-config/re
 
 ### Router
 
-Routers are used to direct queries to specific upstream resolvers, modifier, or to other routers based on the query type, name, or client information. Each router contains at least one route. Routes are are evaluated in the order they are defined and the first match will be used. Routes that match on the query name are regular expressions. Typically the last route should not have a class, type or name, making it the default route.
+Routers are used to direct queries to specific upstream resolvers, modifiers, or to other routers based on the query type, name, time of day, or client information. Each router contains at least one route. Routes are are evaluated in the order they are defined and the first match will be used. Routes that match on the query name are regular expressions. Typically the last route should not have a class, type or name, making it the default route.
 
 #### Configuration
 
@@ -1008,6 +1008,9 @@ A route has the following fields:
 - `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
 - `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. Optional.
 - `source` - Network in CIDR notation. Used to route based on client IP. Optional.
+- `weekdays` - List of weekdays this route should match on. Possible values: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. Uses local time, not UTC.
+- `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`.
+- `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
 - `invert` - Invert the result of the matching if set to `true`. Optional.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
 
@@ -1057,7 +1060,17 @@ type  = "static-responder"
 rcode = 3
 ```
 
-Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [router.toml](../cmd/routedns/example-config/router.toml)
+Use a different upstream resolver on weekends between 9am and 5pm.
+
+```toml
+[routers.router1]
+routes = [
+  { weekdays = ["sat", "sun"], after = "09:00", before = "17:00", resolver="google-dot" },
+  { resolver="cloudflare-dot" },
+]
+```
+
+Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [router.toml](../cmd/routedns/example-config/router.toml), [router-time.toml](../cmd/routedns/example-config/router-time.toml)
 
 ### Rate Limiter
 

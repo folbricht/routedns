@@ -15,7 +15,7 @@ Features:
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms, caching, in-line query/response modification and translation (full list [here](doc/configuration.md))
-- Routing of queries based on query type, query name, or client IP
+- Routing of queries based on query type, class, query name, time, or client IP
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
@@ -24,7 +24,7 @@ Features:
 
 ## Installation
 
-Install [Go](https://golang.org/dl) version 1.13+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
+Install [Go](https://golang.org/dl) version 1.15+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
 
 ```text
 GO111MODULE=on go get -v github.com/folbricht/routedns/cmd/routedns
