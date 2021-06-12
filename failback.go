@@ -31,6 +31,10 @@ type FailBackOptions struct {
 	// Switch back to the first resolver in the group after no further failures
 	// for this amount of time. Default 1 minute.
 	ResetAfter time.Duration
+
+	// Determines if a SERVFAIL returned by a resolver should be considered an
+	// error response and trigger a failover.
+	ServfailError bool
 }
 
 var _ Resolver = &FailBack{}
@@ -80,7 +84,7 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
-		if err == nil && (a == nil || a.Rcode != dns.RcodeServerFailure) { // Return immediately if successful
+		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
@@ -150,4 +154,9 @@ func (r *FailBack) startResetTimer() chan struct{} {
 		}
 	}()
 	return failCh
+}
+
+// Returns true is the response is considered successful given the options.
+func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
+	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
 }

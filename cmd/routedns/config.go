@@ -69,6 +69,10 @@ type group struct {
 	EDNS0Code  uint16                  `toml:"edns0-code"`  // EDNS0 modifier option code
 	EDNS0Data  []byte                  `toml:"edns0-data"`  // EDNS0 modifier option data
 
+	// Failover/Failback options
+	ResetAfter    int  `toml:"reset-after"`    // Time in seconds after which to reset resolvers in fail-back and random groups, default 60.
+	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
+
 	// Cache options
 	CacheSize                int    `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
 	CacheNegativeTTL         uint32 `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.

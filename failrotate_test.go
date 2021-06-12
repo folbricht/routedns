@@ -13,7 +13,7 @@ func TestFailRotate(t *testing.T) {
 	r1 := new(TestResolver)
 	r2 := new(TestResolver)
 
-	g := NewFailRotate("test-rotate", r1, r2)
+	g := NewFailRotate("test-rotate", FailRotateOptions{}, r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 
@@ -72,7 +72,7 @@ func TestFailRotateSERVFAIL(t *testing.T) {
 
 	r2 := new(TestResolver)
 
-	g := NewFailRotate("test-rotate", r1, r2)
+	g := NewFailRotate("test-rotate", FailRotateOptions{}, r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 
@@ -87,7 +87,7 @@ func TestFailRotateDrop(t *testing.T) {
 	r1 := NewDropResolver("test-drop")
 	r2 := new(TestResolver)
 
-	g := NewFailRotate("test-rotate", r1, r2)
+	g := NewFailRotate("test-rotate", FailRotateOptions{}, r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 
@@ -106,7 +106,7 @@ func TestFailRotateSERVFAILAll(t *testing.T) {
 	r, err := NewStaticResolver("test-static", opt)
 	require.NoError(t, err)
 
-	g := NewFailRotate("test-rotate", r, r)
+	g := NewFailRotate("test-rotate", FailRotateOptions{}, r, r)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 

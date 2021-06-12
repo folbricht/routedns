@@ -27,6 +27,10 @@ var _ Resolver = &Random{}
 type RandomOptions struct {
 	// Re-enable resolvers after this time after a failure
 	ResetAfter time.Duration
+
+	// Determines if a SERVFAIL returned by a resolver should be considered an
+	// error response and cause the resolver to be removed from the group temporarily.
+	ServfailError bool
 }
 
 // NewRandom returns a new instance of a random resolver group.
@@ -56,7 +60,7 @@ func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		r.metrics.route.Add(resolver.String(), 1)
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
-		if err == nil { // Return immediately if successful
+		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
@@ -107,4 +111,9 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	Log.WithFields(logrus.Fields{"id": r.id, "resolver": resolver}).Trace("re-activating resolver")
 	r.resolvers = append(r.resolvers, resolver)
 	r.metrics.available.Set(int64(len(r.resolvers)))
+}
+
+// Returns true is the response is considered successful given the options.
+func (r *Random) isSuccessResponse(a *dns.Msg) bool {
+	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
 }

@@ -101,3 +101,32 @@ func TestFailBackSERVFAILAll(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
 }
+
+// Make sure that the ServfailError option triggers a failover
+func TestFailBackServfailOKOption(t *testing.T) {
+	var ci ClientInfo
+	opt := StaticResolverOptions{
+		RCode: dns.RcodeServerFailure,
+	}
+	failResolver, err := NewStaticResolver("test-static", opt)
+	require.NoError(t, err)
+	goodResolver := new(TestResolver)
+
+	// With ServfailError == false
+	g1 := NewFailBack("test-fb", FailBackOptions{}, failResolver, goodResolver)
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	a, err := g1.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
+	require.Equal(t, 0, goodResolver.hitCount)
+
+	// With ServfailError == true
+	g2 := NewFailBack("test-fb", FailBackOptions{ServfailError: true}, failResolver, goodResolver)
+
+	a, err = g2.Resolve(q, ci)
+	require.NoError(t, err)
+	require.NotEqual(t, dns.RcodeServerFailure, a.Rcode)
+	require.Equal(t, 1, goodResolver.hitCount)
+}
