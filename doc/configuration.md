@@ -380,6 +380,7 @@ Round-Robin groups are instantiated with `type = "fail-rotate"` in the groups se
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
+- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a switch to the next resolver. This can happen when DNSSEC validation fails for example. Default `false`.
 
 #### Examples
 
@@ -400,6 +401,8 @@ Fail-Back groups are instantiated with `type = "fail-back"` in the groups sectio
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
+- `reset-after` - Time in seconds to disable a failed resolver, default 60.
+- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
 
 #### Examples
 
@@ -420,6 +423,8 @@ Random groups are instantiated with `type = "random"` in the groups section of t
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
+- `reset-after` - Time in seconds to disable a failed resolver, default 60.
+- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure which will take the resolver temporarily out of the group. This can happen when DNSSEC validation fails for example. Default `false`.
 
 #### Examples
 

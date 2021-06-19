@@ -18,15 +18,24 @@ type FailRotate struct {
 	mu        sync.RWMutex
 	active    int
 	metrics   *FailRouterMetrics
+	opt       FailRotateOptions
+}
+
+// FailRotateOptions contain group-specific options.
+type FailRotateOptions struct {
+	// Determines if a SERVFAIL returned by a resolver should be considered an
+	// error response and trigger a failover.
+	ServfailError bool
 }
 
 var _ Resolver = &FailRotate{}
 
 // NewFailRotate returns a new instance of a failover resolver group.
-func NewFailRotate(id string, resolvers ...Resolver) *FailRotate {
+func NewFailRotate(id string, opt FailRotateOptions, resolvers ...Resolver) *FailRotate {
 	return &FailRotate{
 		id:        id,
 		resolvers: resolvers,
+		opt:       opt,
 		metrics:   NewFailRouterMetrics(id, len(resolvers)),
 	}
 }
@@ -44,7 +53,7 @@ func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.WithField("resolver", resolver.String()).Trace("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
-		if err == nil && (a == nil || a.Rcode != dns.RcodeServerFailure) { // Return immediately if successful
+		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
@@ -82,4 +91,9 @@ func (r *FailRotate) errorFrom(i int) {
 		"id":       r.id,
 		"resolver": r.resolvers[r.active].String(),
 	}).Debug("failing over to resolver")
+}
+
+// Returns true is the response is considered successful given the options.
+func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
+	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
 }

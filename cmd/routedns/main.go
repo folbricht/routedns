@@ -274,13 +274,24 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	case "round-robin":
 		resolvers[id] = rdns.NewRoundRobin(id, gr...)
 	case "fail-rotate":
-		resolvers[id] = rdns.NewFailRotate(id, gr...)
+		opt := rdns.FailRotateOptions{
+			ServfailError: g.ServfailError,
+		}
+		resolvers[id] = rdns.NewFailRotate(id, opt, gr...)
 	case "fail-back":
-		resolvers[id] = rdns.NewFailBack(id, rdns.FailBackOptions{ResetAfter: time.Minute}, gr...)
+		opt := rdns.FailBackOptions{
+			ResetAfter:    time.Duration(g.ResetAfter),
+			ServfailError: g.ServfailError,
+		}
+		resolvers[id] = rdns.NewFailBack(id, opt, gr...)
 	case "fastest":
 		resolvers[id] = rdns.NewFastest(id, gr...)
 	case "random":
-		resolvers[id] = rdns.NewRandom(id, rdns.RandomOptions{ResetAfter: time.Minute}, gr...)
+		opt := rdns.RandomOptions{
+			ResetAfter:    time.Duration(g.ResetAfter),
+			ServfailError: g.ServfailError,
+		}
+		resolvers[id] = rdns.NewRandom(id, opt, gr...)
 	case "blocklist":
 		if len(gr) != 1 {
 			return fmt.Errorf("type blocklist only supports one resolver in '%s'", id)
