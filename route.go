@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -15,16 +17,31 @@ type route struct {
 	class    uint16
 	name     *regexp.Regexp
 	source   *net.IPNet
+	weekdays []time.Weekday
+	before   *TimeOfDay
+	after    *TimeOfDay
 	inverted bool // invert the matching behavior
 	resolver Resolver
 }
 
 // NewRoute initializes a route from string parameters.
-func NewRoute(name, class string, types []string, source string, resolver Resolver) (*route, error) {
+func NewRoute(name, class string, types, weekdays []string, before, after, source string, resolver Resolver) (*route, error) {
 	if resolver == nil {
 		return nil, errors.New("no resolver defined for route")
 	}
 	t, err := stringToType(types)
+	if err != nil {
+		return nil, err
+	}
+	w, err := stringsToWeekdays(weekdays)
+	if err != nil {
+		return nil, err
+	}
+	b, err := parseTimeOfDay(before)
+	if err != nil {
+		return nil, err
+	}
+	a, err := parseTimeOfDay(after)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +64,9 @@ func NewRoute(name, class string, types []string, source string, resolver Resolv
 		types:    t,
 		class:    c,
 		name:     re,
+		weekdays: w,
+		before:   b,
+		after:    a,
 		source:   sNet,
 		resolver: resolver,
 	}, nil
@@ -65,6 +85,30 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 	}
 	if r.source != nil && !r.source.Contains(ci.SourceIP) {
 		return r.inverted
+	}
+	if len(r.weekdays) > 0 || r.before != nil || r.after != nil {
+		now := time.Now().Local()
+		hour := now.Hour()
+		minute := now.Minute()
+		if len(r.weekdays) > 0 {
+			weekday := now.Weekday()
+			var weekdayMatch bool
+			for _, wd := range r.weekdays {
+				if weekday == wd {
+					weekdayMatch = true
+					break
+				}
+			}
+			if !weekdayMatch {
+				return r.inverted
+			}
+		}
+		if r.before != nil && !r.before.isAfter(hour, minute) {
+			return r.inverted
+		}
+		if r.after != nil && !r.after.isBefore(hour, minute) {
+			return r.inverted
+		}
 	}
 	return !r.inverted
 }
@@ -133,4 +177,65 @@ func stringToClass(s string) (uint16, error) {
 	default:
 		return 0, fmt.Errorf("unknown class '%s'", s)
 	}
+}
+
+func stringsToWeekdays(weekdays []string) ([]time.Weekday, error) {
+	var result []time.Weekday
+	for _, day := range weekdays {
+		var weekday time.Weekday
+		switch day {
+		case "mon":
+			weekday = time.Monday
+		case "tue":
+			weekday = time.Tuesday
+		case "wed":
+			weekday = time.Wednesday
+		case "thu":
+			weekday = time.Thursday
+		case "fri":
+			weekday = time.Friday
+		case "sat":
+			weekday = time.Saturday
+		case "sun":
+			weekday = time.Sunday
+		default:
+			return nil, fmt.Errorf("unrecognized weekday %q, must be 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'", day)
+		}
+		result = append(result, weekday)
+	}
+	return result, nil
+}
+
+type TimeOfDay struct {
+	hour, minute int
+}
+
+func parseTimeOfDay(t string) (*TimeOfDay, error) {
+	if t == "" {
+		return nil, nil
+	}
+	f := strings.SplitN(t, ":", 2)
+	hour, err := strconv.Atoi(f[0])
+	if err != nil {
+		return nil, err
+	}
+	var min int
+	if len(f) > 1 {
+		min, err = strconv.Atoi(f[1])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &TimeOfDay{
+		hour:   hour,
+		minute: min,
+	}, nil
+}
+
+func (t *TimeOfDay) isBefore(hour, minute int) bool {
+	return t.hour < hour || (t.hour == hour && t.minute <= minute)
+}
+
+func (t *TimeOfDay) isAfter(hour, minute int) bool {
+	return t.hour > hour || (t.hour == hour && t.minute > minute)
 }

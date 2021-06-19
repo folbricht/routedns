@@ -14,8 +14,8 @@ func TestRouterType(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
-	route1, _ := NewRoute("", "", []string{"MX"}, "", r1)
-	route2, _ := NewRoute("", "", nil, "", r2)
+	route1, _ := NewRoute("", "", []string{"MX"}, nil, "", "", "", r1)
+	route2, _ := NewRoute("", "", nil, nil, "", "", "", r2)
 
 	router := NewRouter("my-router")
 	router.Add(route1, route2)
@@ -41,8 +41,8 @@ func TestRouterClass(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
-	route1, _ := NewRoute("", "ANY", nil, "", r1)
-	route2, _ := NewRoute("", "", nil, "", r2)
+	route1, _ := NewRoute("", "ANY", nil, nil, "", "", "", r1)
+	route2, _ := NewRoute("", "", nil, nil, "", "", "", r2)
 
 	router := NewRouter("my-router")
 	router.Add(route1, route2)
@@ -69,8 +69,8 @@ func TestRouterName(t *testing.T) {
 	q := new(dns.Msg)
 	var ci ClientInfo
 
-	route1, _ := NewRoute(`\.acme\.test\.$`, "", nil, "", r1)
-	route2, _ := NewRoute("", "", nil, "", r2)
+	route1, _ := NewRoute(`\.acme\.test\.$`, "", nil, nil, "", "", "", r1)
+	route2, _ := NewRoute("", "", nil, nil, "", "", "", r2)
 
 	router := NewRouter("my-router")
 	router.Add(route1, route2)
@@ -96,8 +96,8 @@ func TestRouterSource(t *testing.T) {
 	q := new(dns.Msg)
 	q.SetQuestion("acme.test.", dns.TypeA)
 
-	route1, _ := NewRoute("", "", nil, "192.168.1.100/32", r1)
-	route2, _ := NewRoute("", "", nil, "", r2)
+	route1, _ := NewRoute("", "", nil, nil, "", "", "192.168.1.100/32", r1)
+	route2, _ := NewRoute("", "", nil, nil, "", "", "", r2)
 
 	router := NewRouter("my-router")
 	router.Add(route1, route2)

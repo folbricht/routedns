@@ -44,8 +44,8 @@ func Example_router() {
 
 	// Build a router that will send all "*.cloudflare.com" to the cloudflare
 	// resolver while everything else goes to the google resolver (default)
-	route1, _ := rdns.NewRoute(`\.cloudflare\.com\.$`, "", nil, "", cloudflare)
-	route2, _ := rdns.NewRoute("", "", nil, "", google)
+	route1, _ := rdns.NewRoute(`\.cloudflare\.com\.$`, "", nil, nil, "", "", "", cloudflare)
+	route2, _ := rdns.NewRoute("", "", nil, nil, "", "", "", google)
 	r := rdns.NewRouter("my-router")
 	r.Add(route1, route2)
 
