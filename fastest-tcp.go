@@ -35,6 +35,10 @@ type FastestTCPOptions struct {
 	// (fastest first). This is generally slower than just waiting for the
 	// fastest, since the response time is determined by the slowest probe.
 	WaitAll bool
+
+	// TTL set on all RRs when TCP probing was successful. Can be used to
+	// ensure these are kept for longer in a cache and improve performance.
+	SuccessTTL uint32
 }
 
 // NewFastestTCP returns a new instance of a TCP probe resolver.
@@ -87,6 +91,7 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			log.WithError(err).Debug("tcp probe failed")
 			return a, nil
 		}
+		r.setTTL(rrs...)
 		a.Answer = rrs
 		return a, nil
 	} else {
@@ -95,8 +100,20 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			log.WithError(err).Debug("tcp probe failed")
 			return a, nil
 		}
+		r.setTTL(first)
 		a.Answer = []dns.RR{first}
 		return a, nil
+	}
+}
+
+// Sets the TTL of the given RRs if the option was provided
+func (r *FastestTCP) setTTL(rrs ...dns.RR) {
+	if r.opt.SuccessTTL <= 0 {
+		return
+	}
+	for _, rr := range rrs {
+		h := rr.Header()
+		h.Ttl = r.opt.SuccessTTL
 	}
 }
 
