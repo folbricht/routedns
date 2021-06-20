@@ -32,6 +32,7 @@
   - [Response Collapse](#Response-Collapse)
   - [Router](#Router)
   - [Rate Limiter](#Rate-Limiter)
+  - [Fastest TCP Probe](#Fastest TCP Probe)
 - [Resolvers](#Resolvers)
   - [Plain DNS](#Plain-DNS-Resolver)
   - [DNS-over-TLS](#DNS-over-TLS-Resolver)
@@ -1123,6 +1124,39 @@ rcode = 5 # REFUSED
 ```
 
 Example config files: [rate-limiter.toml](../cmd/routedns/example-config/rate-limiter.toml)
+
+### Fastest TCP Probe
+
+The `fastest-tcp` element will first perform a lookup, then send TCP probes to all A or AAAA records in the response. It can then either return just the A/AAAA record for the fastest response, or all A/AAAA sorted by response time (fastest first). Since probing multiple servers can be slow, it is typically used behind a [cache](#Cache) to avoid making too many probes repeatedly. Each instance can only probe one port and if different ports are to be probed depending on the query name, a router should be used in front of it as well.
+
+#### Configuration
+
+A Fastest TCP Probe element is instantiated with `type = "fastest-tcp"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `port` - TCP port number to probe. Default: `443`.
+- `wait-all` - Instead of just returning the fastest response, wait for all probes and return them sorted by response time (fastest first). This will generally be slower as the slowest TCP probe determines the query response time. Default: `false`
+- `success-ttl` - Set the TTL of successful probes (in seconds). Default: 0 which will not change the TTL. Typically used to cache the response for longer given how resource-intensive and slow probing can be.
+
+Examples:
+
+TCP probe for the HTTPS port. Successful probes are cached for 30min.
+
+```toml
+[groups.fastest-cached]
+type = "cache"
+resolvers = ["tcp-probe"]
+
+[groups.tcp-probe]
+type = "fastest-tcp"
+port = 443
+success-ttl = 1800
+resolvers = ["cloudflare-dot"]
+```
+
+Example config files: [fastest-tcp.toml](../cmd/routedns/example-config/fastest-tcp.toml)
 
 ## Resolvers
 
