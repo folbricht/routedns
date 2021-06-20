@@ -111,6 +111,10 @@ type group struct {
 	Prefix6       uint8  // Prefix bits to identify IPv6 client
 	LimitResolver string `toml:"limit-resolver"` // Resolver to use when rate-limit exceeded
 
+	// Fastest-TCP probe options
+	Port    int
+	WaitAll bool `toml:"wait-all"` // Wait for all probes to return and respond with a sorted list. Generally slower
+
 	// Response Collapse options
 	NullRCode int `toml:"null-rcode"` // Response code if after collapsing, no answers are left
 }
