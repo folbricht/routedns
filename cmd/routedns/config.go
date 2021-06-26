@@ -112,9 +112,9 @@ type group struct {
 	LimitResolver string `toml:"limit-resolver"` // Resolver to use when rate-limit exceeded
 
 	// Fastest-TCP probe options
-	Port       int
-	WaitAll    bool   `toml:"wait-all"`    // Wait for all probes to return and respond with a sorted list. Generally slower
-	SuccessTTL uint32 `toml:"success-ttl"` // Set the TTL of records that were probed successfully
+	Port          int
+	WaitAll       bool   `toml:"wait-all"`        // Wait for all probes to return and respond with a sorted list. Generally slower
+	SuccessTTLMin uint32 `toml:"success-ttl-min"` // Set the TTL of records that were probed successfully
 
 	// Response Collapse options
 	NullRCode int `toml:"null-rcode"` // Response code if after collapsing, no answers are left

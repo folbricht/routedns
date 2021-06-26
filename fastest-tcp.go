@@ -38,7 +38,7 @@ type FastestTCPOptions struct {
 
 	// TTL set on all RRs when TCP probing was successful. Can be used to
 	// ensure these are kept for longer in a cache and improve performance.
-	SuccessTTL uint32
+	SuccessTTLMin uint32
 }
 
 // NewFastestTCP returns a new instance of a TCP probe resolver.
@@ -108,12 +108,11 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 // Sets the TTL of the given RRs if the option was provided
 func (r *FastestTCP) setTTL(rrs ...dns.RR) {
-	if r.opt.SuccessTTL <= 0 {
-		return
-	}
 	for _, rr := range rrs {
 		h := rr.Header()
-		h.Ttl = r.opt.SuccessTTL
+		if h.Ttl < r.opt.SuccessTTLMin {
+			h.Ttl = r.opt.SuccessTTLMin
+		}
 	}
 }
 

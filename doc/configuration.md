@@ -1138,7 +1138,7 @@ Options:
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `port` - TCP port number to probe. Default: `443`.
 - `wait-all` - Instead of just returning the fastest response, wait for all probes and return them sorted by response time (fastest first). This will generally be slower as the slowest TCP probe determines the query response time. Default: `false`
-- `success-ttl` - Set the TTL of successful probes (in seconds). Default: 0 which will not change the TTL. Typically used to cache the response for longer given how resource-intensive and slow probing can be.
+- `success-ttl-min` - Minimum TTL of successful probes (in seconds). Default: 0. Similar to the `ttl-min` option of [TTL Modifier](#TTL-modifier). Typically used to cache the response for longer given how resource-intensive and slow probing can be.
 
 Examples:
 

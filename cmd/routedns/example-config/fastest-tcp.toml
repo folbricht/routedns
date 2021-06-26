@@ -13,7 +13,7 @@ resolvers = ["tcp-probe"]
 [groups.tcp-probe]
 type = "fastest-tcp"
 port = 443
-success-ttl = 1800 # Cache successful lookups for 30min
+success-ttl-min = 1800 # Cache successful lookups for a min of 30min
 resolvers = ["cloudflare-dot"]
 
 [resolvers.cloudflare-dot]
