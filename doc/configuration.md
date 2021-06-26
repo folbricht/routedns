@@ -1152,7 +1152,7 @@ resolvers = ["tcp-probe"]
 [groups.tcp-probe]
 type = "fastest-tcp"
 port = 443
-success-ttl = 1800
+success-ttl-min = 1800
 resolvers = ["cloudflare-dot"]
 ```
 
