@@ -1,0 +1,21 @@
+# Uses TCP connection probes to determine which of the response IPs
+# is fastests. Only the fastest IP is then cached.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "fastest-cached"
+
+[groups.fastest-cached]
+type = "cache"
+resolvers = ["tcp-probe"]
+
+[groups.tcp-probe]
+type = "fastest-tcp"
+port = 443
+success-ttl-min = 1800 # Cache successful lookups for a min of 30min
+resolvers = ["cloudflare-dot"]
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
