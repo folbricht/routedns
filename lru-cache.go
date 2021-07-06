@@ -112,6 +112,18 @@ func (c *lruCache) resize() {
 	}
 }
 
+// Clear the cache.
+func (c *lruCache) reset() {
+	head := new(cacheItem)
+	tail := new(cacheItem)
+	head.next = tail
+	tail.prev = head
+
+	c.head = head
+	c.tail = tail
+	c.items = make(map[lruKey]*cacheItem)
+}
+
 // Iterate over the cached answers and call the provided function. If it
 // returns true, the item is deleted from the cache.
 func (c *lruCache) deleteFunc(f func(*cacheAnswer) bool) {

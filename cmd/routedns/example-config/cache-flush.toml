@@ -1,0 +1,15 @@
+# Cache supporting flushing with a defined "magic" query name.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-flush-query = "flush.cache." # When a query for this name is received, the cache is reset.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
