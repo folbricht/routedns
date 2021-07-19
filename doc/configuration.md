@@ -1200,12 +1200,12 @@ type = "cache"
 resolvers = ["retry"]
 
 [listeners.local-udp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cache"
 
 [listeners.local-tcp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "tcp"
 resolver = "cache"
 ```
