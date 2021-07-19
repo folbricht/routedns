@@ -48,6 +48,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			DTLSConfig:    dtlsConfig,
+			UDPSize:       r.EDNS0UDPSize,
 		}
 		resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
 		if err != nil {
@@ -72,6 +73,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	case "tcp", "udp":
 		opt := rdns.DNSClientOptions{
 			LocalAddr: net.ParseIP(r.LocalAddr),
+			UDPSize:   r.EDNS0UDPSize,
 		}
 		resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		if err != nil {

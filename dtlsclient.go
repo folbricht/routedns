@@ -14,8 +14,8 @@ import (
 type DTLSClient struct {
 	id       string
 	endpoint string
-	pipeline *Pipeline
-	// Pipeline also provides operation metrics.
+	pipeline *Pipeline // Pipeline also provides operation metrics.
+	opt      DTLSClientOptions
 }
 
 // DTLSClientOptions contains options used by the DNS-over-DTLS resolver.
@@ -26,6 +26,10 @@ type DTLSClientOptions struct {
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
 	LocalAddr net.IP
+
+	// Sets the EDNS0 UDP size for all queries sent upstream. If set to 0, queries
+	// are not changed.
+	UDPSize uint16
 
 	DTLSConfig *dtls.Config
 }
@@ -80,6 +84,7 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 		id:       id,
 		endpoint: endpoint,
 		pipeline: NewPipeline(id, endpoint, client),
+		opt:      opt,
 	}, nil
 }
 
@@ -89,6 +94,8 @@ func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"resolver": d.endpoint,
 		"protocol": "dtls",
 	}).Debug("querying upstream resolver")
+
+	q = setUDPSize(q, d.opt.UDPSize)
 
 	// Add padding to the query before sending over TLS
 	padQuery(q)

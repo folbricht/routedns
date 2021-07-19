@@ -61,3 +61,22 @@ func ptr(q *dns.Msg, name string) *dns.Msg {
 	}
 	return a
 }
+
+// Changes the UDP size in the EDNS0 record and returns a
+// copy of the query. Adds an OPT record if there isn't one
+// already. If size is 0, the original query is returned.
+func setUDPSize(q *dns.Msg, size uint16) *dns.Msg {
+	if size == 0 {
+		return q
+	}
+	copy := q.Copy()
+	// Set the EDNS0 size. Adds an OPT record if there isn't
+	// one already
+	edns0 := copy.IsEdns0()
+	if edns0 != nil {
+		edns0.SetUDPSize(size)
+	} else {
+		q.SetEdns0(size, false)
+	}
+	return copy
+}

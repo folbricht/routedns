@@ -47,6 +47,7 @@ type resolver struct {
 	ClientCrt     string `toml:"client-crt"`
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
+	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 }
 
 // DoH-specific resolver options
@@ -118,6 +119,9 @@ type group struct {
 
 	// Response Collapse options
 	NullRCode int `toml:"null-rcode"` // Response code if after collapsing, no answers are left
+
+	// Truncate-Retry options
+	RetryResolver string `toml:"retry-resolver"`
 }
 
 // Block/Allowlist items for blocklist-v2
