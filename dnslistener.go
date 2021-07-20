@@ -101,12 +101,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			if edns0 := req.IsEdns0(); edns0 != nil {
 				maxSize = int(edns0.UDPSize())
 			}
-			if a.Len() > maxSize {
-				log.WithField("max", maxSize).Trace("response too large, truncating")
-				a = new(dns.Msg)
-				a.SetReply(req)
-				a.Truncated = true
-			}
+			a.Truncate(maxSize)
 		}
 
 		metrics.response.Add(rCode(a), 1)
