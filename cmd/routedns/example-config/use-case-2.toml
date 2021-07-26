@@ -2,14 +2,35 @@
 # is sent to the company DNS servers. All other queries are sent securely via
 # DNS-over-HTTPS.
 
-# Define the two company DNS servers. Both use plain (insecure) DNS over UDP
-[resolvers.mycompany-dns-a]
+# Define the two company DNS servers. Both use plain (insecure) DNS over UDP and
+# TCP when a truncated response is received
+[resolvers.mycompany-dns-a-udp]
 address = "10.0.0.1:53"
 protocol = "udp"
 
-[resolvers.mycompany-dns-b]
+# TCP Fallback resolver if UDP responses are truncated
+[resolvers.mycompany-dns-a-tcp]
+address = "10.0.0.1:53"
+protocol = "tcp"
+
+# Try UDP first, if truncated use the alernative TCP one
+[groups.mycompany-dns-a]
+type = "truncate-retry"
+resolvers = ["mycompany-dns-a-udp"]
+retry-resolver = "mycompany-dns-a-tcp"
+
+[resolvers.mycompany-dns-b-udp]
 address = "10.0.0.2:53"
 protocol = "udp"
+
+[resolvers.mycompany-dns-b-tcp]
+address = "10.0.0.2:53"
+protocol = "tcp"
+
+[groups.mycompany-dns-b]
+type = "truncate-retry"
+resolvers = ["mycompany-dns-b-udp"]
+retry-resolver = "mycompany-dns-b-tcp"
 
 # Define the Cloudflare DNS-over-HTTPS resolver (GET methods) since that is most likely allowed outbound
 [resolvers.cloudflare-doh-1-1-1-1-get]

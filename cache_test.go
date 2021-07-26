@@ -173,3 +173,28 @@ func TestRoundRobinShuffle(t *testing.T) {
 	require.Equal(t, net.IP{0, 0, 0, 2}, a1.A)
 	require.Equal(t, net.IP{0, 0, 0, 1}, a2.A)
 }
+
+// Truncated responses should not be cached
+func TestCacheNoTruncated(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			a.Truncated = true
+			return a, nil
+		},
+	}
+
+	c := NewCache("test-cache", r, CacheOptions{})
+
+	// Both queries should hit the upstream resolver
+	q.SetQuestion("test.com.", dns.TypeA)
+	_, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	_, err = c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 2, r.HitCount())
+}
