@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/jtacoma/uritemplates"
@@ -250,8 +251,10 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		lAddr = opt.LocalAddr
 	}
 
+	// When using a custom dialer, we have to track/close connections ourselves
+	pool := new(udpConnPool)
 	dialer := func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
-		return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config)
+		return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config, pool)
 	}
 	if opt.BootstrapAddr != "" {
 		dialer = func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
@@ -260,7 +263,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 				return nil, err
 			}
 			addr = net.JoinHostPort(opt.BootstrapAddr, port)
-			return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config)
+			return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config, pool)
 		}
 	}
 
@@ -271,10 +274,10 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		},
 		Dial: dialer,
 	}
-	return &http3ReliableRoundTripper{tr}, nil
+	return &http3ReliableRoundTripper{tr, pool}, nil
 }
 
-func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, pool *udpConnPool) (quic.EarlySession, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		return nil, err
@@ -283,6 +286,7 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 	if err != nil {
 		return nil, err
 	}
+	pool.add(udpConn)
 	return quic.DialEarly(udpConn, udpAddr, hostname, tlsConfig, config)
 }
 
@@ -291,13 +295,45 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 // has been fixed upstream.
 type http3ReliableRoundTripper struct {
 	*http3.RoundTripper
+	pool *udpConnPool
 }
 
 func (r *http3ReliableRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := r.RoundTripper.RoundTrip(req)
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+		r.pool.closeAll()
 		r.RoundTripper.Close()
 		resp, err = r.RoundTripper.RoundTrip(req)
 	}
 	return resp, err
+}
+
+// UDP connection pool. Also a workaround for for the http3.RoundTripper. When using a custom
+// dialer that open its own UDP connections, http3.RoundTripper doesn't close them when the
+// remote terminates a connection, or when calling Close(). So we have to keep track of the
+// connections and close them all before calling Close() on the http3.RoundTripper.
+type udpConnPool struct {
+	conns []*net.UDPConn
+	mu    sync.Mutex
+}
+
+func (p *udpConnPool) add(conn *net.UDPConn) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.conns = append(p.conns, conn)
+}
+
+func (p *udpConnPool) closeAll() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, conn := range p.conns {
+		conn.Close()
+	}
+	p.conns = nil
 }
