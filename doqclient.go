@@ -86,7 +86,8 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 			config: &quic.Config{
 				TokenStore: quic.NewLRUTokenStore(10, 10),
 			},
-			log: log,
+			pool: new(udpConnPool),
+			log:  log,
 		},
 		metrics: NewListenerMetrics("client", id),
 	}, nil
@@ -186,6 +187,7 @@ type doqSession struct {
 	tlsConfig *tls.Config
 	config    *quic.Config
 	log       *logrus.Entry
+	pool      *udpConnPool
 
 	session quic.Session
 
@@ -199,7 +201,7 @@ func (s *doqSession) getStream() (quic.Stream, error) {
 	// If we don't have a session yet, make one
 	if s.session == nil {
 		var err error
-		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open session")
 			return nil, err
@@ -210,7 +212,7 @@ func (s *doqSession) getStream() (quic.Stream, error) {
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
 		// Try to open a new session
 		_ = s.session.CloseWithError(DOQNoError, "")
-		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open session")
 			return nil, err
