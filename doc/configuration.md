@@ -285,6 +285,8 @@ A cache will store the responses to queries in memory and respond to further ide
 
 Caches can be combined with a [TTL Modifier](#TTL-Modifier) to avoid too many cache-misses due to excessively low TTL values.
 
+It is possible to pre-define a query name that will flush the cache if received from a client.
+
 #### Configuration
 
 Caches are instantiated with `type = "cache"` in the groups section of the configuration.
@@ -296,6 +298,7 @@ Options:
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
 - `cache-harden-below-nxdomain` - Return NXDOMAIN for sudomain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
+- `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
 
 #### Examples
 
@@ -318,7 +321,16 @@ cache-negative-ttl = 3600
 cache-answer-shuffle = "random"
 ```
 
-Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml)
+Cache that is flushed if a query for `flush.cache.` is received.
+
+```toml
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-flush-query = "flush.cache."
+```
+
+Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml)
 
 ### TTL modifier
 

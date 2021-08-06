@@ -55,6 +55,9 @@ type CacheOptions struct {
 	// NXDOMAIN, a query for www.example.com will also immediately return NXDOMAIN.
 	// See RFC8020.
 	HardenBelowNXDOMAIN bool
+
+	// Query name that will trigger a cache flush. Disabled if empty.
+	FlushQuery string
 }
 
 // NewCache returns a new instance of a Cache resolver.
@@ -94,6 +97,14 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	log := logger(r.id, q, ci)
+
+	// Flush the cache if the magic query name is received and flushing is enabled.
+	if r.FlushQuery != "" && r.FlushQuery == q.Question[0].Name {
+		log.Info("flushing cache")
+		r.flush()
+		a := new(dns.Msg)
+		return a.SetReply(q), nil
+	}
 
 	// Returned an answer from the cache if one exists
 	a, ok := r.answerFromCache(q)
@@ -256,6 +267,13 @@ func (r *Cache) startGC(period time.Duration) {
 		r.metrics.entries.Set(int64(total))
 		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
 	}
+}
+
+// Flush the cache (reset to empty).
+func (r *Cache) flush() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lru.reset()
 }
 
 // Find the lowest TTL in all resource records (except OPT).
