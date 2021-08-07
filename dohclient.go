@@ -37,6 +37,10 @@ type DoHClientOptions struct {
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
 	LocalAddr net.IP
 
+	// Timeout is the maximum amount of time a dial will wait for
+	// a connect to complete.
+	Timeout time.Duration
+
 	TLSConfig *tls.Config
 }
 
