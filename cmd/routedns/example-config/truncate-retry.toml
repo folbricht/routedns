@@ -1,0 +1,37 @@
+# Example showing how to handle truncated responses that can occur with
+# UDP and DTLS responses. The `truncate-retry` element will always try
+# the primary UDP resolver first, but if the respone is truncated it'll
+# retry using the (slower) TCP resolver. This ensures that only complete
+# responses are cached.
+
+# Primary resolver (UDP)
+[resolvers.cloudflare-udp]
+address = "1.1.1.1:53"
+protocol = "udp"
+edns0-udp-size = 1232
+
+# TCP Fallback resolver if UDP responses are truncated
+[resolvers.cloudflare-tcp]
+address = "1.1.1.1:53"
+protocol = "tcp"
+
+# Try UDP first, if truncated use the alernative
+[groups.retry]
+type = "truncate-retry"
+resolvers = ["cloudflare-udp"]
+retry-resolver = "cloudflare-tcp"
+
+[groups.cache]
+type = "cache"
+resolvers = ["retry"]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cache"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cache"
+

@@ -38,7 +38,7 @@ func TestCache(t *testing.T) {
 	c := NewCache("test-cache", r, opt)
 
 	// First query should be a cache-miss and be passed on to the upstream resolver
-	q.SetQuestion("test.com.", dns.TypeA)
+	q.SetQuestion("example.com.", dns.TypeA)
 	a, err := c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
@@ -54,7 +54,7 @@ func TestCache(t *testing.T) {
 
 	// Different question should go through to upstream again, low TTL
 	answerTTL = 1
-	q.SetQuestion("test2.com.", dns.TypeA)
+	q.SetQuestion("example2.com.", dns.TypeA)
 	a, err = c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 2, r.HitCount())
@@ -63,7 +63,7 @@ func TestCache(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// TTL should have expired now, so this should be a cache-miss and be sent upstream
-	q.SetQuestion("test2.com.", dns.TypeA)
+	q.SetQuestion("example2.com.", dns.TypeA)
 	_, err = c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 3, r.HitCount())
@@ -88,7 +88,7 @@ func TestCacheNXDOMAIN(t *testing.T) {
 
 	// First query should be a cache-miss and be passed on to the upstream resolver
 	// Since it's an NXDOMAIN it should end up in the cache as well, with default TTL
-	q.SetQuestion("test.com.", dns.TypeA)
+	q.SetQuestion("example.com.", dns.TypeA)
 	_, err := c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
@@ -118,14 +118,14 @@ func TestCacheHardenBelowNXDOMAIN(t *testing.T) {
 	c := NewCache("test-cache", r, opt)
 
 	// Cache an NXDOMAIN for the parent domain
-	q.SetQuestion("test.com.", dns.TypeA)
+	q.SetQuestion("example.com.", dns.TypeA)
 	_, err := c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
 
 	// A sub-domain query should also return NXDOMAIN based on the cached
 	// record for the parent if HardenBelowNXDOMAIN is enabled.
-	q.SetQuestion("not.exist.test.com.", dns.TypeA)
+	q.SetQuestion("not.exist.example.com.", dns.TypeA)
 	a, err := c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
@@ -172,4 +172,29 @@ func TestRoundRobinShuffle(t *testing.T) {
 	a2 := msg.Answer[2].(*dns.A)
 	require.Equal(t, net.IP{0, 0, 0, 2}, a1.A)
 	require.Equal(t, net.IP{0, 0, 0, 1}, a2.A)
+}
+
+// Truncated responses should not be cached
+func TestCacheNoTruncated(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			a.Truncated = true
+			return a, nil
+		},
+	}
+
+	c := NewCache("test-cache", r, CacheOptions{})
+
+	// Both queries should hit the upstream resolver
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	_, err = c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 2, r.HitCount())
 }

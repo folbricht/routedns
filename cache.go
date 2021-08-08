@@ -123,6 +123,11 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
+	// Don't cache truncated responses
+	if a.Truncated {
+		return a, nil
+	}
+
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
 	r.storeInCache(q, a.Copy())

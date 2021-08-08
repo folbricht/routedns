@@ -2,14 +2,34 @@
 # supports modifying queries for short hostnames such as prod-server1 into
 # queries for server1.prod-domain.com and are routint to the correct DNS server.
 
-# Lab DNS servers
-[resolvers.prod-dns]
+# Lab DNS servers. Define both UDP and TCP, with TCP only used when responses
+# are truncated.
+[resolvers.prod-dns-udp]
 address = "10.1.1.1:53"
 protocol = "udp"
 
-[resolvers.test-dns]
+[resolvers.prod-dns-tcp]
+address = "10.1.1.1:53"
+protocol = "tcp"
+
+[resolvers.test-dns-udp]
 address = "10.2.1.1:53"
 protocol = "udp"
+
+[resolvers.test-dns-tcp]
+address = "10.2.1.1:53"
+protocol = "tcp"
+
+# Try UDP first, if truncated use the alernative TCP one
+[groups.prod-dns]
+type = "truncate-retry"
+resolvers = ["prod-dns-udp"]
+retry-resolver = "prod-dns-tcp"
+
+[groups.test-dns]
+type = "truncate-retry"
+resolvers = ["test-dns-udp"]
+retry-resolver = "test-dns-tcp"
 
 # Standard Cloudflare DoT, used for everything not destined to the lab
 [resolvers.cloudflare-dot]

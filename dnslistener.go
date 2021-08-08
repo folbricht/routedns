@@ -94,6 +94,16 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		} else {
 			stripPadding(a)
 		}
+
+		// Check the response actually fits if the query was sent over UDP. If not, respond with TC flag.
+		if protocol == "udp" || protocol == "dtls" {
+			maxSize := dns.MinMsgSize
+			if edns0 := req.IsEdns0(); edns0 != nil {
+				maxSize = int(edns0.UDPSize())
+			}
+			a.Truncate(maxSize)
+		}
+
 		metrics.response.Add(rCode(a), 1)
 		_ = w.WriteMsg(a)
 	}

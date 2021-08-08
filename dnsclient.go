@@ -13,13 +13,17 @@ type DNSClient struct {
 	id       string
 	endpoint string
 	net      string
-	pipeline *Pipeline
-	// Pipeline also provides operation metrics.
+	pipeline *Pipeline // Pipeline also provides operation metrics.
+	opt      DNSClientOptions
 }
 
 type DNSClientOptions struct {
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
 	LocalAddr net.IP
+
+	// Sets the EDNS0 UDP size for all queries sent upstream. If set to 0, queries
+	// are not changed.
+	UDPSize uint16
 }
 
 var _ Resolver = &DNSClient{}
@@ -52,6 +56,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		net:      network,
 		endpoint: endpoint,
 		pipeline: NewPipeline(id, endpoint, client),
+		opt:      opt,
 	}, nil
 }
 
@@ -61,6 +66,8 @@ func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"resolver": d.endpoint,
 		"protocol": d.net,
 	}).Debug("querying upstream resolver")
+
+	q = setUDPSize(q, d.opt.UDPSize)
 
 	// Remove padding before sending over the wire in plain
 	stripPadding(q)

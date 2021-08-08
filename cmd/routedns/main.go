@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -104,7 +105,7 @@ func start(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
-		edges[id] = append(v.Resolvers, v.AllowListResolver, v.BlockListResolver, v.LimitResolver)
+		edges[id] = append(v.Resolvers, v.AllowListResolver, v.BlockListResolver, v.LimitResolver, v.RetryResolver)
 	}
 	for id, v := range config.Routers {
 		node := &Node{id, v}
@@ -390,6 +391,16 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			MaxTTL: g.TTLMax,
 		}
 		resolvers[id] = rdns.NewTTLModifier(id, gr[0], opt)
+	case "truncate-retry":
+		if len(gr) != 1 {
+			return fmt.Errorf("type truncate-retry only supports one resolver in '%s'", id)
+		}
+		retryResolver := resolvers[g.RetryResolver]
+		if retryResolver == nil {
+			return errors.New("type truncate-retry requires 'retry-resolver' option")
+		}
+		opt := rdns.TruncateRetryOptions{}
+		resolvers[id] = rdns.NewTruncateRetry(id, gr[0], retryResolver, opt)
 	case "fastest-tcp":
 		if len(gr) != 1 {
 			return fmt.Errorf("type fastest-tcp only supports one resolver in '%s'", id)
