@@ -1,4 +1,4 @@
-name: Snyk example
+name: Snyk Scanner
 on:
   push:
     branches: [ master ]
