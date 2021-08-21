@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"strconv"
@@ -62,8 +63,8 @@ func (s *DTLSListener) Start() error {
 	if err != nil {
 		return err
 	}
-	s.Listener = listener
-	return s.ActivateAndServe()
+	s.Server.Listener = dtlsListener{listener}
+	return s.Server.ActivateAndServe()
 }
 
 // Stop the server.
@@ -74,4 +75,39 @@ func (s *DTLSListener) Stop() error {
 
 func (s *DTLSListener) String() string {
 	return s.id
+}
+
+// dtlsListener wraps a dtls.Listener to return a dtlsConn that
+// supports partial reads.
+type dtlsListener struct {
+	net.Listener
+}
+
+func (l dtlsListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	return &dtlsConn{Conn: conn}, err
+}
+
+// dtlsConn wraps a dtls.Conn to support partial read operations. While
+// github.com/pion/dtls/v2 returns a net.Conn, that Read() fails on
+// slices that are smaller than the data available. This wrapper adds a
+// buffer to allow github.com/miekg/dns to first read 2 bytes (size) and
+// then the rest of the DNS packet.
+type dtlsConn struct {
+	net.Conn
+	buf *bytes.Buffer
+}
+
+func (c *dtlsConn) Read(b []byte) (int, error) {
+	var (
+		n   int
+		err error
+	)
+	if c.buf == nil || c.buf.Len() == 0 {
+		tmp := make([]byte, 4096)
+		n, err = c.Conn.Read(tmp)
+		c.buf = bytes.NewBuffer(tmp[:n])
+	}
+	n, _ = c.buf.Read(b)
+	return n, err
 }

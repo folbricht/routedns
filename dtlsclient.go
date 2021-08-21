@@ -118,5 +118,5 @@ func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
 		return nil, err
 	}
 	c, err := dtls.Client(pConn, d.dtlsConfig)
-	return &dns.Conn{Conn: c}, err
+	return &dns.Conn{Conn: &dtlsConn{Conn: c}}, err
 }
