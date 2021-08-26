@@ -88,9 +88,11 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	r.mu.Unlock()
 
+	log := logger(r.id, q, ci)
 	// If the request is already in flight, wait for that to complete and
 	// return the same answer.
 	if ok {
+		log.Debug("duplicated request, waiting for first answer")
 		<-req.done
 		a, err := req.answer, req.err
 		// Return a copy of the answer as other elements might be modifying it
@@ -99,6 +101,7 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 		return a, err
 	}
+	log.WithField("resolver", r.resolver).Debug("forwarding query to resolver")
 
 	// Not already in flight, make the request
 	a, err := r.resolver.Resolve(q, ci)

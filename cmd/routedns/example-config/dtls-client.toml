@@ -2,17 +2,17 @@
 # All queries are forwarded to a local DNS-over-DTLS server.
 
 [resolvers.local-dtls]
-address = "server.acme.test:853"
+address = "127.0.0.1:3853"
 protocol = "dtls"
-ca = "example-config/server-ec.crt"
+ca = "/home/folbrich/workspace/routedns/testdata/ca.crt"
 bootstrap-address = "127.0.0.1"
 
 [listeners.local-udp]
-address = "127.0.0.1:53"
+address = "127.0.0.1:1153"
 protocol = "udp"
 resolver = "local-dtls"
 
 [listeners.local-tcp]
-address = "127.0.0.1:53"
+address = "127.0.0.1:1153"
 protocol = "tcp"
 resolver = "local-dtls"
