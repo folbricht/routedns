@@ -1,0 +1,19 @@
+# This configration prevents duplicate queries from being sent upstream. All
+# duplicate requests get the same answer (that of the first).
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cache"
+
+[groups.cache]
+type = "cache"
+resolvers = ["dedup"]
+
+[groups.dedup]
+type = "request-dedup"
+resolvers = ["cloudflare-udp"]
+
+[resolvers.cloudflare-udp]
+address = "1.1.1.1:53"
+protocol = "udp"

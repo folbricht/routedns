@@ -22,10 +22,11 @@ type inflightRequest struct {
 	done   chan struct{}
 }
 
-// requestDedup passed individual requests through, but if any query
-// is already active, subsequent queried are held and answered with the
-// same answer. This element can be used to avoid passing spikes of
-// identical queries upstream.
+// requestDedup passes individual requests normally. Subsequent
+// queries for the same name are being held until the first query
+// returns. In that case, all waiting requests are answered with
+// the same response. This element is used to smooth out spikes
+// of queries for the same name.
 type requestDedup struct {
 	id       string
 	resolver Resolver

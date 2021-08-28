@@ -5,8 +5,8 @@ address = "1.1.1.1:853"
 protocol = "dot"
 
 [listeners.local-dtls]
-address = ":3853"
+address = ":853"
 protocol = "dtls"
 resolver = "cloudflare-dot"
-server-crt = "/home/folbrich/workspace/routedns/testdata/server.crt"
-server-key = "/home/folbrich/workspace/routedns/testdata/server.key"
+server-crt = "example-config/server-ec.crt"
+server-key = "example-config/server-ec.key"
