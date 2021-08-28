@@ -72,7 +72,7 @@ func TestFailRotateSERVFAIL(t *testing.T) {
 
 	r2 := new(TestResolver)
 
-	g := NewFailRotate("test-rotate", FailRotateOptions{}, r1, r2)
+	g := NewFailRotate("test-rotate", FailRotateOptions{ServfailError: true}, r1, r2)
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
 

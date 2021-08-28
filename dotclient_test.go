@@ -1,6 +1,10 @@
 package rdns
 
 import (
+	"crypto/tls"
+	"encoding/pem"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -17,9 +21,19 @@ func TestDoTClientSimple(t *testing.T) {
 }
 
 func TestDoTClientCA(t *testing.T) {
-	// Create client cert options with a CA. TODO: Should read the cert dynamically
-	// to avoid failure when this expires or changes.
-	tlsConfig, err := TLSClientConfig("testdata/DigiCertECCSecureServerCA.pem", "", "")
+	// Read the server certificate from the public server write it to a temp file
+	conn, err := tls.Dial("tcp", "1.1.1.1:853", nil)
+	require.NoError(t, err)
+	state := conn.ConnectionState()
+	crt := state.PeerCertificates[0]
+	crtEncoded := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: crt.Raw})
+	crtFile := filepath.Join(t.TempDir(), "certificate.pem")
+	err = os.WriteFile(crtFile, crtEncoded, 0644)
+	require.NoError(t, err)
+	conn.Close()
+
+	// Create a config with CA using the temp file
+	tlsConfig, err := TLSClientConfig(crtFile, "", "")
 	require.NoError(t, err)
 
 	// DoT client with valid CA
