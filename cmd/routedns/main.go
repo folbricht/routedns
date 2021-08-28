@@ -401,6 +401,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		opt := rdns.TruncateRetryOptions{}
 		resolvers[id] = rdns.NewTruncateRetry(id, gr[0], retryResolver, opt)
+	case "request-dedup":
+		if len(gr) != 1 {
+			return fmt.Errorf("type request-dedup only supports one resolver in '%s'", id)
+		}
+		resolvers[id] = rdns.NewRequestDedup(id, gr[0])
 	case "fastest-tcp":
 		if len(gr) != 1 {
 			return fmt.Errorf("type fastest-tcp only supports one resolver in '%s'", id)

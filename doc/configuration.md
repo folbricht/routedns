@@ -35,6 +35,7 @@
   - [Rate Limiter](#Rate-Limiter)
   - [Fastest TCP Probe](#Fastest-TCP-Probe)
   - [Retrying Truncated Responses](#Retrying-Truncated-Responses)
+  - [Request Deduplication](#Request-Deduplication)
 - [Resolvers](#Resolvers)
   - [Plain DNS](#Plain-DNS-Resolver)
   - [DNS-over-TLS](#DNS-over-TLS-Resolver)
@@ -1223,6 +1224,41 @@ resolver = "cache"
 ```
 
 Example config files: [truncate-retry.toml](../cmd/routedns/example-config/truncate-retry.toml)
+
+### Request Deduplication
+
+The `request-dedup` element passed individual queries to its upstream resolver. While the first query is being processed, further queries for the same name will be blocked. Once the first query has been answered, all waiting queries are completed with the same answer. This element can be used to reduce load on upstream servers when queried by clients sending the same query multiple times.
+
+#### Configuration
+
+To deduplicate queries, add an element with `type = "request-dedup"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+
+Examples:
+
+```toml
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cache"
+
+[groups.cache]
+type = "cache"
+resolvers = ["dedup"]
+
+[groups.dedup]
+type = "request-dedup"
+resolvers = ["cloudflare-udp"]
+
+[resolvers.cloudflare-udp]
+address = "1.1.1.1:53"
+protocol = "udp"
+```
+
+Example config files: [request-dedup.toml](../cmd/routedns/example-config/request-dedup.toml)
 
 ## Resolvers
 
