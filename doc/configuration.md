@@ -417,7 +417,7 @@ Fail-Back groups are instantiated with `type = "fail-back"` in the groups sectio
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
-- `reset-after` - Time in seconds to disable a failed resolver, default 60.
+- `reset-after` - Time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
 
 #### Examples
