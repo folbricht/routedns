@@ -16,6 +16,16 @@ import (
 
 type options struct {
 	logLevel uint32
+	version bool
+}
+
+func printVersion() {
+	var versionString interface{} = rdns.BuildVersion
+	var buildNumber interface{} = rdns.BuildNumber
+	var buildTime interface{} = rdns.BuildTime
+	fmt.Printf("Build: %v\n", buildNumber)
+	fmt.Printf("Build Time: %v\n", buildTime)
+	fmt.Printf("Version: %v\n", versionString)
 }
 
 func main() {
@@ -25,8 +35,8 @@ func main() {
 		Short: "DNS stub resolver, proxy and router",
 		Long: `DNS stub resolver, proxy and router.
 
-Listens for incoming DNS requests, routes, modifies and 
-forwards to upstream resolvers. Supports plain DNS over 
+Listens for incoming DNS requests, routes, modifies and
+forwards to upstream resolvers. Supports plain DNS over
 UDP and TCP as well as DNS-over-TLS and DNS-over-HTTPS
 as listener and client protocols.
 
@@ -39,13 +49,16 @@ groups and routers defined in different files and provided as
 arguments.
 `,
 		Example: `  routedns config.toml`,
-		Args:    cobra.MinimumNArgs(1),
+		Args:    cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return start(opt, args)
 		},
 		SilenceUsage: true,
 	}
+
 	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 0=None .. 6=Trace")
+	cmd.Flags().BoolVarP(&opt.version,"version", "v", false,"Prints code version string")
+
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -67,6 +80,10 @@ func start(opt options, args []string) error {
 	// Set the log level in the library package
 	if opt.logLevel > 6 {
 		return fmt.Errorf("invalid log level: %d", opt.logLevel)
+	}
+	if opt.version {
+		printVersion()
+		os.Exit(0)
 	}
 	rdns.Log.SetLevel(logrus.Level(opt.logLevel))
 
