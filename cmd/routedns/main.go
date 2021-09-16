@@ -19,15 +19,6 @@ type options struct {
 	version bool
 }
 
-func printVersion() {
-	var versionString interface{} = rdns.BuildVersion
-	var buildNumber interface{} = rdns.BuildNumber
-	var buildTime interface{} = rdns.BuildTime
-	fmt.Printf("Build: %v\n", buildNumber)
-	fmt.Printf("Build Time: %v\n", buildTime)
-	fmt.Printf("Version: %v\n", versionString)
-}
-
 func main() {
 	var opt options
 	cmd := &cobra.Command{
@@ -732,4 +723,14 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+}
+
+func printVersion() {
+	var versionString interface{} = rdns.BuildVersion
+	var buildNumber interface{} = rdns.BuildNumber
+	var buildTime interface{} = rdns.BuildTime
+
+	fmt.Printf("Build: %v\n", buildNumber)
+	fmt.Printf("Build Time: %v\n", buildTime)
+	fmt.Printf("Version: %v\n", versionString)
 }
