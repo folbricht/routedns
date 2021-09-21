@@ -75,6 +75,11 @@ func start(opt options, args []string) error {
 	if opt.version {
 		printVersion()
 		os.Exit(0)
+	} else {
+		if len(args) < 1 {
+			return errors.New("not enough arguments")
+		}
+
 	}
 	rdns.Log.SetLevel(logrus.Level(opt.logLevel))
 
@@ -726,11 +731,7 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 }
 
 func printVersion() {
-	var versionString interface{} = rdns.BuildVersion
-	var buildNumber interface{} = rdns.BuildNumber
-	var buildTime interface{} = rdns.BuildTime
-
-	fmt.Printf("Build: %v\n", buildNumber)
-	fmt.Printf("Build Time: %v\n", buildTime)
-	fmt.Printf("Version: %v\n", versionString)
+	fmt.Println("Build: ", rdns.BuildNumber)
+	fmt.Println("Build Time: ", rdns.BuildTime)
+	fmt.Println("Version: ", rdns.BuildVersion)
 }
