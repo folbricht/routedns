@@ -170,10 +170,10 @@ func start(opt options, args []string) error {
 		if !ok && l.Protocol != "admin" {
 			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s'", id, l.Resolver)
 		}
-		var ListenAddress string = l.Address
-		var PortIsSet bool = false
-		if strings.Contains(ListenAddress, ":") {
-			PortIsSet = true
+		var listenAddress string = l.Address
+		var portIsSet bool = false
+		if strings.Contains(listenAddress, ":") {
+			portIsSet = true
 		}
 		allowedNet, err := parseCIDRList(l.AllowedNet)
 		if err != nil {
@@ -184,15 +184,15 @@ func start(opt options, args []string) error {
 
 		switch l.Protocol {
 		case "tcp":
-			if PortIsSet == false {
-				ListenAddress = ListenAddress + rdns.PlainDNSPort
+			if portIsSet == false {
+				listenAddress = listenAddress + rdns.PlainDNSPort
 			}
-			listeners = append(listeners, rdns.NewDNSListener(id, ListenAddress, "tcp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, listenAddress, "tcp", opt, resolver))
 		case "udp":
-			if PortIsSet == false {
-				ListenAddress = ListenAddress + rdns.PlainDNSPort
+			if portIsSet == false {
+				listenAddress = listenAddress + rdns.PlainDNSPort
 			}
-			listeners = append(listeners, rdns.NewDNSListener(id, ListenAddress, "udp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, listenAddress, "udp", opt, resolver))
 		case "admin":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
@@ -203,36 +203,36 @@ func start(opt options, args []string) error {
 				ListenOptions: opt,
 				Transport:     l.Transport,
 			}
-			ln, err := rdns.NewAdminListener(id, ListenAddress, opt)
+			ln, err := rdns.NewAdminListener(id, listenAddress, opt)
 			if err != nil {
 				return err
 			}
 			listeners = append(listeners, ln)
 		case "dot":
-			if PortIsSet == false {
-				ListenAddress = ListenAddress + rdns.DoTPort
+			if portIsSet == false {
+				listenAddress = listenAddress + rdns.DoTPort
 			}
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(id, ListenAddress, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDoTListener(id, listenAddress, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "dtls":
-			if PortIsSet == false {
-				ListenAddress = ListenAddress + rdns.DTLSPort
+			if portIsSet == false {
+				listenAddress = listenAddress + rdns.DTLSPort
 			}
 			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDTLSListener(id, ListenAddress, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDTLSListener(id, listenAddress, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "doh":
-			if PortIsSet == false && l.Transport != "quic" {
-				ListenAddress = ListenAddress + rdns.DoHPort
-			} else if PortIsSet == false && l.Transport == "quic" {
-				ListenAddress = ListenAddress + rdns.DohQuicPort
+			if portIsSet == false && l.Transport != "quic" {
+				listenAddress = listenAddress + rdns.DoHPort
+			} else if portIsSet == false && l.Transport == "quic" {
+				listenAddress = listenAddress + rdns.DohQuicPort
 			}
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
@@ -251,20 +251,20 @@ func start(opt options, args []string) error {
 				Transport:     l.Transport,
 				HTTPProxyNet:  httpProxyNet,
 			}
-			ln, err := rdns.NewDoHListener(id, ListenAddress, opt, resolver)
+			ln, err := rdns.NewDoHListener(id, listenAddress, opt, resolver)
 			if err != nil {
 				return err
 			}
 			listeners = append(listeners, ln)
 		case "doq":
-			if PortIsSet == false {
-				ListenAddress = ListenAddress + rdns.DoQPort
+			if portIsSet == false {
+				listenAddress = listenAddress + rdns.DoQPort
 			}
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewQUICListener(id, ListenAddress, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewQUICListener(id, listenAddress, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
