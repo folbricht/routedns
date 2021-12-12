@@ -2,17 +2,10 @@
 # package ecosystems to update and where the package manifests are located.
 # Please see the documentation for all configuration options:
 # https://help.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
-name: Dependabot
-on:
-  push:
-    branches: [ build_releases-feature ]
-  pull_request:
-    branches: [ build_releases-feature ]
-jobs: 1
+name: dependabot
 version: 2
-
 updates:
-  - package-ecosystem: "gomod"
-    directory: "/" # Location of package manifests
-    schedule:
-      interval: "daily"
+   - package-ecosystem: "gomod"
+     directory: "/" # Location of package manifests
+     schedule:
+       interval: "daily"
