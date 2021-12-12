@@ -1,5 +1,6 @@
 # This file shows a selection of well-known DNS resolvers and supported protocols to
 # help build RoutedDNS configs. It isn't intended to be used directly but can for testing.
+# Ports are set in config because they are set to the default protocols port
 
 title = "Resolvers for well-known DNS services"
 
@@ -8,9 +9,10 @@ title = "Resolvers for well-known DNS services"
 address = "1.1.1.1"
 protocol = "dot"
 
-[resolvers.cloudflare-dot-1-0-0-1]
-address = "1.0.0.1"
+[resolvers.cloudflare-dot-1-1-1-1-w-port]
+address = "1.1.1.1:853"
 protocol = "dot"
+
 
 # Cloudflare DNS-over-HTTPS using the POST method
 [resolvers.cloudflare-doh-1-1-1-1-post]
@@ -18,12 +20,12 @@ address = "https://1.1.1.1/dns-query"
 protocol = "doh"
 
 [resolvers.cloudflare-doh-1-0-0-1-post]
-address = "https://1.0.0.1/dns-query"
+address = "https://1.0.0.1:443/dns-query"
 protocol = "doh"
 
 # Cloudflare DNS-over-HTTPS using the GET method
 [resolvers.cloudflare-doh-1-1-1-1-get]
-address = "https://1.1.1.1/dns-query{?dns}"
+address = "https://1.1.1.1:443/dns-query{?dns}"
 protocol = "doh"
 doh = { method = "GET" }
 
@@ -44,7 +46,7 @@ address = "1.1.1.1"
 protocol = "udp"
 
 [resolvers.cloudflare-tcp-1-0-0-1]
-address = "1.0.0.1"
+address = "1.0.0.1:53"
 protocol = "tcp"
 
 # dnscrypt.ca server-1, DoH-GET
@@ -71,7 +73,7 @@ protocol = "doh"
 
 # Google plain DNS
 [resolvers.google-udp-8-8-8-8]
-address = "8.8.8.8"
+address = "8.8.8.8:53"
 protocol = "udp"
 
 [resolvers.google-tcp-8-8-4-4]
@@ -84,7 +86,7 @@ address = "8.8.8.8:853"
 protocol = "dot"
 
 [resolvers.google-dot-8-8-4-4]
-address = "8.8.4.4:853"
+address = "8.8.4.4"
 protocol = "dot"
 
 # Google DNS-over-HTTP using the POST method
@@ -142,6 +144,6 @@ protocol = "udp"
 resolver = "cloudflare-doh-1-1-1-1-post"
 
 [listeners.local-tcp]
-address = "127.0.0.1:53"
+address = "127.0.0.1"
 protocol = "tcp"
 resolver = "cloudflare-doh-1-1-1-1-post"
