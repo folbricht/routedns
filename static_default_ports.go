@@ -16,7 +16,9 @@ var (
 func AddressWithDefault(addr, defaultPort string) string {
 	_, port, _ := net.SplitHostPort(addr)
 	var isPortEmpty bool = port == ""
-	if isPortEmpty == false {
+	if addr == "" {
+		return addr
+	} else if isPortEmpty == false {
 		return net.JoinHostPort(addr, defaultPort)
 	} else {
 		return addr
