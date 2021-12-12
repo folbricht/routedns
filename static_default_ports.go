@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"net"
+	"strings"
 )
 
 var (
@@ -16,9 +17,10 @@ var (
 func AddressWithDefault(addr, defaultPort string) string {
 	_, port, _ := net.SplitHostPort(addr)
 	var isPortEmpty bool = port == ""
-	if addr == "" {
+	var isHttpProtocol bool = strings.Contains(addr, "https://")
+	if addr == "" || isHttpProtocol {
 		return addr
-	} else if isPortEmpty == false {
+	} else if isPortEmpty {
 		return net.JoinHostPort(addr, defaultPort)
 	} else {
 		return addr
