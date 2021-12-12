@@ -8,7 +8,9 @@ on:
     branches: [ build_releases-feature ]
   pull_request:
     branches: [ build_releases-feature ]
+jobs: 1
 version: 2
+
 updates:
   - package-ecosystem: "gomod"
     directory: "/" # Location of package manifests
