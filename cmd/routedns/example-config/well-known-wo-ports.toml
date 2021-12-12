@@ -1,6 +1,6 @@
 # This file shows a selection of well-known DNS resolvers and supported protocols to
 # help build RoutedDNS configs. It isn't intended to be used directly but can for testing.
-# Ports are set in config because they are set to the default protocols port
+# Ports are not set in a config because they are set to use the default protocols port
 
 title = "Resolvers for well-known DNS services"
 
