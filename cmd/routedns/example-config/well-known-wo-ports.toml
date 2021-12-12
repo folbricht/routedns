@@ -147,3 +147,8 @@ resolver = "cloudflare-doh-1-1-1-1-post"
 address = "127.0.0.1"
 protocol = "tcp"
 resolver = "cloudflare-doh-1-1-1-1-post"
+
+[listeners.all-dot]
+address = ":853"
+protocol = "dot"
+resolver = "cloudflare-doh-1-1-1-1-post"
