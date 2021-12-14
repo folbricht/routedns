@@ -13,7 +13,6 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 
 	case "doq":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoQPort)
-		r.BootstrapAddr = rdns.AddressWithDefault(r.BootstrapAddr, rdns.DoQPort)
 
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
@@ -30,7 +29,6 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		}
 	case "dot":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoTPort)
-		r.BootstrapAddr = rdns.AddressWithDefault(r.BootstrapAddr, rdns.DoTPort)
 
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
@@ -47,7 +45,6 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		}
 	case "dtls":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DTLSPort)
-		r.BootstrapAddr = rdns.AddressWithDefault(r.BootstrapAddr, rdns.DTLSPort)
 
 		dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
@@ -65,7 +62,6 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		}
 	case "doh":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoHPort)
-		r.BootstrapAddr = rdns.AddressWithDefault(r.BootstrapAddr, rdns.DoHPort)
 
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
@@ -84,7 +80,6 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		}
 	case "tcp", "udp":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.PlainDNSPort)
-		r.BootstrapAddr = rdns.AddressWithDefault(r.BootstrapAddr, rdns.PlainDNSPort)
 
 		opt := rdns.DNSClientOptions{
 			LocalAddr: net.ParseIP(r.LocalAddr),

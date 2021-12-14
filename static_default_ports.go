@@ -1,7 +1,9 @@
 package rdns
 
 import (
+	"fmt"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -15,7 +17,11 @@ var (
 )
 
 func AddressWithDefault(addr, defaultPort string) string {
-	host, port, _ := net.SplitHostPort(addr)
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		fmt.Errorf(err.Error())
+		os.Exit(44)
+	}
 	var isPortEmpty bool = port == ""
 	var isHttpProtocol bool = strings.Contains(addr, "https://")
 	if host == "" {
