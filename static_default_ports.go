@@ -18,7 +18,9 @@ func AddressWithDefault(addr, defaultPort string) string {
 	host, port, _ := net.SplitHostPort(addr)
 	var isPortEmpty bool = port == ""
 	var isHttpProtocol bool = strings.Contains(addr, "https://")
-	if host == "" || isHttpProtocol {
+	if host == "" {
+		return net.JoinHostPort(host, defaultPort)
+	} else if isHttpProtocol {
 		return addr
 	} else if isPortEmpty {
 		return net.JoinHostPort(addr, defaultPort)
