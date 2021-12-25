@@ -12,7 +12,7 @@ const ResponsePaddingBlockSize = 468
 var respPadBuf [ResponsePaddingBlockSize]byte
 var queryPadBuf [QueryPaddingBlockSize]byte
 
-// Add padding to an answer before it's sent back over DoH or DoT accodring to rfc8467.
+// Add padding to an answer before it's sent back over DoH or DoT according to rfc8467.
 // Don't call this for un-encrypted responses as they should not be padded.
 func padAnswer(q, a *dns.Msg) {
 	edns0q := q.IsEdns0()
@@ -87,16 +87,17 @@ func padQuery(q *dns.Msg) {
 }
 
 // Remove padding from a query or response. Typically needed when sending a response that was received
-// via TLS over a plan connection.
+// via TLS over a plain connection.
 func stripPadding(m *dns.Msg) {
 	edns0 := m.IsEdns0()
 	if edns0 == nil { // Nothing to do here
 		return
 	}
-	for i, opt := range edns0.Option {
-		if opt.Option() == dns.EDNS0PADDING {
-			edns0.Option = append(edns0.Option[:i], edns0.Option[i+1:]...)
+	var newOpt []dns.EDNS0
+	for _, opt := range edns0.Option {
+		if opt.Option() != dns.EDNS0PADDING {
+			newOpt = append(newOpt, opt)
 		}
 	}
-
+	edns0.Option = newOpt
 }

@@ -64,3 +64,59 @@ func TestStripPadding(t *testing.T) {
 	len2 := q.Len()
 	require.Equal(t, len1, len2, "padding not stripped off correctly")
 }
+
+func TestStripPaddingMulti(t *testing.T) {
+	q := new(dns.Msg)
+	q.SetQuestion("google.com.", dns.TypeA)
+	q.SetEdns0(4096, false)
+	edns0 := q.IsEdns0()
+
+	tests := []struct {
+		opts          []dns.EDNS0
+		lenAfterStrip int
+	}{
+		{
+			opts:          nil,
+			lenAfterStrip: 0,
+		},
+		{
+			opts:          []dns.EDNS0{},
+			lenAfterStrip: 0,
+		},
+		{
+			opts: []dns.EDNS0{
+				&dns.EDNS0_PADDING{},
+			},
+			lenAfterStrip: 0,
+		},
+		{
+			opts: []dns.EDNS0{
+				&dns.EDNS0_PADDING{},
+				&dns.EDNS0_PADDING{},
+			},
+			lenAfterStrip: 0,
+		},
+		{
+			opts: []dns.EDNS0{
+				&dns.EDNS0_PADDING{},
+				&dns.EDNS0_PADDING{},
+				&dns.EDNS0_NSID{},
+			},
+			lenAfterStrip: 1,
+		},
+		{
+			opts: []dns.EDNS0{
+				&dns.EDNS0_NSID{},
+				&dns.EDNS0_PADDING{},
+				&dns.EDNS0_PADDING{},
+			},
+			lenAfterStrip: 1,
+		},
+	}
+
+	for _, test := range tests {
+		edns0.Option = test.opts
+		stripPadding(q)
+		require.Len(t, edns0.Option, test.lenAfterStrip)
+	}
+}
