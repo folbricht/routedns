@@ -229,9 +229,9 @@ func start(opt options, args []string) error {
 			listeners = append(listeners, ln)
 		case "doh":
 			if l.Transport != "quic" {
-				l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
+				l.Address = rdns.AddressWithDefaultForHttp(l.Address, rdns.DoHPort)
 			} else if l.Transport == "quic" {
-				l.Address = rdns.AddressWithDefault(l.Address, rdns.DohQuicPort)
+				l.Address = rdns.AddressWithDefaultForHttp(l.Address, rdns.DohQuicPort)
 			}
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {

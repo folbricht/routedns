@@ -61,7 +61,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "doh":
-		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoHPort)
+		r.Address = rdns.AddressWithDefaultForHttp(r.Address, rdns.DoHPort)
 
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
