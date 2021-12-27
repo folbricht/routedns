@@ -4,11 +4,12 @@ import (
 	tld "github.com/jpillora/go-tld"
 	"github.com/miekg/dns"
 	"net"
+	"strings"
 )
 
 type TLDDomainBlockListItem struct {
-	tld    string
-	domain []string
+	tld     string
+	domains node
 }
 
 func (T TLDDomainBlockListItem) Reload() (BlocklistDB, error) {
@@ -21,7 +22,26 @@ func (T TLDDomainBlockListItem) Match(q dns.Question) (net.IP, string, string, b
 	var domainTLDString string = GetTLDFromDomain(q.Name)
 	var matchResult bool = listTLDString == domainTLDString
 	if matchResult {
-
+		s := strings.TrimSuffix(q.Name, ".")
+		var matched []string
+		parts := strings.Split(s, ".")
+		n := T.domains
+		for i := len(parts) - 1; i >= 0; i-- {
+			part := parts[i]
+			subNode, ok := n[part]
+			if !ok {
+				return nil, "", "", false
+			}
+			matched = append(matched, part)
+			if _, ok := subNode[""]; ok { // exact and sub-domain match
+				return nil, "", matchedDomainParts(".", matched), true
+			}
+			if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
+				return nil, "", matchedDomainParts("*.", matched), true
+			}
+			n = subNode
+		}
+		return nil, "", matchedDomainParts("", matched), len(n) == 0 // exact match
 	} else {
 		return nil, "", "", false // exact match
 	}
