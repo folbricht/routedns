@@ -3,6 +3,7 @@ package rdns
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -32,5 +33,34 @@ func AddressWithDefault(addr, defaultPort string) string {
 		return net.JoinHostPort(addr, defaultPort)
 	} else {
 		return addr
+	}
+}
+func AddressWithDefaultForHttp(addr, defaultPort string) string {
+	var addrUri string = ""
+	if addr == "" {
+		return addr
+	}
+
+	if strings.Contains(addr, "{") {
+		var splitAddr = strings.Split(addr, "{")
+		addrUri = splitAddr[1]
+		addr = splitAddr[0]
+
+	}
+
+	u, err := url.Parse(addr)
+	if err != nil {
+		return addr
+	}
+	if u.Port() == "" {
+		u.Host = net.JoinHostPort(u.Host, defaultPort)
+	}
+	if u.Scheme == "" { // no url, just host+port
+		return u.Host
+	}
+	if addrUri == "" {
+		return u.String() + addrUri // re-assemble the address, now with port
+	} else {
+		return u.String() // re-assemble the address, now with port
 	}
 }
