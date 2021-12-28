@@ -16,7 +16,7 @@ func TestBlocklistRegexp(t *testing.T) {
 		`(^|\.)block\.test`,
 		`(^|\.)evil\.test`,
 	})
-	m, err := NewRegexpDB(loader)
+	m, err := NewRegexpDB("testlist", loader)
 	require.NoError(t, err)
 
 	opt := BlocklistOptions{
@@ -51,9 +51,9 @@ func TestBlocklistAllow(t *testing.T) {
 	allowloader := NewStaticLoader([]string{
 		`(^|\.)good\.evil\.test`,
 	})
-	blockDB, err := NewRegexpDB(blockloader)
+	blockDB, err := NewRegexpDB("testlist", blockloader)
 	require.NoError(t, err)
-	allowDB, err := NewRegexpDB(allowloader)
+	allowDB, err := NewRegexpDB("testlist", allowloader)
 	require.NoError(t, err)
 
 	opt := BlocklistOptions{

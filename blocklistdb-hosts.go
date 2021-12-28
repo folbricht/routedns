@@ -11,6 +11,7 @@ import (
 // IP4 and IP6 records can be spoofed independently, however it's not possible to block only one type. If
 // IP4 is given but no IP6, then a domain match will still result in an NXDOMAIN for the IP6 address.
 type HostsDB struct {
+	name    string
 	filters map[string]ipRecords
 	ptrMap  map[string]string // PTR lookup map
 	loader  BlocklistLoader
@@ -24,7 +25,7 @@ type ipRecords struct {
 var _ BlocklistDB = &HostsDB{}
 
 // NewHostsDB returns a new instance of a matcher for a list of regular expressions.
-func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
+func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -69,24 +70,36 @@ func NewHostsDB(loader BlocklistLoader) (*HostsDB, error) {
 		}
 		ptrMap[reverseAddr] = names[0]
 	}
-	return &HostsDB{filters, ptrMap, loader}, nil
+	return &HostsDB{name, filters, ptrMap, loader}, nil
 }
 
 func (m *HostsDB) Reload() (BlocklistDB, error) {
-	return NewHostsDB(m.loader)
+	return NewHostsDB(m.name, m.loader)
 }
 
-func (m *HostsDB) Match(q dns.Question) (net.IP, string, string, bool) {
+func (m *HostsDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
 	if q.Qtype == dns.TypePTR {
 		name, ok := m.ptrMap[q.Name]
-		return nil, name, "", ok
+		return nil, name, nil, ok
 	}
 	name := strings.TrimSuffix(q.Name, ".")
 	ips, ok := m.filters[name]
 	if q.Qtype == dns.TypeA {
-		return ips.ip4, "", ips.ip4.String() + " " + name, ok
+		return ips.ip4,
+			"",
+			&BlocklistMatch{
+				List: m.name,
+				Rule: ips.ip4.String() + " " + name,
+			},
+			ok
 	}
-	return ips.ip6, "", ips.ip6.String() + " " + name, ok
+	return ips.ip6,
+		"",
+		&BlocklistMatch{
+			List: m.name,
+			Rule: ips.ip6.String() + " " + name,
+		},
+		ok
 }
 
 func (m *HostsDB) String() string {

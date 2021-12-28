@@ -10,6 +10,7 @@ import (
 
 // RegexpDB holds a list of regular expressions against which it evaluates DNS queries.
 type RegexpDB struct {
+	name   string
 	rules  []*regexp.Regexp
 	loader BlocklistLoader
 }
@@ -17,7 +18,7 @@ type RegexpDB struct {
 var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
-func NewRegexpDB(loader BlocklistLoader) (*RegexpDB, error) {
+func NewRegexpDB(name string, loader BlocklistLoader) (*RegexpDB, error) {
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -35,20 +36,20 @@ func NewRegexpDB(loader BlocklistLoader) (*RegexpDB, error) {
 		filters = append(filters, re)
 	}
 
-	return &RegexpDB{filters, loader}, nil
+	return &RegexpDB{name, filters, loader}, nil
 }
 
 func (m *RegexpDB) Reload() (BlocklistDB, error) {
-	return NewRegexpDB(m.loader)
+	return NewRegexpDB(m.name, m.loader)
 }
 
-func (m *RegexpDB) Match(q dns.Question) (net.IP, string, string, bool) {
+func (m *RegexpDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
 	for _, rule := range m.rules {
 		if rule.MatchString(q.Name) {
-			return nil, "", rule.String(), true
+			return nil, "", &BlocklistMatch{List: m.name, Rule: rule.String()}, true
 		}
 	}
-	return nil, "", "", false
+	return nil, "", nil, false
 }
 
 func (m *RegexpDB) String() string {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // Blocklist is a resolver that returns NXDOMAIN or a spoofed IP for every query that
@@ -92,8 +93,8 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
 	if allowlistDB != nil {
-		if _, _, rule, ok := allowlistDB.Match(question); ok {
-			log = log.WithField("rule", rule)
+		if _, _, match, ok := allowlistDB.Match(question); ok {
+			log = log.WithFields(logrus.Fields{"list": match.List, "rule": match.Rule})
 			r.metrics.allowed.Add(1)
 			if r.AllowListResolver != nil {
 				log.WithField("resolver", r.AllowListResolver.String()).Debug("matched allowlist, forwarding")
@@ -104,14 +105,14 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	ip, name, rule, ok := blocklistDB.Match(question)
+	ip, name, match, ok := blocklistDB.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Debug("forwarding unmodified query to resolver")
 		r.metrics.allowed.Add(1)
 		return r.resolver.Resolve(q, ci)
 	}
-	log = log.WithField("rule", rule)
+	log = log.WithFields(logrus.Fields{"list": match.List, "rule": match.Rule})
 	r.metrics.blocked.Add(1)
 
 	// If we got a name for the PTR query, respond to it

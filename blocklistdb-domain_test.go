@@ -18,7 +18,7 @@ func TestDomainDB(t *testing.T) {
 		".domain4.com",
 	})
 
-	m, err := NewDomainDB(loader)
+	m, err := NewDomainDB("testlist", loader)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -61,7 +61,7 @@ func TestDomainDBError(t *testing.T) {
 	}
 	for _, test := range tests {
 		loader := NewStaticLoader([]string{test.name})
-		_, err := NewDomainDB(loader)
+		_, err := NewDomainDB("testlist", loader)
 		require.Error(t, err)
 	}
 }
