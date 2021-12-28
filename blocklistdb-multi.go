@@ -32,8 +32,8 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 
 func (m MultiDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
 	for _, db := range m.dbs {
-		if ip, name, rule, ok := db.Match(q); ok {
-			return ip, name, rule, ok
+		if ip, name, match, ok := db.Match(q); ok {
+			return ip, name, match, ok
 		}
 	}
 	return nil, "", nil, false
