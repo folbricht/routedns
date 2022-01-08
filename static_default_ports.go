@@ -1,10 +1,8 @@
 package rdns
 
 import (
-	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -17,50 +15,33 @@ var (
 	PlainDNSPort        = "53"
 )
 
+// AddressWithDefault takes an endpoint or a URL and adds a port unless it
+// already has one. If it fails to parse addr, it returns the original value.
 func AddressWithDefault(addr, defaultPort string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		fmt.Errorf(err.Error())
-		os.Exit(44)
-	}
-	var isPortEmpty bool = port == ""
-	var isHttpProtocol bool = strings.Contains(addr, "https://")
-	if host == "" {
-		return net.JoinHostPort(host, defaultPort)
-	} else if isHttpProtocol {
-		return addr
-	} else if isPortEmpty {
-		return net.JoinHostPort(addr, defaultPort)
-	} else {
-		return addr
-	}
-}
-func AddressWithDefaultForHttp(addr, defaultPort string) string {
-	var addrUri string = ""
-	if addr == "" {
-		return addr
+	// Endpoints like DoH can contain URL templates, so we want to strip those
+	// off first
+	parts := strings.SplitN(addr, "{", 2)
+	endpointPart := parts[0]
+	var templatePart string
+	if len(parts) == 2 {
+		templatePart = "{" + parts[1]
 	}
 
-	if strings.Contains(addr, "{") {
-		var splitAddr = strings.Split(addr, "{")
-		addrUri = splitAddr[1]
-		addr = splitAddr[0]
-
+	// Now let's see if it's a URL. If it is, it'll have a "/" in it
+	if strings.Contains(endpointPart, "/") {
+		u, err := url.Parse(endpointPart)
+		if err != nil {
+			return addr
+		}
+		if u.Port() == "" {
+			u.Host = net.JoinHostPort(u.Host, defaultPort)
+		}
+		return u.String() + templatePart
 	}
 
-	u, err := url.Parse(addr)
-	if err != nil {
+	// Here we know it's not a URL, so it should be either <host>:<port> or just <host>
+	if strings.Contains(endpointPart, ":") {
 		return addr
 	}
-	if u.Port() == "" {
-		u.Host = net.JoinHostPort(u.Host, defaultPort)
-	}
-	if u.Scheme == "" { // no url, just host+port
-		return u.Host
-	}
-	if addrUri == "" {
-		return u.String() + addrUri // re-assemble the address, now with port
-	} else {
-		return u.String() // re-assemble the address, now with port
-	}
+	return net.JoinHostPort(endpointPart, defaultPort)
 }
