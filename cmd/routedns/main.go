@@ -569,7 +569,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(list{Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
+			blocklistDB, err = newIPBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
 			if err != nil {
 				return err
 			}

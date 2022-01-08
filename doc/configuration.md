@@ -744,7 +744,7 @@ Options:
 - `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
 - `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Values can be `cidr`, or `location`. Defaults to `cidr`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format` and `source`.
+- `blocklist-source` - An array of blocklists, each with `format` and `source` and optionally `name`.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 
 Examples:
