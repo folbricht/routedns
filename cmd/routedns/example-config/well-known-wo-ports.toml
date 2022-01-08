@@ -1,0 +1,154 @@
+# This file shows a selection of well-known DNS resolvers and supported protocols to
+# help build RoutedDNS configs. It isn't intended to be used directly but can for testing.
+# Ports are not set in a config because they are set to use the default protocols port
+
+title = "Resolvers for well-known DNS services"
+
+# Cloudflare DNS-over-TLS
+[resolvers.cloudflare-dot-1-1-1-1]
+address = "1.1.1.1"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-1-1-1-1-w-port]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+
+# Cloudflare DNS-over-HTTPS using the POST method
+[resolvers.cloudflare-doh-1-1-1-1-post]
+address = "https://1.1.1.1/dns-query"
+protocol = "doh"
+
+[resolvers.cloudflare-doh-1-0-0-1-post]
+address = "https://1.0.0.1:443/dns-query"
+protocol = "doh"
+
+# Cloudflare DNS-over-HTTPS using the GET method
+[resolvers.cloudflare-doh-1-1-1-1-get]
+address = "https://1.1.1.1:443/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+[resolvers.cloudflare-doh-1-0-0-1-get]
+address = "https://1.0.0.1/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+# Cloudflare DNS-over-HTTPS using the QUIC protocol
+[resolvers.cloudflare-doh-quic]
+address = "https://cloudflare-dns.com/dns-query"
+protocol = "doh"
+transport = "quic"
+
+# Cloudflare plain DNS
+[resolvers.cloudflare-udp-1-1-1-1]
+address = "1.1.1.1"
+protocol = "udp"
+
+[resolvers.cloudflare-tcp-1-0-0-1]
+address = "1.0.0.1:53"
+protocol = "tcp"
+
+# dnscrypt.ca server-1, DoH-GET
+[resolvers.dnscrypt-1-doh-get]
+address = "https://dns1.dnscrypt.ca:453/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+# dnscrypt.ca server-2, DoH-GET
+[resolvers.dnscrypt-2-doh-get]
+address = "https://dns2.dnscrypt.ca:453/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+# dnscrypt.ca server-1, DoH-POST
+[resolvers.dnscrypt-1-doh-post]
+address = "https://dns1.dnscrypt.ca:453/dns-query"
+protocol = "doh"
+
+# dnscrypt.ca server-2, DoH-POST
+[resolvers.dnscrypt-2-doh-post]
+address = "https://dns2.dnscrypt.ca:453/dns-query"
+protocol = "doh"
+
+# Google plain DNS
+[resolvers.google-udp-8-8-8-8]
+address = "8.8.8.8:53"
+protocol = "udp"
+
+[resolvers.google-tcp-8-8-4-4]
+address = "8.8.4.4:53"
+protocol = "udp"
+
+# Google DNS-over-TLS
+[resolvers.google-dot-8-8-8-8]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[resolvers.google-dot-8-8-4-4]
+address = "8.8.4.4"
+protocol = "dot"
+
+# Google DNS-over-HTTP using the POST method
+[resolvers.google-doh-post]
+address = "https://dns.google/dns-query"
+protocol = "doh"
+
+# Google DNS-over-HTTP using the GET method
+[resolvers.google-doh-get]
+address = "https://dns.google/dns-query{?dns}"
+protocol = "doh"
+doh = { method = "GET" }
+
+# Google DNS-over-HTTP with bootstrapping to avoid initial lookup
+[resolvers.google-doh-post-bootstrap]
+address = "https://dns.google/dns-query"
+protocol = "doh"
+bootstrap-address = "8.8.8.8"
+
+# Quad9 DNS-over-TLS
+[resolvers.quad9-dot]
+address = "9.9.9.9:853"
+protocol = "dot"
+
+# Quad9 DNS-over-HTTP using the POST method
+[resolvers.quad9-doh-post]
+address = "https://9.9.9.9/dns-query{?dns}"
+protocol = "doh"
+
+# CleanBrowsing DoT resolver
+[resolvers.cleanbrowsing-dot]
+address = "family-filter-dns.cleanbrowsing.org:853"
+protocol = "dot"
+
+# OpenDNS plain DNS (resolver1.opendns.com)
+[resolvers.opendns-udp-1]
+address = "208.67.222.222:53"
+protocol = "udp"
+
+# OpenDNS plain DNS (resolver2.opendns.com)
+[resolvers.opendns-udp-2]
+address = "208.67.222.220:53"
+protocol = "udp"
+
+# Adguard DNS-over-QUIC
+[resolvers.adguard-doq]
+address = "dns-unfiltered.adguard.com:8853"
+protocol = "doq"
+
+# Listeners
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-doh-1-1-1-1-post"
+
+[listeners.local-tcp]
+address = "127.0.0.1"
+protocol = "tcp"
+resolver = "cloudflare-doh-1-1-1-1-post"
+
+[listeners.all-dot]
+address = ":853"
+protocol = "dot"
+resolver = "cloudflare-doh-1-1-1-1-post"

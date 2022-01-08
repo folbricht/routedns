@@ -11,7 +11,10 @@ import (
 func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolver) error {
 	var err error
 	switch r.Protocol {
+
 	case "doq":
+		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoQPort)
+
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
 			return err
@@ -26,6 +29,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "dot":
+		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoTPort)
+
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
 			return err
@@ -40,6 +45,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "dtls":
+		r.Address = rdns.AddressWithDefault(r.Address, rdns.DTLSPort)
+
 		dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
 			return err
@@ -55,6 +62,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "doh":
+		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoHPort)
+
 		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
 		if err != nil {
 			return err
@@ -71,6 +80,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "tcp", "udp":
+		r.Address = rdns.AddressWithDefault(r.Address, rdns.PlainDNSPort)
+
 		opt := rdns.DNSClientOptions{
 			LocalAddr: net.ParseIP(r.LocalAddr),
 			UDPSize:   r.EDNS0UDPSize,

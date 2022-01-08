@@ -182,7 +182,6 @@ func start(opt options, args []string) error {
 		if !ok && l.Protocol != "admin" {
 			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s'", id, l.Resolver)
 		}
-
 		allowedNet, err := parseCIDRList(l.AllowedNet)
 		if err != nil {
 			return err
@@ -192,8 +191,10 @@ func start(opt options, args []string) error {
 
 		switch l.Protocol {
 		case "tcp":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
 			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "tcp", opt, resolver))
 		case "udp":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
 			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "udp", opt, resolver))
 		case "admin":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
@@ -211,6 +212,7 @@ func start(opt options, args []string) error {
 			}
 			listeners = append(listeners, ln)
 		case "dot":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoTPort)
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
@@ -218,6 +220,7 @@ func start(opt options, args []string) error {
 			ln := rdns.NewDoTListener(id, l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "dtls":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
 			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
@@ -225,6 +228,11 @@ func start(opt options, args []string) error {
 			ln := rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "doh":
+			if l.Transport != "quic" {
+				l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
+			} else if l.Transport == "quic" {
+				l.Address = rdns.AddressWithDefault(l.Address, rdns.DohQuicPort)
+			}
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
@@ -248,6 +256,8 @@ func start(opt options, args []string) error {
 			}
 			listeners = append(listeners, ln)
 		case "doq":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoQPort)
+
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
