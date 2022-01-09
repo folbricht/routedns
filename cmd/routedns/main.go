@@ -323,7 +323,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && g.Source != "" {
 			return fmt.Errorf("static blocklist can't be used with 'source' in '%s'", id)
 		}
-		blocklistDB, err := newBlocklistDB(list{Format: g.Format, Source: g.Source}, g.Blocklist)
+		blocklistDB, err := newBlocklistDB(list{Name: id, Format: g.Format, Source: g.Source}, g.Blocklist)
 		if err != nil {
 			return err
 		}
@@ -347,7 +347,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.BlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Blocklist)
+			blocklistDB, err = newBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.Blocklist)
 			if err != nil {
 				return err
 			}
@@ -506,7 +506,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(list{Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
+			blocklistDB, err = newIPBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
 			if err != nil {
 				return err
 			}
@@ -579,7 +579,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		var blocklistDB rdns.IPBlocklistDB
 		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(list{Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
+			blocklistDB, err = newIPBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
 			if err != nil {
 				return err
 			}
@@ -680,6 +680,10 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 	if err != nil {
 		return nil, err
 	}
+	name := l.Name
+	if name == "" {
+		name = l.Source
+	}
 	var loader rdns.BlocklistLoader
 	if len(rules) > 0 {
 		loader = rdns.NewStaticLoader(rules)
@@ -698,11 +702,11 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 	}
 	switch l.Format {
 	case "regexp", "":
-		return rdns.NewRegexpDB(loader)
+		return rdns.NewRegexpDB(name, loader)
 	case "domain":
-		return rdns.NewDomainDB(loader)
+		return rdns.NewDomainDB(name, loader)
 	case "hosts":
-		return rdns.NewHostsDB(loader)
+		return rdns.NewHostsDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
@@ -712,6 +716,10 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 	loc, err := url.Parse(l.Source)
 	if err != nil {
 		return nil, err
+	}
+	name := l.Name
+	if name == "" {
+		name = l.Source
 	}
 	var loader rdns.BlocklistLoader
 	if len(rules) > 0 {
@@ -732,9 +740,9 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 
 	switch l.Format {
 	case "cidr", "":
-		return rdns.NewCidrDB(loader)
+		return rdns.NewCidrDB(name, loader)
 	case "location":
-		return rdns.NewGeoIPDB(loader, locationDB)
+		return rdns.NewGeoIPDB(name, loader, locationDB)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}

@@ -9,6 +9,7 @@ import (
 // Network ranges are stored in a trie (one for IP4 and one for IP6) to allow for
 // efficient matching
 type CidrDB struct {
+	name     string
 	ip4, ip6 *ipBlocklistTrie
 	loader   BlocklistLoader
 }
@@ -16,12 +17,13 @@ type CidrDB struct {
 var _ IPBlocklistDB = &CidrDB{}
 
 // NewCidrDB returns a new instance of a matcher for a list of networks.
-func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
+func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
 	}
 	db := &CidrDB{
+		name:   name,
 		ip4:    new(ipBlocklistTrie),
 		ip6:    new(ipBlocklistTrie),
 		loader: loader,
@@ -53,14 +55,16 @@ func NewCidrDB(loader BlocklistLoader) (*CidrDB, error) {
 }
 
 func (m *CidrDB) Reload() (IPBlocklistDB, error) {
-	return NewCidrDB(m.loader)
+	return NewCidrDB(m.name, m.loader)
 }
 
-func (m *CidrDB) Match(ip net.IP) (string, bool) {
+func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	if addr := ip.To4(); addr == nil {
-		return m.ip6.hasIP(ip)
+		rule, ok := m.ip6.hasIP(ip)
+		return &BlocklistMatch{List: m.name, Rule: rule}, ok
 	}
-	return m.ip4.hasIP(ip)
+	rule, ok := m.ip4.hasIP(ip)
+	return &BlocklistMatch{List: m.name, Rule: rule}, ok
 }
 
 func (m *CidrDB) Close() error {

@@ -13,6 +13,7 @@ import (
 // its location is looked up in a database and the result is compared to the
 // blocklist rules.
 type GeoIPDB struct {
+	name      string
 	loader    BlocklistLoader
 	geoDB     *maxminddb.Reader
 	geoDBFile string
@@ -22,7 +23,7 @@ type GeoIPDB struct {
 var _ IPBlocklistDB = &GeoIPDB{}
 
 // NewGeoIPDB returns a new instance of a matcher for a location rules.
-func NewGeoIPDB(loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
+func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
 	if geoDBFile == "" {
 		geoDBFile = "/usr/share/GeoIP/GeoLite2-City.mmdb"
 	}
@@ -51,6 +52,7 @@ func NewGeoIPDB(loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
 		db[value] = struct{}{}
 	}
 	return &GeoIPDB{
+		name:      name,
 		geoDB:     geoDB,
 		geoDBFile: geoDBFile,
 		db:        db,
@@ -59,10 +61,10 @@ func NewGeoIPDB(loader BlocklistLoader, geoDBFile string) (*GeoIPDB, error) {
 }
 
 func (m *GeoIPDB) Reload() (IPBlocklistDB, error) {
-	return NewGeoIPDB(m.loader, m.geoDBFile)
+	return NewGeoIPDB(m.name, m.loader, m.geoDBFile)
 }
 
-func (m *GeoIPDB) Match(ip net.IP) (string, bool) {
+func (m *GeoIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	var record struct {
 		Continent struct {
 			GeoNameID uint64 `maxminddb:"geoname_id"`
@@ -80,7 +82,7 @@ func (m *GeoIPDB) Match(ip net.IP) (string, bool) {
 
 	if err := m.geoDB.Lookup(ip, &record); err != nil {
 		Log.WithField("ip", ip).WithError(err).Error("failed to lookup ip in geo location database")
-		return "", false
+		return nil, false
 	}
 
 	// Try to find the continent, country, or city GeoName ID in the blocklist
@@ -90,10 +92,13 @@ func (m *GeoIPDB) Match(ip net.IP) (string, bool) {
 	}
 	for _, id := range ids {
 		if _, ok := m.db[id]; ok {
-			return fmt.Sprintf("%d", id), true
+			return &BlocklistMatch{
+				List: m.name,
+				Rule: fmt.Sprintf("%d", id),
+			}, true
 		}
 	}
-	return "", false
+	return nil, false
 }
 
 func (m *GeoIPDB) Close() error {

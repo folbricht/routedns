@@ -28,13 +28,13 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	return NewMultiIPDB(newDBs...)
 }
 
-func (m MultiIPDB) Match(ip net.IP) (string, bool) {
+func (m MultiIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	for _, db := range m.dbs {
-		if rule, ok := db.Match(ip); ok {
-			return rule, ok
+		if match, ok := db.Match(ip); ok {
+			return match, ok
 		}
 	}
-	return "", false
+	return nil, false
 }
 
 func (m MultiIPDB) Close() error {

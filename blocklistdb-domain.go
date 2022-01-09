@@ -14,6 +14,7 @@ import (
 // .domain.com: matches domain.com and all subdomains
 // *.domain.com: matches all subdomains but not domain.com
 type DomainDB struct {
+	name   string
 	root   node
 	loader BlocklistLoader
 }
@@ -23,7 +24,7 @@ type node map[string]node
 var _ BlocklistDB = &DomainDB{}
 
 // NewDomainDB returns a new instance of a matcher for a list of regular expressions.
-func NewDomainDB(loader BlocklistLoader) (*DomainDB, error) {
+func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -55,14 +56,14 @@ func NewDomainDB(loader BlocklistLoader) (*DomainDB, error) {
 			n = subNode
 		}
 	}
-	return &DomainDB{root, loader}, nil
+	return &DomainDB{name, root, loader}, nil
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
-	return NewDomainDB(m.loader)
+	return NewDomainDB(m.name, m.loader)
 }
 
-func (m *DomainDB) Match(q dns.Question) (net.IP, string, string, bool) {
+func (m *DomainDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
 	s := strings.TrimSuffix(q.Name, ".")
 	var matched []string
 	parts := strings.Split(s, ".")
@@ -71,18 +72,36 @@ func (m *DomainDB) Match(q dns.Question) (net.IP, string, string, bool) {
 		part := parts[i]
 		subNode, ok := n[part]
 		if !ok {
-			return nil, "", "", false
+			return nil, "", nil, false
 		}
 		matched = append(matched, part)
 		if _, ok := subNode[""]; ok { // exact and sub-domain match
-			return nil, "", matchedDomainParts(".", matched), true
+			return nil,
+				"",
+				&BlocklistMatch{
+					List: m.name,
+					Rule: matchedDomainParts(".", matched),
+				},
+				true
 		}
 		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
-			return nil, "", matchedDomainParts("*.", matched), true
+			return nil,
+				"",
+				&BlocklistMatch{
+					List: m.name,
+					Rule: matchedDomainParts("*.", matched),
+				},
+				true
 		}
 		n = subNode
 	}
-	return nil, "", matchedDomainParts("", matched), len(n) == 0 // exact match
+	return nil,
+		"",
+		&BlocklistMatch{
+			List: m.name,
+			Rule: matchedDomainParts("", matched),
+		},
+		len(n) == 0 // exact match
 }
 
 func (m *DomainDB) String() string {

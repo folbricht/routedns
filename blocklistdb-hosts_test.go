@@ -20,7 +20,7 @@ func TestHostsDB(t *testing.T) {
 		"192.168.1.1 domain6.com",
 	})
 
-	m, err := NewHostsDB(loader)
+	m, err := NewHostsDB("testlist", loader)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -39,8 +39,9 @@ func TestHostsDB(t *testing.T) {
 	}
 	for _, test := range tests {
 		q := dns.Question{Name: test.q, Qtype: test.typ, Qclass: dns.ClassINET}
-		ip, _, _, ok := m.Match(q)
+		ip, _, match, ok := m.Match(q)
 		require.Equal(t, test.match, ok, "query: %s", test.q)
 		require.Equal(t, test.ip, ip, "query: %s", test.q)
+		require.Equal(t, "testlist", match.List)
 	}
 }

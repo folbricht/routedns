@@ -531,7 +531,7 @@ Options:
 - `blocklist-resolver` - Alternative resolver for queries matching the blocklist, rather than responding with NXDOMAIN. Optional.
 - `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format` and `source`.
+- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `name`.
 - `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
 - `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
@@ -580,7 +580,7 @@ blocklist = [
 ]
 ```
 
-Blocklist that loads two rule-sets. One from an HTTP server, the other from a file on disk. Both are reloaded once a day.
+Blocklist that loads two rule-sets. One from an HTTP server, the other from a file on disk. Both are reloaded once a day. A `name` can be provided which will be used in logs instead of `source`.
 
 ```toml
 [groups.cloudflare-blocklist]
@@ -588,7 +588,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {name = "cbuijs/blocklist" format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
    {format = "regexp", source = "/path/to/local/regexp.list"},
 ]
 ```
@@ -646,7 +646,7 @@ Options:
   - For `response-blocklist-ip`, the value can be `cidr`, or `location`. Defaults to `cidr`.
   - For `response-blocklist-name`, the value can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `cache-dir` (see notes for [Query Blockists](#Query-Blocklist)).
+- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `cache-dir` (see notes for [Query Blockists](#Query-Blocklist)) as well as `name` which assigns a name to the list used in logs (defaults to `source`).
 - `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned unless an alternative `blocklist-resolver` is defined.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 
@@ -700,7 +700,7 @@ blocklist-source  = [
 ]
 ```
 
-Response blocklist that is cached on local disk for faster startup
+Response blocklist that is cached on local disk for faster startup. By default, logs will contain the source (in this case the URL) of a match, but different name can be specified with `name`.
 
 ```toml
 [groups.cloudflare-blocklist]
@@ -708,7 +708,7 @@ type              = "response-blocklist-ip"
 resolvers         = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source  = [
-  {source = "https://host/block.cidr.txt", cache-dir="/var/tmp"},
+  {name = "my-block-list", source = "https://host/block.cidr.txt", cache-dir="/var/tmp"},
 ]
 ```
 
@@ -744,7 +744,7 @@ Options:
 - `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
 - `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Values can be `cidr`, or `location`. Defaults to `cidr`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format` and `source`.
+- `blocklist-source` - An array of blocklists, each with `format` and `source` and optionally `name`.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 
 Examples:

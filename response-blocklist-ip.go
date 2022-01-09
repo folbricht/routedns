@@ -13,7 +13,7 @@ import (
 // IPBlocklistDB is a database containing IPs used in blocklists.
 type IPBlocklistDB interface {
 	Reload() (IPBlocklistDB, error)
-	Match(ip net.IP) (string, bool)
+	Match(ip net.IP) (*BlocklistMatch, bool)
 	Close() error
 	fmt.Stringer
 }
@@ -103,8 +103,8 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 			default:
 				continue
 			}
-			if rule, ok := r.BlocklistDB.Match(ip); ok {
-				log := logger(r.id, query, ci).WithFields(logrus.Fields{"rule": rule, "ip": ip})
+			if match, ok := r.BlocklistDB.Match(ip); ok {
+				log := logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -147,8 +147,8 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			newRRs = append(newRRs, rr)
 			continue
 		}
-		if rule, ok := r.BlocklistDB.Match(ip); ok {
-			logger(r.id, query, ci).WithFields(logrus.Fields{"rule": rule, "ip": ip}).Debug("filtering response")
+		if match, ok := r.BlocklistDB.Match(ip); ok {
+			logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)
