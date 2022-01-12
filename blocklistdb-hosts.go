@@ -80,7 +80,10 @@ func (m *HostsDB) Reload() (BlocklistDB, error) {
 func (m *HostsDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
 	if q.Qtype == dns.TypePTR {
 		name, ok := m.ptrMap[q.Name]
-		return nil, name, nil, ok
+		return nil, name, &BlocklistMatch{
+			List: m.name,
+			Rule: name,
+		}, ok
 	}
 	name := strings.TrimSuffix(q.Name, ".")
 	ips, ok := m.filters[name]
