@@ -123,7 +123,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// If an optional blocklist-resolver was given, send the query to that instead of returning NXDOMAIN.
 	if r.BlocklistResolver != nil {
-		log.WithField("resolver", r.resolver.String()).Debug("matched blocklist, forwarding")
+		log.WithField("resolver", r.BlocklistResolver.String()).Debug("matched blocklist, forwarding")
 		return r.BlocklistResolver.Resolve(q, ci)
 	}
 
