@@ -582,6 +582,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			LimitResolver: resolvers[g.LimitResolver],
 		}
 		resolvers[id] = rdns.NewRateLimiter(id, gr[0], opt)
+	case "truncate":
+		resolvers[id] = rdns.NewTruncateResolver(id)	
 
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
