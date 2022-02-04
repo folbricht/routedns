@@ -878,6 +878,7 @@ Options:
 - `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response. The name in all answer records is replaced with the name in the query to create a match.
 - `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
 - `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
+- `truncate` - when true, TC Bit is set in response. Default is false.
 
 Note:
 
