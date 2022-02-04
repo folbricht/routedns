@@ -66,6 +66,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	
 	if r.truncate {
 		answer.Truncated = true
+		logger(r.id, q, ci).Debug("responding")
 	} else {
 		// Update the name of every answer record to match that of the query
 		answer.Answer = make([]dns.RR, 0, len(r.answer))
