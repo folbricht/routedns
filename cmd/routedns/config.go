@@ -105,6 +105,7 @@ type group struct {
 	NS     []string
 	Extra  []string
 	RCode  int
+	Truncate	bool	`toml:"truncate"` // When true, TC-Bit is set
 
 	// Rate-limiting options
 	Requests      uint   // Number of requests allowed
