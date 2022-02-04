@@ -13,6 +13,7 @@ type StaticResolver struct {
 	ns     []dns.RR
 	extra  []dns.RR
 	rcode  int
+	truncated	bool
 }
 
 var _ Resolver = &StaticResolver{}
@@ -23,6 +24,7 @@ type StaticResolverOptions struct {
 	NS     []string
 	Extra  []string
 	RCode  int
+	Truncated	bool
 }
 
 // NewStaticResolver returns a new instance of a StaticResolver resolver.
@@ -51,6 +53,8 @@ func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, e
 		r.extra = append(r.extra, rr)
 	}
 	r.rcode = opt.RCode
+	
+	r.truncated = opt.Truncated
 
 	return r, nil
 }
@@ -60,7 +64,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
 	
-	if opt.Truncated {
+	if r.truncated {
 		answer.Truncated = true
 	} else {
 		// Update the name of every answer record to match that of the query
