@@ -67,6 +67,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if r.truncate {
 		answer.Truncated = true
 		answer.Rcode = 0
+		
 		logger(r.id, q, ci).Debug("truncating")
 	} else {
 		// Update the name of every answer record to match that of the query
@@ -78,12 +79,11 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 		answer.Ns = r.ns
 		answer.Extra = r.extra
-	
 		answer.Rcode = r.rcode
-	
+		
 		logger(r.id, q, ci).Debug("responding")
 	}
-
+	
 	return answer, nil
 }
 
