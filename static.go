@@ -13,6 +13,7 @@ type StaticResolver struct {
 	ns     []dns.RR
 	extra  []dns.RR
 	rcode  int
+	truncate	bool
 }
 
 var _ Resolver = &StaticResolver{}
