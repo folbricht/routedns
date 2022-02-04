@@ -62,7 +62,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
 	
-	if opt.Truncate {
+	if r.opt.Truncate {
 		answer.Truncated = true
 	} else {
 		// Update the name of every answer record to match that of the query
