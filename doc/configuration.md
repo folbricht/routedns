@@ -926,6 +926,14 @@ routes = [
 ]
 ```
 
+Retunr emtp answer with TC (Truncate) bit set so DNS client is instructed to retry the query using TCP instead of UDP.
+```toml
+[groups.static-truncate]
+type     = "static-responder"
+rcode    = 0 # NOERROR
+truncate = True
+
+
 Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml)
 
 ### Drop
