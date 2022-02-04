@@ -65,9 +65,13 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.SetReply(q)
 	
 	if r.truncate {
+		logger(r.id, q, ci).Debug("truncated")
+		
 		answer.Truncated = true
 		answer.Rcode = 0
 	} else {
+		logger(r.id, q, ci).Debug("responding")
+		
 		// Update the name of every answer record to match that of the query
 		answer.Answer = make([]dns.RR, 0, len(r.answer))
 		for _, rr := range r.answer {
@@ -79,8 +83,6 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		answer.Extra = r.extra
 		answer.Rcode = r.rcode
 	}
-	
-	logger(r.id, q, ci).Debug("responding")
 	
 	return answer, nil
 }
