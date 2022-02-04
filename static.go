@@ -66,7 +66,8 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	
 	if r.truncate {
 		answer.Truncated = true
-		logger(r.id, q, ci).Debug("responding")
+		answer.Rcode = 0
+		logger(r.id, q, ci).Debug("responding with TC-Bit set")
 	} else {
 		// Update the name of every answer record to match that of the query
 		answer.Answer = make([]dns.RR, 0, len(r.answer))
@@ -77,11 +78,11 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 		answer.Ns = r.ns
 		answer.Extra = r.extra
+	
+		answer.Rcode = r.rcode
+	
+		logger(r.id, q, ci).Debug("responding")
 	}
-	
-	answer.Rcode = r.rcode
-	
-	logger(r.id, q, ci).Debug("responding")
 
 	return answer, nil
 }
