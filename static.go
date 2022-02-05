@@ -76,7 +76,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Rcode = r.rcode
 	answer.Truncated = r.truncate
 
-	logger(r.id, q, ci).Debug("responding")
+	logger(r.id, q, ci).WithField("truncated", r.truncate).Debug("responding")
 
 	return answer, nil
 }
