@@ -16,7 +16,7 @@ type = "static-responder"
 rcode = 0 # NOERROR
 truncate = true
 
-#### Bootsrap ####
+#### Bootstrap ####
 [bootstrap-resolver]
 protocol = "doh"
 address = "https://dns.google:443/dns-query"
