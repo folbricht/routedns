@@ -63,27 +63,21 @@ func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, e
 func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
-	
-	if r.truncate {
-		logger(r.id, q, ci).Debug("truncated")
-		
-		answer.Truncated = true
-		answer.Rcode = 0
-	} else {
-		logger(r.id, q, ci).Debug("responding")
-		
-		// Update the name of every answer record to match that of the query
-		answer.Answer = make([]dns.RR, 0, len(r.answer))
-		for _, rr := range r.answer {
-			r := dns.Copy(rr)
-			r.Header().Name = qName(q)
-			answer.Answer = append(answer.Answer, r)
-		}
-		answer.Ns = r.ns
-		answer.Extra = r.extra
-		answer.Rcode = r.rcode
+
+	// Update the name of every answer record to match that of the query
+	answer.Answer = make([]dns.RR, 0, len(r.answer))
+	for _, rr := range r.answer {
+		r := dns.Copy(rr)
+		r.Header().Name = qName(q)
+		answer.Answer = append(answer.Answer, r)
 	}
-	
+	answer.Ns = r.ns
+	answer.Extra = r.extra
+	answer.Rcode = r.rcode
+	answer.Truncated = r.truncate
+
+	logger(r.id, q, ci).Debug("responding")
+
 	return answer, nil
 }
 
