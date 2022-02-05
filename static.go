@@ -13,6 +13,7 @@ type StaticResolver struct {
 	ns     []dns.RR
 	extra  []dns.RR
 	rcode  int
+	truncate	bool
 }
 
 var _ Resolver = &StaticResolver{}
@@ -23,6 +24,7 @@ type StaticResolverOptions struct {
 	NS     []string
 	Extra  []string
 	RCode  int
+	Truncate	bool
 }
 
 // NewStaticResolver returns a new instance of a StaticResolver resolver.
@@ -51,7 +53,9 @@ func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, e
 		r.extra = append(r.extra, rr)
 	}
 	r.rcode = opt.RCode
-
+	
+	r.truncate = opt.Truncate
+	
 	return r, nil
 }
 
@@ -70,8 +74,9 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Ns = r.ns
 	answer.Extra = r.extra
 	answer.Rcode = r.rcode
+	answer.Truncated = r.truncate
 
-	logger(r.id, q, ci).Debug("responding")
+	logger(r.id, q, ci).WithField("truncated", r.truncate).Debug("responding")
 
 	return answer, nil
 }

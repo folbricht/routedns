@@ -878,6 +878,7 @@ Options:
 - `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response. The name in all answer records is replaced with the name in the query to create a match.
 - `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
 - `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
+- `truncate` - when true, TC Bit is set in response. Default is false.
 
 Note:
 
@@ -924,6 +925,14 @@ routes = [
   { resolver = "cloudflare-dot" },             # All other queries are forwarded
 ]
 ```
+
+Return an emtpy answer with TC (Truncate) bit set so the DNS client is instructed to retry the query using TCP instead of UDP.
+```toml
+[groups.static-truncate]
+type     = "static-responder"
+rcode    = 0 # NOERROR
+truncate = True
+
 
 Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml)
 

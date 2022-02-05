@@ -613,6 +613,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			NS:     g.NS,
 			Extra:  g.Extra,
 			RCode:  g.RCode,
+			Truncate:	g.Truncate,
 		}
 		resolvers[id], err = rdns.NewStaticResolver(id, opt)
 		if err != nil {

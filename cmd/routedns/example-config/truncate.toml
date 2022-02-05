@@ -1,0 +1,28 @@
+#### UDP LISTENER ####
+[listeners.do53-udp-test]
+address = "[::]:9053" # UDP
+protocol = "udp"
+resolver = "truncate" # Set TC Bit to tell client to try again using TCP
+
+#### TCP LISTENER ####
+[listeners.do53-tcp-test]
+address = "[::]:9053" # TCP
+protocol = "tcp"
+resolver = "doh-google"
+
+#### THE MAGIC HAPPENS HERE ####
+[groups.truncate]
+type = "static-responder"
+rcode = 0 # NOERROR
+truncate = true
+
+#### Bootstrap ####
+[bootstrap-resolver]
+protocol = "doh"
+address = "https://dns.google:443/dns-query"
+bootstrap-address = "8.8.8.8"
+
+### Google DNS ####
+[resolvers.doh-google]
+protocol = "doh"
+address = "https://dns.google:443/dns-query"
