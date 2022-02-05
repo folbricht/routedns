@@ -926,7 +926,7 @@ routes = [
 ]
 ```
 
-Retunr emtp answer with TC (Truncate) bit set so DNS client is instructed to retry the query using TCP instead of UDP.
+Return an emtpy answer with TC (Truncate) bit set so the DNS client is instructed to retry the query using TCP instead of UDP.
 ```toml
 [groups.static-truncate]
 type     = "static-responder"
