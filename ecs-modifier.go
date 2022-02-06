@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // ECSModifier manipulates EDNS0 Client Subnet in queries.
