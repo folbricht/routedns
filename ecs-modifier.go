@@ -104,7 +104,7 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		ecs.Address = sourceIP
 		edns0.Option = append(edns0.Option, ecs)
 		
-		log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "ecs": sourceIP})
+		log := Log.WithFields(logrus.Fields{"client": ci.SourceIP, "ecs": sourceIP, "qname=": qName(q)})
 		log.Debug("ecs-modify")
 	}
 }
