@@ -127,7 +127,11 @@ func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 		}
 
 		// Find the ECS option
-		var hasECS bool
+		var (
+			hasECS     bool
+			beforeAddr net.IP
+			afterAddr  net.IP
+		)
 		for _, opt := range edns0.Option {
 			ecs, ok := opt.(*dns.EDNS0_SUBNET)
 			if !ok {
@@ -135,12 +139,14 @@ func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 			}
 			switch ecs.Family {
 			case 1: // ip4
-				addr := ecs.Address.To4()
-				ecs.Address = addr.Mask(net.CIDRMask(int(prefix4), 32))
+				beforeAddr = ecs.Address.To4()
+				afterAddr = beforeAddr.Mask(net.CIDRMask(int(prefix4), 32))
+				ecs.Address = afterAddr
 				ecs.SourceNetmask = prefix4
 			case 2: // ip6
-				addr := ecs.Address
-				ecs.Address = addr.Mask(net.CIDRMask(int(prefix6), 128))
+				beforeAddr = ecs.Address
+				afterAddr = beforeAddr.Mask(net.CIDRMask(int(prefix6), 128))
+				ecs.Address = afterAddr
 				ecs.SourceNetmask = prefix6
 			}
 			hasECS = true
@@ -148,8 +154,10 @@ func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 
 		if hasECS {
 			logger(id, q, ci).WithFields(logrus.Fields{
-				"ip4prefix": prefix4,
-				"ip6prefix": prefix6,
+				"ip4prefix":   prefix4,
+				"ip6prefix":   prefix6,
+				"before-addr": beforeAddr,
+				"after-addr":  afterAddr,
 			}).Debug("modifying ecs privacy")
 		}
 	}
