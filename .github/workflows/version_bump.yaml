@@ -33,7 +33,7 @@ jobs:
         run: |
           echo $PWD
           git stash
-          git pull origin HEAD:master -ff
+          git pull origin HEAD:master --ff-only
           export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
           export CURRENT_BUILD_NUMBER=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
           export CURRENT_BUILD_TIME=$(date)
