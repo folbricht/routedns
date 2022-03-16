@@ -47,4 +47,4 @@ jobs:
           git add .
           git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
           git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER $CHANGE_BUILD_VERSION
-          git push
+          git push origin HEAD:master
