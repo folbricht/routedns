@@ -69,6 +69,10 @@ Listen on non-standard ports:
 docker run -d --rm -p 5353:53/udp -p 5353:53/tcp -v /path/to/config.toml:/config.toml folbricht/routedns
 ```
 
+### Pre-Compiled/Build Binaries
+
+You can also fetch pre-compiled/build binaries for popular/common (router) platforms (Like Raspberry-Pi) here: https://github.com/cbuijs/routedns-binaries.
+
 ## Configuration
 
 RouteDNS supports building complex DNS processing pipelines. A typically configuration would have one or more listeners to receive queries, several modifiers and routers to process the query (or responses), and then several resolvers that pass the query to upstream DNS services. See the [Configuration Guide](doc/configuration.md) for details on how to setup a pipeline.
