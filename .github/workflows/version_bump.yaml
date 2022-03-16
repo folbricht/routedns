@@ -32,7 +32,6 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo $PWD
-          cd ..
           git stash
           git switch master
           git pull origin HEAD:master --ff-only
