@@ -32,8 +32,10 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo $PWD
+          cd ..
           rm -rf $GITHUB_WORKSPACE
           git clone https://github.com/folbricht/routedns/
+          cd $GITHUB_WORKSPACE
           git stash
           git pull origin HEAD:master --ff-only
           export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
