@@ -22,8 +22,7 @@ func AddressWithDefault(addr, defaultPort string) string {
 	// off first
 	parts := strings.SplitN(addr, "{", 2)
 	endpointPart := parts[0]
-	// We set it as a string because there is no else and if no else then undefined without set
-	var templatePart string = ""
+	var templatePart string
 	if len(parts) == 2 {
 		templatePart = "{" + parts[1]
 	}
