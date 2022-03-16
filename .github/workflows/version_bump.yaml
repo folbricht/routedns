@@ -34,6 +34,8 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo $PWD
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git pull origin HEAD:${{ github.event.pull_request.head.sha }} --rebase
           export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
           export CURRENT_BUILD_NUMBER=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
@@ -45,8 +47,6 @@ jobs:
           perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
           perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
           perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CURRENT_BUILD_NUMBER\"/g" version.go
-          git config user.name github-actions
-          git config user.email github-actions@github.com
           git add .
           git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
           git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER $CHANGE_BUILD_VERSION
