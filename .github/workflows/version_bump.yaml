@@ -43,7 +43,7 @@ jobs:
           export CURRENT_BUILD_TIME=$(date)
           export PR_CHANGE_BUILD_VERION=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $3}' )
           export OLD_BUILD_VERION_PART=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $1"."$2}')
-          export CHANGE_BUILD_VERSION=$OLD_BUILD_VERION_PART.$PR_CHANGE_BUILD_VERION
+          export CHANGE_BUILD_VERSION=$OLD_BUILD_VERION_PART.$(( $PR_CHANGE_BUILD_VERION + 1 ))
           export CHANGE_BUILD_NUMBER=$(( $CURRENT_BUILD_NUMBER  + 1 ))
           perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
           perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
