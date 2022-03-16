@@ -42,6 +42,8 @@ jobs:
           perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
           perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
           perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CURRENT_BUILD_NUMBER\"/g" version.go
+          git config --global user.name "Server" 
+          git config --global user.email "server@routedns.example"
           git add .
           git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
           git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER $CHANGE_BUILD_VERSION
