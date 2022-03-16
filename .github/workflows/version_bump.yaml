@@ -32,6 +32,7 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo $PWD
+          git pull
           export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
           export CURRENT_BUILD_NUMBER=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
           export CURRENT_BUILD_TIME=$(date)
