@@ -47,5 +47,5 @@ jobs:
           perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CURRENT_BUILD_NUMBER\"/g" version.go
           git add .
           git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
-          git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER $CHANGE_BUILD_VERSION
+          git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER
           git push origin HEAD:master
