@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/heimdalr/dag v1.0.1
+	github.com/jpillora/go-tld v1.1.1 // indirect
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/lucas-clemente/quic-go v0.25.0
 	github.com/miekg/dns v1.1.47
