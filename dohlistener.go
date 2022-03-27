@@ -32,7 +32,6 @@ type DoHListener struct {
 	opt  DoHListenerOptions
 
 	mux *http.ServeMux
-
 	metrics *DoHListenerMetrics
 }
 
@@ -112,6 +111,7 @@ func (s *DoHListener) startTCP() error {
 		Handler:      s.mux,
 		ReadTimeout:  dohServerTimeout,
 		WriteTimeout: dohServerTimeout,
+		IdleTimeout: dohServerTimeout,
 	}
 
 	ln, err := net.Listen("tcp", s.addr)
@@ -131,6 +131,7 @@ func (s *DoHListener) startQUIC() error {
 			Handler:      s.mux,
 			ReadTimeout:  dohServerTimeout,
 			WriteTimeout: dohServerTimeout,
+			IdleTimeout: dohServerTimeout,
 		},
 		QuicConfig: &quic.Config{},
 	}

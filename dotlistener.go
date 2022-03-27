@@ -27,6 +27,7 @@ func NewDoTListener(id, addr string, opt DoTListenerOptions, resolver Resolver) 
 	return &DoTListener{
 		id: id,
 		Server: &dns.Server{
+			ReusePort: true,
 			Addr:      addr,
 			Net:       "tcp-tls",
 			TLSConfig: opt.TLSConfig,

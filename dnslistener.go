@@ -27,6 +27,7 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 		Server: &dns.Server{
 			Addr:    addr,
 			Net:     net,
+			ReusePort: true,
 			Handler: listenHandler(id, net, addr, resolver, opt.AllowedNet),
 		},
 	}

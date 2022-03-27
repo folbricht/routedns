@@ -34,6 +34,7 @@ func NewDTLSListener(id, addr string, opt DTLSListenerOptions, resolver Resolver
 	return &DTLSListener{
 		id: id,
 		Server: &dns.Server{
+			ReusePort: true,
 			Addr:    addr,
 			Handler: listenHandler(id, "dtls", addr, resolver, opt.AllowedNet),
 		},
