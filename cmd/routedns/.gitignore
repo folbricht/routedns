@@ -1,1 +1,2 @@
-routedns
+routedns*
+!routedns.service
