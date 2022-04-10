@@ -26,7 +26,7 @@ type DoQClient struct {
 	log      *logrus.Entry
 	metrics  *ListenerMetrics
 
-	session doqSession
+	connection doqConnection
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -78,7 +78,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		session: doqSession{
+		connection: doqConnection{
 			hostname:  host,
 			endpoint:  endpoint,
 			lAddr:     lAddr,
@@ -129,8 +129,8 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Get a new stream in the session
-	stream, err := d.session.getStream()
+	// Get a new stream in the connection
+	stream, err := d.connection.getStream()
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
@@ -180,7 +180,7 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
-type doqSession struct {
+type doqConnection struct {
 	hostname  string
 	endpoint  string
 	lAddr     net.IP
@@ -189,35 +189,35 @@ type doqSession struct {
 	log       *logrus.Entry
 	pool      *udpConnPool
 
-	session quic.Session
+	connection quic.Connection
 
 	mu sync.Mutex
 }
 
-func (s *doqSession) getStream() (quic.Stream, error) {
+func (s *doqConnection) getStream() (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// If we don't have a session yet, make one
-	if s.session == nil {
+	// If we don't have a connection yet, make one
+	if s.connection == nil {
 		var err error
-		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
+		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
 		if err != nil {
-			s.log.WithError(err).Error("failed to open session")
+			s.log.WithError(err).Error("failed to open connection")
 			return nil, err
 		}
 	}
 
-	stream, err := s.session.OpenStream()
+	stream, err := s.connection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		// Try to open a new session
-		_ = s.session.CloseWithError(DOQNoError, "")
-		s.session, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
+		// Try to open a new connection
+		_ = s.connection.CloseWithError(DOQNoError, "")
+		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
 		if err != nil {
-			s.log.WithError(err).Error("failed to open session")
+			s.log.WithError(err).Error("failed to open connection")
 			return nil, err
 		}
-		stream, err = s.session.OpenStream()
+		stream, err = s.connection.OpenStream()
 		if err != nil {
 			s.log.WithError(err).Error("failed to open stream")
 			return nil, err
