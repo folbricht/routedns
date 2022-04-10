@@ -253,11 +253,11 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 
 	// When using a custom dialer, we have to track/close connections ourselves
 	pool := new(udpConnPool)
-	dialer := func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+	dialer := func(ctx context.Context, network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
 		return quicDial(u.Hostname(), addr, lAddr, tlsConfig, config, pool)
 	}
 	if opt.BootstrapAddr != "" {
-		dialer = func(network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlySession, error) {
+		dialer = func(ctx context.Context, network, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
 			_, port, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, err
@@ -277,7 +277,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	return &http3ReliableRoundTripper{tr, pool}, nil
 }
 
-func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, pool *udpConnPool) (quic.EarlySession, error) {
+func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, pool *udpConnPool) (quic.EarlyConnection, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		return nil, err

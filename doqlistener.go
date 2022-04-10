@@ -36,9 +36,9 @@ type DoQListenerOptions struct {
 type DoQListenerMetrics struct {
 	ListenerMetrics
 
-	// Count of sessions initiated.
-	session *expvar.Int
-	// Count of streams seen in all sessions.
+	// Count of connections initiated.
+	connection *expvar.Int
+	// Count of streams seen in all connections.
 	stream *expvar.Int
 }
 
@@ -50,8 +50,8 @@ func NewDoQListenerMetrics(id string) *DoQListenerMetrics {
 			drop:     getVarInt("listener", id, "drop"),
 			err:      getVarMap("listener", id, "error"),
 		},
-		session: getVarInt("listener", id, "session"),
-		stream:  getVarInt("listener", id, "stream"),
+		connection: getVarInt("listener", id, "session"),
+		stream:     getVarInt("listener", id, "stream"),
 	}
 }
 
@@ -82,17 +82,17 @@ func (s DoQListener) Start() error {
 	s.log.Info("starting listener")
 
 	for {
-		session, err := s.ln.Accept(context.Background())
+		connection, err := s.ln.Accept(context.Background())
 		if err != nil {
 			s.log.WithError(err).Warn("failed to accept")
 			continue
 		}
-		s.log.Trace("started session")
+		s.log.Trace("started connection")
 
 		go func() {
-			s.handleSession(session)
-			_ = session.CloseWithError(DOQNoError, "")
-			s.log.Trace("closing session")
+			s.handleConnection(connection)
+			_ = connection.CloseWithError(DOQNoError, "")
+			s.log.Trace("closing connection")
 		}()
 	}
 }
@@ -103,27 +103,27 @@ func (s DoQListener) Stop() error {
 	return s.ln.Close()
 }
 
-func (s DoQListener) handleSession(session quic.Session) {
+func (s DoQListener) handleConnection(connection quic.Connection) {
 	var ci ClientInfo
-	switch addr := session.RemoteAddr().(type) {
+	switch addr := connection.RemoteAddr().(type) {
 	case *net.TCPAddr:
 		ci.SourceIP = addr.IP
 	case *net.UDPAddr:
 		ci.SourceIP = addr.IP
 	}
-	log := s.log.WithField("client", session.RemoteAddr())
+	log := s.log.WithField("client", connection.RemoteAddr())
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
-		log.Debug("rejecting incoming session")
+		log.Debug("rejecting incoming connection")
 		s.metrics.drop.Add(1)
 		return
 	}
-	log.Trace("accepting incoming session")
-	s.metrics.session.Add(1)
+	log.Trace("accepting incoming connection")
+	s.metrics.connection.Add(1)
 
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // TODO: configurable
-		stream, err := session.AcceptStream(ctx)
+		stream, err := connection.AcceptStream(ctx)
 		if err != nil {
 			cancel()
 			break
