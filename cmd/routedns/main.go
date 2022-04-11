@@ -3,12 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log/syslog"
 	"net"
 	"net/url"
 	"os"
 	"time"
 
+	syslog "github.com/RackSec/srslog"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
 	"github.com/sirupsen/logrus"

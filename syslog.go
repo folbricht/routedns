@@ -2,8 +2,8 @@ package rdns
 
 import (
 	"fmt"
-	"log/syslog"
 
+	syslog "github.com/RackSec/srslog"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
