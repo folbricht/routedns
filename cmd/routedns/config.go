@@ -126,10 +126,11 @@ type group struct {
 	RetryResolver string `toml:"retry-resolver"`
 
 	// Syslog options
-	Network  string `toml:"network"`  // "udp", "tcp", "unix"
-	Address  string `toml:"address"`  // Endpoint address, defaults to local syslog server
-	Priority string `toml:"priority"` // Syslog priority, "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"
-	Tag      string `toml:"tag"`
+	Network     string `toml:"network"`  // "udp", "tcp", "unix"
+	Address     string `toml:"address"`  // Endpoint address, defaults to local syslog server
+	Priority    string `toml:"priority"` // Syslog priority, "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"
+	Tag         string `toml:"tag"`
+	LogResponse bool   `toml:"log-response"` // Also logs response records to syslog
 }
 
 // Block/Allowlist items for blocklist-v2

@@ -504,10 +504,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("unsupported syslog priority %q", g.Priority)
 		}
 		opt := rdns.SyslogOptions{
-			Network:  g.Network,
-			Address:  g.Address,
-			Priority: priority,
-			Tag:      g.Tag,
+			Network:     g.Network,
+			Address:     g.Address,
+			Priority:    priority,
+			Tag:         g.Tag,
+			LogResponse: g.LogResponse,
 		}
 		resolvers[id] = rdns.NewSyslog(id, gr[0], opt)
 	case "cache":
