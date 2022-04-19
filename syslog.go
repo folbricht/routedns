@@ -72,6 +72,13 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 					logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
 				}
 			}
+			// Synthesize a NODATA rcode when the response is NOERROR without any response records
+			if len(a.Answer) == 0 {
+				msg = fmt.Sprintf("id=%s qid=%d type=answer qname=%s rcode=NODATA", r.id, q.Id, qName(q))
+				if _, err := r.writer.Write([]byte(msg)); err != nil {
+					logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
+				}
+			}
 		} else {
 			msg = fmt.Sprintf("id=%s qid=%d type=answer qname=%s rcode=%s", r.id, q.Id, qName(q), dns.RcodeToString[a.Rcode])
 			if _, err := r.writer.Write([]byte(msg)); err != nil {
