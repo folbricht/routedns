@@ -130,7 +130,8 @@ type group struct {
 	Address     string `toml:"address"`  // Endpoint address, defaults to local syslog server
 	Priority    string `toml:"priority"` // Syslog priority, "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"
 	Tag         string `toml:"tag"`
-	LogResponse bool   `toml:"log-response"` // Also logs response records to syslog
+	LogRequest  bool   `toml:"log-request"`  // Logs request records to syslog
+	LogResponse bool   `toml:"log-response"` // Logs response records to syslog
 }
 
 // Block/Allowlist items for blocklist-v2

@@ -32,7 +32,8 @@ type SyslogOptions struct {
 	// Syslog tag
 	Tag string
 
-	// Log responses as well
+	// Log requests and/or responses
+	LogRequest  bool
 	LogResponse bool
 }
 
@@ -53,9 +54,12 @@ func NewSyslog(id string, resolver Resolver, opt SyslogOptions) *Syslog {
 
 // Resolve passes a DNS query through unmodified. Query details are sent via syslog.
 func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	msg := fmt.Sprintf("id=%s type=query client=%s qtype=%s qname=%s", r.id, ci.SourceIP.String(), qType(q), qName(q))
-	if _, err := r.writer.Write([]byte(msg)); err != nil {
-		logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
+	var msg string
+	if r.opt.LogRequest {
+		msg = fmt.Sprintf("id=%s type=query client=%s qtype=%s qname=%s", r.id, ci.SourceIP.String(), qType(q), qName(q))
+		if _, err := r.writer.Write([]byte(msg)); err != nil {
+			logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
+		}
 	}
 
 	a, err := r.resolver.Resolve(q, ci)
@@ -63,13 +67,13 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		if a.Rcode == dns.RcodeSuccess {
 			for _, rr := range a.Answer {
 				s := strings.ReplaceAll(rr.String(), "\t", " ")
-				msg = fmt.Sprintf("id=%s type=answer qname=%s answer=%q", r.id, qType(q), s)
+				msg = fmt.Sprintf("id=%s type=answer qname=%s answer=%q", r.id, qName(q), s)
 				if _, err := r.writer.Write([]byte(msg)); err != nil {
 					logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
 				}
 			}
 		} else {
-			msg = fmt.Sprintf("id=%s type=answer qname=%s rcode=%s", r.id, qType(q), dns.RcodeToString[a.Rcode])
+			msg = fmt.Sprintf("id=%s type=answer qname=%s rcode=%s", r.id, qName(q), dns.RcodeToString[a.Rcode])
 			if _, err := r.writer.Write([]byte(msg)); err != nil {
 				logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
 			}

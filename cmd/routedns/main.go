@@ -508,6 +508,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			Address:     g.Address,
 			Priority:    priority,
 			Tag:         g.Tag,
+			LogRequest:  g.LogRequest,
 			LogResponse: g.LogResponse,
 		}
 		resolvers[id] = rdns.NewSyslog(id, gr[0], opt)
