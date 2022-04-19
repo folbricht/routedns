@@ -73,7 +73,7 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 				}
 			}
 		} else {
-			msg = fmt.Sprintf("id=%s qid=%d type=answer qname=%s rcode=%s", r.id, qName(q), q.Id, dns.RcodeToString[a.Rcode])
+			msg = fmt.Sprintf("id=%s qid=%d type=answer qname=%s rcode=%s", r.id, q.Id, qName(q), dns.RcodeToString[a.Rcode])
 			if _, err := r.writer.Write([]byte(msg)); err != nil {
 				logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
 			}
