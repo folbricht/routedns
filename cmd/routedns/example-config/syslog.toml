@@ -12,6 +12,8 @@ network = "udp" # "udp", "tcp", "unix"
 address = "192.168.0.1:514" # Defaults to the local syslog server
 priority = "info" # "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"
 tag = "routedns"
+log-request = true
+log-response = true
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"

@@ -36,6 +36,7 @@
   - [Fastest TCP Probe](#Fastest-TCP-Probe)
   - [Retrying Truncated Responses](#Retrying-Truncated-Responses)
   - [Request Deduplication](#Request-Deduplication)
+  - [Syslog](#Syslog)
 - [Resolvers](#Resolvers)
   - [Plain DNS](#Plain-DNS-Resolver)
   - [DNS-over-TLS](#DNS-over-TLS-Resolver)
@@ -1236,7 +1237,7 @@ Example config files: [truncate-retry.toml](../cmd/routedns/example-config/trunc
 
 ### Request Deduplication
 
-The `request-dedup` element passed individual queries to its upstream resolver. While the first query is being processed, further queries for the same name will be blocked. Once the first query has been answered, all waiting queries are completed with the same answer. This element can be used to reduce load on upstream servers when queried by clients sending the same query multiple times.
+The `request-dedup` element passes individual queries to its upstream resolver. While the first query is being processed, further queries for the same name will be blocked. Once the first query has been answered, all waiting queries are completed with the same answer. This element can be used to reduce load on upstream servers when queried by clients sending the same query multiple times.
 
 #### Configuration
 
@@ -1268,6 +1269,40 @@ protocol = "udp"
 ```
 
 Example config files: [request-dedup.toml](../cmd/routedns/example-config/request-dedup.toml)
+
+### Syslog
+
+The `syslog` element can be used to log requests and/or responses to local or remote syslog servers. It forwards queries un-modified to the configured resolver. It is possible to configure multiple syslog loggers in different places. For example a logger could be configured to log and forward queries for domains on a blocklist, or behind a router.
+
+#### Configuration
+
+To enable syslog, add an element with `type = "syslog"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `network` - Network protocol. `udp`, `tcp` or `unix`. Defaults to `unix`.
+- `address` - Remote syslog server address and port. For example `192.168.0.1:514`
+- `priority` - Syslog priority. Possible values: `emergency`, `alert`, `critical`, `error`, `warning`, `notice`, `info`, `debug`
+- `tag` - Syslog tag. Defaults to the program name.
+- `log-request` - Enable logging of requests. Default `false`.
+- `log-response` - Enable logging of responses. Default `false`.
+
+Examples:
+
+```toml
+[groups.cloudflare-logged]
+type = "syslog"
+resolvers = ["cloudflare-dot"]
+network = "udp"
+address = "192.168.0.1:514"
+priority = "info"
+tag = "routedns"
+log-request = true
+log-response = true
+```
+
+Example config files: [syslog.toml](../cmd/routedns/example-config/syslog.toml)
 
 ## Resolvers
 
