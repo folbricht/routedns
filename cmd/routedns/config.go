@@ -132,6 +132,7 @@ type group struct {
 	Tag         string `toml:"tag"`
 	LogRequest  bool   `toml:"log-request"`  // Logs request records to syslog
 	LogResponse bool   `toml:"log-response"` // Logs response records to syslog
+	Verbose     bool   `toml:"verbose"`      // When logging responses, include types that don't match the query type
 }
 
 // Block/Allowlist items for blocklist-v2

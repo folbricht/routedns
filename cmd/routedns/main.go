@@ -510,6 +510,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			Tag:         g.Tag,
 			LogRequest:  g.LogRequest,
 			LogResponse: g.LogResponse,
+			Verbose:     g.Verbose,
 		}
 		resolvers[id] = rdns.NewSyslog(id, gr[0], opt)
 	case "cache":

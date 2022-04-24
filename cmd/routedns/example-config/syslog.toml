@@ -14,6 +14,7 @@ priority = "info" # "emergency", "alert", "critical", "error", "warning", "notic
 tag = "routedns"
 log-request = true
 log-response = true
+verbose = true # Log all answers, not just the type that match the query
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"

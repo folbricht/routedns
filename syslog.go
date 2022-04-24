@@ -35,6 +35,9 @@ type SyslogOptions struct {
 	// Log requests and/or responses
 	LogRequest  bool
 	LogResponse bool
+
+	// Log all response records, including those that do not match the query type
+	Verbose bool
 }
 
 // NewSyslog returns a new instance of a Syslog generator.
@@ -65,15 +68,27 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	a, err := r.resolver.Resolve(q, ci)
 	if err == nil && a != nil && r.opt.LogResponse {
 		if a.Rcode == dns.RcodeSuccess {
-			for i, rr := range a.Answer {
+			var answerRRs = a.Answer
+			// Only print the records that match the query type if verbose=false
+			if !r.opt.Verbose {
+				answerRRs = make([]dns.RR, 0, len(a.Answer))
+				for _, rr := range a.Answer {
+					if rr.Header().Rrtype != q.Question[0].Qtype {
+						continue
+					}
+					answerRRs = append(answerRRs, rr)
+				}
+			}
+
+			for i, rr := range answerRRs {
 				s := strings.ReplaceAll(rr.String(), "\t", " ")
-				msg = fmt.Sprintf("id=%s qid=%d type=answer answer-num=%d/%d qtype=%s qname=%s answer=%q", r.id, q.Id, i+1, len(a.Answer), qType(q), qName(q), s)
+				msg = fmt.Sprintf("id=%s qid=%d type=answer answer-num=%d/%d qtype=%s qname=%s answer=%q", r.id, q.Id, i+1, len(answerRRs), qType(q), qName(q), s)
 				if _, err := r.writer.Write([]byte(msg)); err != nil {
 					logger(r.id, q, ci).WithError(err).Error("failed to send syslog")
 				}
 			}
 			// Synthesize a NODATA rcode when the response is NOERROR without any response records
-			if len(a.Answer) == 0 {
+			if len(answerRRs) == 0 {
 				msg = fmt.Sprintf("id=%s qid=%d type=answer qtype=%s qname=%s rcode=NODATA", r.id, q.Id, qType(q), qName(q))
 				if _, err := r.writer.Write([]byte(msg)); err != nil {
 					logger(r.id, q, ci).WithError(err).Error("failed to send syslog")

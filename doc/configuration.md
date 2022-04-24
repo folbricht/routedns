@@ -1287,6 +1287,7 @@ Options:
 - `tag` - Syslog tag. Defaults to the program name.
 - `log-request` - Enable logging of requests. Default `false`.
 - `log-response` - Enable logging of responses. Default `false`.
+- `verbose` - Log all answers, not just the types that match the query. Default `false`.
 
 Examples:
 
