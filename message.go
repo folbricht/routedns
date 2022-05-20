@@ -14,6 +14,14 @@ func qName(q *dns.Msg) string {
 	return q.Question[0].Name
 }
 
+// Returns the string representation of the query type.
+func qType(q *dns.Msg) string {
+	if len(q.Question) == 0 {
+		return ""
+	}
+	return dns.TypeToString[q.Question[0].Qtype]
+}
+
 // Return the result code name from a DNS response.
 func rCode(r *dns.Msg) string {
 	if result, ok := dns.RcodeToString[r.Rcode]; ok {

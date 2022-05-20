@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/BurntSushi/toml v1.1.0
+	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/heimdalr/dag v1.0.1
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/lucas-clemente/quic-go v0.27.0

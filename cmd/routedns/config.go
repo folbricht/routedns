@@ -101,11 +101,11 @@ type group struct {
 	LocationDB        string   `toml:"location-db"` // GeoIP database file for response blocklist. Default "/usr/share/GeoIP/GeoLite2-City.mmdb"
 
 	// Static responder options
-	Answer []string
-	NS     []string
-	Extra  []string
-	RCode  int
-	Truncate	bool	`toml:"truncate"` // When true, TC-Bit is set
+	Answer   []string
+	NS       []string
+	Extra    []string
+	RCode    int
+	Truncate bool `toml:"truncate"` // When true, TC-Bit is set
 
 	// Rate-limiting options
 	Requests      uint   // Number of requests allowed
@@ -124,6 +124,15 @@ type group struct {
 
 	// Truncate-Retry options
 	RetryResolver string `toml:"retry-resolver"`
+
+	// Syslog options
+	Network     string `toml:"network"`  // "udp", "tcp", "unix"
+	Address     string `toml:"address"`  // Endpoint address, defaults to local syslog server
+	Priority    string `toml:"priority"` // Syslog priority, "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"
+	Tag         string `toml:"tag"`
+	LogRequest  bool   `toml:"log-request"`  // Logs request records to syslog
+	LogResponse bool   `toml:"log-response"` // Logs response records to syslog
+	Verbose     bool   `toml:"verbose"`      // When logging responses, include types that don't match the query type
 }
 
 // Block/Allowlist items for blocklist-v2

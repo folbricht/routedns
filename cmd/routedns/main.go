@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	syslog "github.com/RackSec/srslog"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
 	"github.com/sirupsen/logrus"
@@ -477,6 +478,41 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "syslog":
+		if len(gr) != 1 {
+			return fmt.Errorf("type syslog only supports one resolver in '%s'", id)
+		}
+		var priority int
+		switch g.Priority {
+		case "emergency", "":
+			priority = int(syslog.LOG_EMERG)
+		case "alert":
+			priority = int(syslog.LOG_ALERT)
+		case "critical":
+			priority = int(syslog.LOG_CRIT)
+		case "error":
+			priority = int(syslog.LOG_ERR)
+		case "warning":
+			priority = int(syslog.LOG_WARNING)
+		case "notice":
+			priority = int(syslog.LOG_NOTICE)
+		case "info":
+			priority = int(syslog.LOG_INFO)
+		case "debug":
+			priority = int(syslog.LOG_DEBUG)
+		default:
+			return fmt.Errorf("unsupported syslog priority %q", g.Priority)
+		}
+		opt := rdns.SyslogOptions{
+			Network:     g.Network,
+			Address:     g.Address,
+			Priority:    priority,
+			Tag:         g.Tag,
+			LogRequest:  g.LogRequest,
+			LogResponse: g.LogResponse,
+			Verbose:     g.Verbose,
+		}
+		resolvers[id] = rdns.NewSyslog(id, gr[0], opt)
 	case "cache":
 		var shuffleFunc rdns.AnswerShuffleFunc
 		switch g.CacheAnswerShuffle {
@@ -609,11 +645,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 
 	case "static-responder":
 		opt := rdns.StaticResolverOptions{
-			Answer: g.Answer,
-			NS:     g.NS,
-			Extra:  g.Extra,
-			RCode:  g.RCode,
-			Truncate:	g.Truncate,
+			Answer:   g.Answer,
+			NS:       g.NS,
+			Extra:    g.Extra,
+			RCode:    g.RCode,
+			Truncate: g.Truncate,
 		}
 		resolvers[id], err = rdns.NewStaticResolver(id, opt)
 		if err != nil {
