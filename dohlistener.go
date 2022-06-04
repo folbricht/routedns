@@ -49,6 +49,9 @@ type DoHListenerOptions struct {
 
 	// IP(v4/v6) subnet of known reverse proxies in front of this server.
 	HTTPProxyNet *net.IPNet
+
+	// Disable TLS on the server (insecure, for testing purposes only).
+	NoTLS bool
 }
 
 type DoHListenerMetrics struct {
@@ -119,6 +122,9 @@ func (s *DoHListener) startTCP() error {
 		return err
 	}
 	defer ln.Close()
+	if s.opt.NoTLS {
+		return s.httpServer.Serve(ln)
+	}
 	return s.httpServer.ServeTLS(ln, "", "")
 }
 
