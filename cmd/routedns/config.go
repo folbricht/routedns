@@ -156,6 +156,7 @@ type route struct {
 	Weekdays      []string // 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'
 	After, Before string   // Hour:Minute in 24h format, for example "14:30"
 	Invert        bool     // Invert the result of the match
+	DoHPath       string   `toml:"doh-path"` // DoH query path if received over DoH (regexp)
 	Resolver      string
 }
 

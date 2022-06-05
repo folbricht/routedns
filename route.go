@@ -21,11 +21,12 @@ type route struct {
 	before   *TimeOfDay
 	after    *TimeOfDay
 	inverted bool // invert the matching behavior
+	dohPath  *regexp.Regexp
 	resolver Resolver
 }
 
 // NewRoute initializes a route from string parameters.
-func NewRoute(name, class string, types, weekdays []string, before, after, source string, resolver Resolver) (*route, error) {
+func NewRoute(name, class string, types, weekdays []string, before, after, source, dohPath string, resolver Resolver) (*route, error) {
 	if resolver == nil {
 		return nil, errors.New("no resolver defined for route")
 	}
@@ -53,6 +54,10 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 	if err != nil {
 		return nil, err
 	}
+	dohRe, err := regexp.Compile(dohPath)
+	if err != nil {
+		return nil, err
+	}
 	var sNet *net.IPNet
 	if source != "" {
 		_, sNet, err = net.ParseCIDR(source)
@@ -68,6 +73,7 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 		before:   b,
 		after:    a,
 		source:   sNet,
+		dohPath:  dohRe,
 		resolver: resolver,
 	}, nil
 }
@@ -84,6 +90,9 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		return r.inverted
 	}
 	if r.source != nil && !r.source.Contains(ci.SourceIP) {
+		return r.inverted
+	}
+	if !r.dohPath.MatchString(ci.DoHPath) {
 		return r.inverted
 	}
 	if len(r.weekdays) > 0 || r.before != nil || r.after != nil {

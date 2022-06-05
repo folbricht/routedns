@@ -31,7 +31,7 @@ type DoHListener struct {
 	r    Resolver
 	opt  DoHListenerOptions
 
-	mux *http.ServeMux
+	handler http.Handler
 
 	metrics *DoHListenerMetrics
 }
@@ -88,10 +88,9 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 		addr:    addr,
 		r:       resolver,
 		opt:     opt,
-		mux:     http.NewServeMux(),
 		metrics: NewDoHListenerMetrics(id),
 	}
-	l.mux.Handle("/dns-query", http.HandlerFunc(l.dohHandler))
+	l.handler = http.HandlerFunc(l.dohHandler)
 	return l, nil
 }
 
@@ -109,7 +108,7 @@ func (s *DoHListener) startTCP() error {
 	s.httpServer = &http.Server{
 		Addr:         s.addr,
 		TLSConfig:    s.opt.TLSConfig,
-		Handler:      s.mux,
+		Handler:      s.handler,
 		ReadTimeout:  dohServerTimeout,
 		WriteTimeout: dohServerTimeout,
 	}
@@ -128,7 +127,7 @@ func (s *DoHListener) startQUIC() error {
 		Server: &http.Server{
 			Addr:         s.addr,
 			TLSConfig:    s.opt.TLSConfig,
-			Handler:      s.mux,
+			Handler:      s.handler,
 			ReadTimeout:  dohServerTimeout,
 			WriteTimeout: dohServerTimeout,
 		},
@@ -241,6 +240,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	}
 	ci := ClientInfo{
 		SourceIP: clientIP,
+		DoHPath:  r.URL.Path,
 	}
 	log := Log.WithFields(logrus.Fields{"id": s.id, "client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
 	log.Debug("received query")

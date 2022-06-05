@@ -78,7 +78,7 @@ func (c *packetConn) Write(p []byte) (n int, err error) {
 		return len(p), err
 	}
 
-	a, err := c.r.Resolve(q, ClientInfo{net.IP{127, 0, 0, 1}})
+	a, err := c.r.Resolve(q, ClientInfo{SourceIP: net.IP{127, 0, 0, 1}})
 	if err != nil {
 		return len(p), err
 	}
