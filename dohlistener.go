@@ -242,7 +242,15 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		SourceIP: clientIP,
 		DoHPath:  r.URL.Path,
 	}
-	log := Log.WithFields(logrus.Fields{"id": s.id, "client": ci.SourceIP, "qname": qName(q), "protocol": "doh", "addr": s.addr})
+	log := Log.WithFields(logrus.Fields{
+		"id":       s.id,
+		"client":   ci.SourceIP,
+		"qtype":    qType(q),
+		"qname":    qName(q),
+		"protocol": "doh",
+		"addr":     s.addr,
+		"path":     r.URL.Path,
+	})
 	log.Debug("received query")
 
 	var err error

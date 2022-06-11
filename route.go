@@ -128,9 +128,42 @@ func (r *route) Invert(value bool) {
 
 func (r *route) String() string {
 	if r.isDefault() {
-		return fmt.Sprintf("default->%s", r.resolver)
+		return "(default)"
 	}
-	return fmt.Sprintf("%s->%s", r.name, r.resolver)
+	var fragments []string
+	if len(r.types) > 0 {
+		var types []string
+		for _, t := range r.types {
+			types = append(types, dns.TypeToString[t])
+		}
+		fragments = append(fragments, fmt.Sprintf("types=%v", types))
+	}
+	if r.name.String() != "" {
+		fragments = append(fragments, "name="+r.name.String())
+	}
+	if r.class != 0 {
+		s, _ := classToString(r.class)
+		fragments = append(fragments, "class="+s)
+	}
+	if r.source != nil {
+		fragments = append(fragments, "source="+r.source.String())
+	}
+	if r.dohPath.String() != "" {
+		fragments = append(fragments, "doh-path="+r.dohPath.String())
+	}
+	if len(r.weekdays) > 0 {
+		fragments = append(fragments, fmt.Sprintf("weekdays=%v", r.weekdays))
+	}
+	if r.after != nil {
+		fragments = append(fragments, "after="+r.after.String())
+	}
+	if r.before != nil {
+		fragments = append(fragments, "before="+r.before.String())
+	}
+	if r.inverted {
+		fragments = append(fragments, "invert=true")
+	}
+	return "(" + strings.Join(fragments, ",") + ")"
 }
 
 func (r *route) isDefault() bool {
@@ -168,7 +201,7 @@ loop:
 	return types, nil
 }
 
-// Convert a DNS class string into is numerical form, for example "INET" -> 1.
+// Convert a DNS class string into its numerical form, for example "INET" -> 1.
 func stringToClass(s string) (uint16, error) {
 	switch strings.ToUpper(s) {
 	case "":
@@ -185,6 +218,24 @@ func stringToClass(s string) (uint16, error) {
 		return 255, nil
 	default:
 		return 0, fmt.Errorf("unknown class '%s'", s)
+	}
+}
+
+// Convert a DNS class identifier into its string from, for example 1 -> "INET".
+func classToString(class uint16) (string, error) {
+	switch class {
+	case 1:
+		return "IN", nil
+	case 3:
+		return "CH", nil
+	case 4:
+		return "HS", nil
+	case 254:
+		return "NONE", nil
+	case 255:
+		return "ANY", nil
+	default:
+		return "", fmt.Errorf("unknown class identifier %d", class)
 	}
 }
 
@@ -247,4 +298,8 @@ func (t *TimeOfDay) isBefore(hour, minute int) bool {
 
 func (t *TimeOfDay) isAfter(hour, minute int) bool {
 	return t.hour > hour || (t.hour == hour && t.minute > minute)
+}
+
+func (t *TimeOfDay) String() string {
+	return fmt.Sprintf("%2d:%2d", t.hour, t.minute)
 }
