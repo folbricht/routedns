@@ -1043,6 +1043,7 @@ A route has the following fields:
 - `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`. Note that together with the `before` parameter it is possible to accidentally write routes that can never trigger. For example `after=12:00 before=11:00` can never match as both conditions have to be met for the route to be used.
 - `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
 - `invert` - Invert the result of the matching if set to `true`. Optional.
+- `doh-path` - Regexp that matches on the DoH query path the client used.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
 
 Examples:

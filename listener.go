@@ -16,6 +16,10 @@ type Listener interface {
 // can be used to route requests.
 type ClientInfo struct {
 	SourceIP net.IP
+
+	// DoH query path used by the client. Only populated when
+	// the query was received over DoH.
+	DoHPath string
 }
 
 // Metrics that are available from listeners and clients.

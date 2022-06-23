@@ -701,7 +701,7 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 		if route.Type != "" { // Support the deprecated "Type" by just adding it to "Types" if defined
 			types = append(types, route.Type)
 		}
-		r, err := rdns.NewRoute(route.Name, route.Class, types, route.Weekdays, route.Before, route.After, route.Source, resolver)
+		r, err := rdns.NewRoute(route.Name, route.Class, types, route.Weekdays, route.Before, route.After, route.Source, route.DoHPath, resolver)
 		if err != nil {
 			return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
 		}
