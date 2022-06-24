@@ -4,7 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=routedns
+DynamicUser=true
+NoNewPrivileges=true
 WorkingDirectory=/opt/routedns
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/opt/routedns/routedns config.toml
