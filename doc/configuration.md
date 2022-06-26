@@ -382,7 +382,7 @@ ttl-select = "average"
 ttl-max = 86400
 ```
 
-Example config files: [ttl-modifier.toml](../cmd/routedns/example-config/ttl-modifier.toml)
+Example config files: [ttl-modifier.toml](../cmd/routedns/example-config/ttl-modifier.toml), [ttl-modifier-average.toml](../cmd/routedns/example-config/ttl-modifier-average.toml)
 
 ### Round-Robin group
 
