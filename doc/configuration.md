@@ -349,8 +349,16 @@ Caches are instantiated with `type = "ttl-modifier"` in the groups section of th
 Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
-- `ttl-min` - TTL minimum (in seconds) to apply to responses
-- `ttl-max` - TTL minimum (in seconds) to apply to responses
+- `ttl-select` - Optional TTL selection function. Possible values "lowest", "highest", "average", "first", "last".
+  - `lowest` - Lowest TTL of all response records.
+  - `highest` - Highest TTL of all response records.
+  - `average` - Average TTL of all response records.
+  - `first` - First TTL.
+  - `last` - Last TTL.
+- `ttl-min` - TTL minimum (in seconds) to apply to responses.
+- `ttl-max` - TTL minimum (in seconds) to apply to responses.
+
+`ttl-min` and `ttl-max` are optional, but if configured define a floor/ceiling regardless of what `ttl-select` function is given.
 
 #### Examples
 
@@ -361,6 +369,16 @@ TTL modifier that returns responses with TTL of between 1h and one day:
 type = "ttl-modifier"
 resolvers = ["cloudflare-dot"]
 ttl-min = 3600
+ttl-max = 86400
+```
+
+TTL modifier returning the average TTL of all records, with a max of 1 day.
+
+```toml
+[groups.cloudflare-updated-ttl]
+type = "ttl-modifier"
+resolvers = ["cloudflare-dot"]
+ttl-select = "average"
 ttl-max = 86400
 ```
 

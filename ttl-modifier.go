@@ -1,6 +1,8 @@
 package rdns
 
 import (
+	"math"
+
 	"github.com/miekg/dns"
 )
 
@@ -14,7 +16,13 @@ type TTLModifier struct {
 
 var _ Resolver = &TTLModifier{}
 
+type TTLSelectFunc func(*dns.Msg) bool
+
 type TTLModifierOptions struct {
+	// Function performing the initial modifications (min/max are applied after).
+	// Returns true if at least one value was modified.
+	SelectFunc TTLSelectFunc
+
 	// Minimum TTL, any RR with a TTL below will be updated to this value.
 	MinTTL uint32
 
@@ -40,23 +48,23 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return a, err
 	}
 
+	// Run the modifier function if any
 	var modified bool
-	for _, rrs := range [][]dns.RR{a.Answer, a.Ns, a.Extra} {
-		for _, rr := range rrs {
-			if _, ok := rr.(*dns.OPT); ok {
-				continue
-			}
-			h := rr.Header()
-			if h.Ttl < r.MinTTL {
-				h.Ttl = r.MinTTL
-				modified = true
-			}
-			if r.MaxTTL > 0 && h.Ttl > r.MaxTTL {
-				h.Ttl = r.MaxTTL
-				modified = true
-			}
-		}
+	if r.SelectFunc != nil {
+		modified = r.SelectFunc(a)
 	}
+
+	// Apply min/max to the results
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl < r.MinTTL {
+			h.Ttl = r.MinTTL
+			modified = true
+		}
+		if r.MaxTTL > 0 && h.Ttl > r.MaxTTL {
+			h.Ttl = r.MaxTTL
+			modified = true
+		}
+	})
 	if modified {
 		logger(r.id, q, ci).Debug("modified response ttl")
 	}
@@ -65,4 +73,117 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 func (r *TTLModifier) String() string {
 	return r.id
+}
+
+// TTLSelectLowest is a function for the TTL Modifier that sets the TTL
+// to the lowest value of all records.
+func TTLSelectLowest(a *dns.Msg) bool {
+	var modified bool
+	var lowest uint32 = math.MaxUint32
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl < lowest {
+			lowest = h.Ttl
+		}
+	})
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl != lowest {
+			modified = true
+		}
+		h.Ttl = lowest
+	})
+	return modified
+}
+
+// TTLSelectHighest is a function for the TTL Modifier that sets the TTL
+// to the highest value of all records.
+func TTLSelectHighest(a *dns.Msg) bool {
+	var modified bool
+	var highest uint32 = 0
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl > highest {
+			highest = h.Ttl
+		}
+	})
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl != highest {
+			modified = true
+		}
+		h.Ttl = highest
+	})
+	return modified
+}
+
+// TTLSelectAverage is a function for the TTL Modifier that sets the TTL
+// to the average value of all records.
+func TTLSelectAverage(a *dns.Msg) bool {
+	var (
+		modified bool
+		sum, n   int
+	)
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		n++
+		sum += int(h.Ttl)
+	})
+	average := uint32(sum / n)
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl != average {
+			modified = true
+		}
+		h.Ttl = average
+	})
+	return modified
+}
+
+// TTLSelectFirst is a function for the TTL Modifier that sets the TTL
+// to the average value of all records.
+func TTLSelectFirst(a *dns.Msg) bool {
+	var (
+		modified bool
+		first    uint32
+		gotFirst bool
+	)
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if gotFirst {
+			return
+		}
+		first = h.Ttl
+	})
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl != first {
+			modified = true
+		}
+		h.Ttl = first
+	})
+	return modified
+}
+
+// TTLSelectLast is a function for the TTL Modifier that sets the TTL
+// to the average value of all records.
+func TTLSelectLast(a *dns.Msg) bool {
+	var (
+		modified bool
+		last     uint32
+	)
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		last = h.Ttl
+	})
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		if h.Ttl != last {
+			modified = true
+		}
+		h.Ttl = last
+	})
+	return modified
+}
+
+func iterateOverAnswerRRHeader(a *dns.Msg, f func(*dns.RR_Header)) {
+	for _, rrs := range [][]dns.RR{a.Answer, a.Ns, a.Extra} {
+		for _, rr := range rrs {
+			if _, ok := rr.(*dns.OPT); ok {
+				continue
+			}
+			h := rr.Header()
+			f(h)
+		}
+	}
 }

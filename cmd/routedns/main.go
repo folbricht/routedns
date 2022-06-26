@@ -410,9 +410,25 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(gr) != 1 {
 			return fmt.Errorf("type ttl-modifier only supports one resolver in '%s'", id)
 		}
+		var selectFunc rdns.TTLSelectFunc
+		switch g.TTLSelect {
+		case "lowest":
+			selectFunc = rdns.TTLSelectLowest
+		case "highest":
+			selectFunc = rdns.TTLSelectHighest
+		case "average":
+			selectFunc = rdns.TTLSelectAverage
+		case "first":
+			selectFunc = rdns.TTLSelectFirst
+		case "last":
+			selectFunc = rdns.TTLSelectLast
+		default:
+			return fmt.Errorf("invalid ttl-select value: %q", g.TTLSelect)
+		}
 		opt := rdns.TTLModifierOptions{
-			MinTTL: g.TTLMin,
-			MaxTTL: g.TTLMax,
+			SelectFunc: selectFunc,
+			MinTTL:     g.TTLMin,
+			MaxTTL:     g.TTLMax,
 		}
 		resolvers[id] = rdns.NewTTLModifier(id, gr[0], opt)
 	case "truncate-retry":
