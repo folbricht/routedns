@@ -422,6 +422,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			selectFunc = rdns.TTLSelectFirst
 		case "last":
 			selectFunc = rdns.TTLSelectLast
+		case "random":
+			selectFunc = rdns.TTLSelectRandom
+		case "":
 		default:
 			return fmt.Errorf("invalid ttl-select value: %q", g.TTLSelect)
 		}

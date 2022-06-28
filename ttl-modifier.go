@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"math"
+	"math/rand"
 
 	"github.com/miekg/dns"
 )
@@ -16,7 +17,7 @@ type TTLModifier struct {
 
 var _ Resolver = &TTLModifier{}
 
-type TTLSelectFunc func(*dns.Msg) bool
+type TTLSelectFunc func(*TTLModifier, *dns.Msg) bool
 
 type TTLModifierOptions struct {
 	// Function performing the initial modifications (min/max are applied after).
@@ -33,6 +34,9 @@ type TTLModifierOptions struct {
 
 // NewTTLModifier returns a new instance of a TTL modifier.
 func NewTTLModifier(id string, resolver Resolver, opt TTLModifierOptions) *TTLModifier {
+	if opt.MaxTTL == 0 {
+		opt.MaxTTL = math.MaxUint32
+	}
 	return &TTLModifier{
 		id:                 id,
 		TTLModifierOptions: opt,
@@ -51,7 +55,7 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Run the modifier function if any
 	var modified bool
 	if r.SelectFunc != nil {
-		modified = r.SelectFunc(a)
+		modified = r.SelectFunc(r, a)
 	}
 
 	// Apply min/max to the results
@@ -60,7 +64,7 @@ func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			h.Ttl = r.MinTTL
 			modified = true
 		}
-		if r.MaxTTL > 0 && h.Ttl > r.MaxTTL {
+		if h.Ttl > r.MaxTTL {
 			h.Ttl = r.MaxTTL
 			modified = true
 		}
@@ -77,7 +81,7 @@ func (r *TTLModifier) String() string {
 
 // TTLSelectLowest is a function for the TTL Modifier that sets the TTL
 // to the lowest value of all records.
-func TTLSelectLowest(a *dns.Msg) bool {
+func TTLSelectLowest(r *TTLModifier, a *dns.Msg) bool {
 	var modified bool
 	var lowest uint32 = math.MaxUint32
 	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
@@ -96,7 +100,7 @@ func TTLSelectLowest(a *dns.Msg) bool {
 
 // TTLSelectHighest is a function for the TTL Modifier that sets the TTL
 // to the highest value of all records.
-func TTLSelectHighest(a *dns.Msg) bool {
+func TTLSelectHighest(r *TTLModifier, a *dns.Msg) bool {
 	var modified bool
 	var highest uint32 = 0
 	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
@@ -115,7 +119,7 @@ func TTLSelectHighest(a *dns.Msg) bool {
 
 // TTLSelectAverage is a function for the TTL Modifier that sets the TTL
 // to the average value of all records.
-func TTLSelectAverage(a *dns.Msg) bool {
+func TTLSelectAverage(r *TTLModifier, a *dns.Msg) bool {
 	var (
 		modified bool
 		sum, n   int
@@ -135,8 +139,8 @@ func TTLSelectAverage(a *dns.Msg) bool {
 }
 
 // TTLSelectFirst is a function for the TTL Modifier that sets the TTL
-// to the average value of all records.
-func TTLSelectFirst(a *dns.Msg) bool {
+// to the value of the first record.
+func TTLSelectFirst(r *TTLModifier, a *dns.Msg) bool {
 	var (
 		modified bool
 		first    uint32
@@ -158,8 +162,8 @@ func TTLSelectFirst(a *dns.Msg) bool {
 }
 
 // TTLSelectLast is a function for the TTL Modifier that sets the TTL
-// to the average value of all records.
-func TTLSelectLast(a *dns.Msg) bool {
+// to the value of the last record.
+func TTLSelectLast(r *TTLModifier, a *dns.Msg) bool {
 	var (
 		modified bool
 		last     uint32
@@ -174,6 +178,16 @@ func TTLSelectLast(a *dns.Msg) bool {
 		h.Ttl = last
 	})
 	return modified
+}
+
+// TTLSelectRandom is a function for the TTL Modifier that sets the TTL
+// to a random value between ttl-min and ttl-max.
+func TTLSelectRandom(r *TTLModifier, a *dns.Msg) bool {
+	value := r.MinTTL + uint32(rand.Intn(int(r.MaxTTL-r.MinTTL)))
+	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
+		h.Ttl = value
+	})
+	return true
 }
 
 func iterateOverAnswerRRHeader(a *dns.Msg, f func(*dns.RR_Header)) {

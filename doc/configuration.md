@@ -355,6 +355,7 @@ Options:
   - `average` - Average TTL of all response records.
   - `first` - First TTL.
   - `last` - Last TTL.
+  - `random` - Random TTL between `ttl-min` and `ttl-max`. Note that not setting `ttl-max` will result in very high TTL values.
 - `ttl-min` - TTL minimum (in seconds) to apply to responses.
 - `ttl-max` - TTL minimum (in seconds) to apply to responses.
 
