@@ -58,3 +58,11 @@ func validHostname(name string) error {
 	}
 	return fmt.Errorf("invalid hostname %q: last label can not be all numeric", name)
 }
+
+//func validPercent(percent uint32) error {
+//	if (percent < 0) {
+//		return fmt.Errorf("Cannot have a percent of less then 0%. You have a percent of", percent)
+//	} else if (percent > 100) {
+//		return fmt.Errorf("Cannot have a percent of more then 100%. You have a percent of", percent)
+//	}
+//}
