@@ -532,7 +532,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 			FlushQuery:          g.CacheFlushQuery,
 		}
-		resolvers[id] = rdns.NewCache(id, gr[0], opt)
+		cachePrefetchOptions := rdns.CachePrefetchOptions{
+			MinRecordTimeRemainingPercent:          g.MinRecordTimeRemainingPercent,
+			UsePrefetch: 							g.UsePrefetch,
+		}
+		resolvers[id] = rdns.NewCache(id, gr[0], opt, cachePrefetchOptions)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-blocklist-ip only supports one resolver in '%s'", id)
