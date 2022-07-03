@@ -83,9 +83,9 @@ type group struct {
 	PrefetchResolver 			 string    `toml:"prefetch-resolver"`
 
 	// Cache-Prefetch option
-	CacheTTLPollingCheckInterval int64 `toml:"cache-ttl-polling-check-interval"`
+	CacheTTLPollingCheckInterval  int64 `toml:"cache-ttl-polling-check-interval"`
 	RecordQueryHitsMin            int64 `toml:"record-query-hits-min"`
-
+	CacheResolver                 string `toml:"cache-resolver"`
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
 	Format    string   // Blocklist input format: "regex", "domain", or "hosts"

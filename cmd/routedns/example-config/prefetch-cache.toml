@@ -15,7 +15,7 @@ cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached resp
 
 [groups.cache-prefetch]
 type = "cache-prefetch"
-cache-ttl-polling-check-interval = 60
+cache-ttl-polling-check-interval = 1
 record-query-hits-min = 1
 resolvers = [ "cloudflare-cached-with-prefetch" ]
 

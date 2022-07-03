@@ -5,6 +5,7 @@ import (
 	"expvar"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,23 +18,32 @@ type CachePrefetch struct {
 	metrics  *CachePrefetchMetrics
 }
 
-
 type CachePrefetchMetrics struct {
 	// Cache hit count.
 	domainEntries map[string]CachePrefetchEntry
 }
+
+// 0 for no prefetching job
+// 1 for prefetching job is active
+// 2 for stopped by error
+type PrefetchState int
+
+const (
+	PrefetchStateNone   = iota
+	PrefetchStateActive = 1
+	PrefetchStateOther  = 2
+)
+
 type CachePrefetchEntry struct {
 	// request hit count.
-	hit 			  expvar.Int
+	hit expvar.Int
 
-	// 0 for no prefetching job
-	// 1 for prefetching job is active
-	// 2 for stopped by error
-	prefetchingStatus expvar.Int
+	prefetchState PrefetchState
 	// store the time to live
-	ttl				  expvar.Int
+	msg *dns.Msg
+	ttl      int
 	// fetching error count for discarding error prone fetches
-	errorCount 		  expvar.Int
+	errorCount expvar.Int
 }
 
 var _ Resolver = &CachePrefetch{}
@@ -46,6 +56,7 @@ type CachePrefetchOptions struct {
 
 	// Number of hits a record gets before prefetch on a record is started
 	RecordQueryHitsMin int64
+	CacheResolver      Resolver
 	// Max number of responses to check in the cache. Defaults to 0 which means no limit. If
 	// the limit is reached, the least-recently used entry is removed from the cache.
 	//TODO
@@ -75,6 +86,7 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		// fetch opportunistically
 		c.RecordQueryHitsMin = 1
 	}
+	go c.startCachePrefetchJobs()
 	return c
 }
 
@@ -105,53 +117,80 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 func (r *CachePrefetch) String() string {
 	return r.id
 }
-func (r *CachePrefetch) startCachePrefetch(q *dns.Msg, ci ClientInfo) {
-	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
-	var qname = q.Question[0].Name
-
+func (r *CachePrefetch) startCachePrefetchJobs() {
+	var ci ClientInfo
 	for {
-		var domainEntry = r.metrics.domainEntries[qname]
-		if domainEntry.prefetchingStatus.Value() == 1 { // only prefetch if status is 1
-			time.Sleep(r.CacheTTLPollingCheckInterval)
-			a, err := r.resolver.Resolve(q.Copy(), ci)
-			if err != nil || a == nil {
-				Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
-				domainEntry.errorCount.Add(1)
-				r.metrics.domainEntries[qname] = domainEntry
-			} else if domainEntry.errorCount.Value() > 0 {
-				// reset error count after a successful request
-				domainEntry.errorCount.Set(0)
-				r.metrics.domainEntries[qname] = domainEntry
-			}
 
-			if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
-				// We don't want a bunch of error based prefetch jobs so after a certain number of errors we discard request
-				// TODO discard error prone jobs @frank? How do I do that
-				Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount.Value(), "qname": qname}).Trace("prefetch disabled")
-				domainEntry.prefetchingStatus.Set(2)
-				r.metrics.domainEntries[qname] = domainEntry
-			}
-		} else if  domainEntry.prefetchingStatus.Value() == 2 {
-			break
+		time.Sleep(r.CacheTTLPollingCheckInterval)
+
+		for index, entry := range r.metrics.domainEntries {
+			Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
+			r.startCachePrefetchJob(entry.msg, ci)
 		}
 	}
+}
+func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
+	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
+	var domainKey = r.getDomainKey(q)
+	var qname = q.Question[0].Name
+	var domainEntry = r.metrics.domainEntries[domainKey]
+	if domainEntry.prefetchState == PrefetchStateActive { // only prefetch if status is 1
+		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
+		a, err := r.resolver.Resolve(q.Copy(), ci)
+		if err != nil || a == nil {
+			r.mu.Lock()
+			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
+			domainEntry.errorCount.Add(1)
+			r.mu.Unlock()
+			r.metrics.domainEntries[domainKey] = domainEntry
+		} else if domainEntry.errorCount.Value() > 0 {
+			r.mu.Lock()
+			// reset error count after a successful request
+			domainEntry.errorCount.Set(0)
+			r.mu.Unlock()
+			r.metrics.domainEntries[domainKey] = domainEntry
+
+		}
+
+		if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
+			// We don't want a bunch of error based prefetch jobs so after a certain number of errors we discard request
+			// TODO discard error prone jobs @frank? How do I do that
+			r.mu.Lock()
+			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount.Value(), "qname": qname}).Trace("prefetch disabled")
+			domainEntry.prefetchState = PrefetchStateOther
+			r.mu.Unlock()
+			r.metrics.domainEntries[domainKey] = domainEntry
+		}
+	}
+
+}
+func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
+	var qname = q.Question[0].Name
+	var qtype = string(q.Question[0].Qtype)
+	str := []string{qname, "-", qtype}
+	var domainKey = strings.Join(str, "")
+	return domainKey
 }
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg, ci ClientInfo) {
 	if len(q.Question) < 1 {
 		return
 	}
 	var qname = q.Question[0].Name
-	r.metrics.domainEntries[qname] = CachePrefetchEntry{}
-	var domainEntry = r.metrics.domainEntries[qname]
-	if domainEntry.prefetchingStatus.Value() == 0  {
+	var domainKey = r.getDomainKey(q)
+	//r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
+
+	var domainEntry = r.metrics.domainEntries[domainKey]
+	if domainEntry.prefetchState == PrefetchStateNone {
+		r.mu.Lock()
 		domainEntry.hit.Add(1)
 		if domainEntry.hit.Value() >= r.RecordQueryHitsMin {
-			Log.WithFields(logrus.Fields{"query": qname}).Trace("prefetch job added")
-			r.startCachePrefetch(q, ci)
-			domainEntry.prefetchingStatus.Set(1)
+			Log.WithFields(logrus.Fields{"query": qname}).Trace("prefetch job requested")
+			domainEntry.prefetchState = PrefetchStateActive
+			domainEntry.msg = q
 		}
+		r.mu.Unlock()
+		r.metrics.domainEntries[domainKey] = domainEntry
 
-		r.metrics.domainEntries[qname] = domainEntry
 	}
 
 }
