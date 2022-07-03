@@ -157,6 +157,7 @@ func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
 			r.mu.Lock()
 			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount.Value(), "qname": qname}).Trace("prefetch disabled")
 			domainEntry.prefetchState = PrefetchStateOther
+			// Discard error prone dns messages because they will not be used again
 			domainEntry.msg = nil
 			r.mu.Unlock()
 			r.metrics.domainEntries[domainKey] = domainEntry
