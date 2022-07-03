@@ -15,9 +15,9 @@ cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached resp
 
 [groups.cache-prefetch]
 type = "cache-prefetch"
-cache-ttl-polling-check-interval = 1
-record-query-hits-min = 1
-resolvers = [ "cloudflare-cached-with-prefetch" ]
+cache-ttl-polling-check-interval = 1 # Prefetching interval
+record-query-hits-min = 1 # number of querys before a preload job is made
+resolvers = [ "cloudflare-cached-with-prefetch" ] # This should always be after a cache
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

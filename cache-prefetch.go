@@ -101,7 +101,7 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	go r.requestAddPrefetchJob(q, ci)
+	go r.requestAddPrefetchJob(q)
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q.Copy(), ci)
@@ -149,7 +149,6 @@ func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
 			domainEntry.errorCount.Set(0)
 			r.mu.Unlock()
 			r.metrics.domainEntries[domainKey] = domainEntry
-
 		}
 
 		if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
@@ -158,6 +157,7 @@ func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
 			r.mu.Lock()
 			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount.Value(), "qname": qname}).Trace("prefetch disabled")
 			domainEntry.prefetchState = PrefetchStateOther
+			domainEntry.msg = nil
 			r.mu.Unlock()
 			r.metrics.domainEntries[domainKey] = domainEntry
 		}
@@ -171,7 +171,7 @@ func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
 	var domainKey = strings.Join(str, "")
 	return domainKey
 }
-func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg, ci ClientInfo) {
+func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if len(q.Question) < 1 {
 		return
 	}
