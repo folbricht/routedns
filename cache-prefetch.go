@@ -177,7 +177,6 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg, ci ClientInfo) {
 	}
 	var qname = q.Question[0].Name
 	var domainKey = r.getDomainKey(q)
-	//r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
 
 	var domainEntry = r.metrics.domainEntries[domainKey]
 	if domainEntry.prefetchState == PrefetchStateNone {
