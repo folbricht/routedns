@@ -133,6 +133,9 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 }
 func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, index string) {
 	q := domainEntry.msg
+	if q == nil {
+		return
+	}
 	if len(q.Question) < 1 {
 		return
 	}
@@ -171,6 +174,9 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, in
 
 }
 func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
+	if q == nil {
+		return ""
+	}
 	if len(q.Question) < 1 {
 		return ""
 	}
@@ -181,6 +187,9 @@ func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
 	return domainKey
 }
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
+	if q == nil {
+		return
+	}
 	if len(q.Question) < 1 {
 		return
 	}
