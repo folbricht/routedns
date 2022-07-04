@@ -63,9 +63,7 @@ func (c *CachePrefetchEntry) disable() CachePrefetchEntry {
 	}
 
 }
-func (r *CachePrefetchEntry) update(newCachePrefetchEntry CachePrefetchEntry) CachePrefetchEntry {
-	return newCachePrefetchEntry
-}
+
 var _ Resolver = &CachePrefetch{}
 
 type CachePrefetchOptions struct {
