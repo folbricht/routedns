@@ -158,11 +158,12 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, in
 			domainEntry.errorCount.Set(0)
 			r.mu.Unlock()
 			r.metrics.domainEntries[index] = domainEntry
-		}
-
-		if a != nil && err == nil {
+			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype}).Debug("query prefetched")
+			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype, "errorCount": domainEntry.errorCount}).Trace("query reset error count")
+		} else {
 			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype}).Debug("query prefetched")
 		}
+
 
 		if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
 			// We don't want a bunch of error based prefetch jobs so after a certain number of errors we discard request
