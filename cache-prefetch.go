@@ -174,16 +174,20 @@ func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
 	}
 	var qname = qName(q)
 	var qtype = qType(q)
-	str := []string{qname, "-", qtype}
-	var domainKey = strings.Join(str, "")
+	str := []string{qname, qtype}
+	var domainKey = strings.Join(str, "-")
 	return domainKey
 }
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if len(q.Question) < 1 {
 		return
 	}
-	var qname = qName(q)
-	var domainKey = r.getDomainKey(q)
+	qname := qName(q)
+	domainKey := r.getDomainKey(q)
+
+	if domainKey == "" {
+		return
+	}
 	domainEntry, found := r.metrics.domainEntries[domainKey]
 	if !found {
 		r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
