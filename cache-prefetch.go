@@ -196,7 +196,7 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, in
 			domainEntry.disable()
 
 		}
-		r.metrics.domainEntries[index].update(domainEntry)
+		r.metrics.domainEntries[index] = domainEntry
 		r.mu.Unlock()
 	}
 
@@ -226,7 +226,7 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 		return
 	} else if !found {
 		r.mu.Lock()
-		r.metrics.domainEntries[domainKey].initItem()
+		domainEntry.initItem()
 		r.mu.Unlock()
 	}
 	qname := qName(q)
@@ -240,7 +240,7 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 			domainEntry.prefetchState = PrefetchStateActive
 			domainEntry.msg = q
 		}
-		r.metrics.domainEntries[domainKey].update(domainEntry)
+		r.metrics.domainEntries[domainKey] = domainEntry
 		r.mu.Unlock()
 
 	}
