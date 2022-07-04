@@ -54,8 +54,17 @@ func (r *CachePrefetchEntry) initItem() CachePrefetchEntry {
 		errorCount: 0,
 	}
 }
-func (r *CachePrefetchEntry) update(cachePrefetchEntry CachePrefetchEntry) CachePrefetchEntry {
-	return cachePrefetchEntry
+func (c *CachePrefetchEntry) disable() CachePrefetchEntry {
+	return CachePrefetchEntry{
+		hit: 100,
+		prefetchState: PrefetchStateOther,
+		msg: nil,
+		errorCount: 100,
+	}
+
+}
+func (r *CachePrefetchEntry) update(newCachePrefetchEntry CachePrefetchEntry) CachePrefetchEntry {
+	return newCachePrefetchEntry
 }
 var _ Resolver = &CachePrefetch{}
 
@@ -184,9 +193,7 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, in
 			// TODO discard error prone jobs @frank? How do I do that
 
 			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount, "qname": qname}).Trace("prefetch disabled")
-			domainEntry.prefetchState = PrefetchStateOther
-			// Discard error prone dns messages because they will not be used again
-			domainEntry.msg = nil
+			domainEntry.disable()
 
 		}
 		r.metrics.domainEntries[index].update(domainEntry)
