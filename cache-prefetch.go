@@ -130,9 +130,12 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 	}
 }
 func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
+	if len(q.Question) < 1 {
+		return
+	}
 	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
 	var domainKey = r.getDomainKey(q)
-	var qname = q.Question[0].Name
+	var qname = qName(q)
 	var domainEntry = r.metrics.domainEntries[domainKey]
 	if domainEntry.prefetchState == PrefetchStateActive && domainEntry.msg != nil { // only prefetch if status is 1
 		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
@@ -166,8 +169,11 @@ func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
 
 }
 func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
-	var qname = q.Question[0].Name
-	var qtype = string(q.Question[0].Qtype)
+	if len(q.Question) < 1 {
+		return ""
+	}
+	var qname = qName(q)
+	var qtype = qType(q)
 	str := []string{qname, "-", qtype}
 	var domainKey = strings.Join(str, "")
 	return domainKey
@@ -176,10 +182,10 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if len(q.Question) < 1 {
 		return
 	}
-	var qname = q.Question[0].Name
+	var qname = qName(q)
 	var domainKey = r.getDomainKey(q)
 	domainEntry, found := r.metrics.domainEntries[domainKey]
-	if  !found{
+	if !found {
 		r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
 	}
 
@@ -199,6 +205,7 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 }
 
 func (r *CachePrefetch) isRecordTTLExpiring(opt CachePrefetchOptions, a *cacheAnswer) float32 {
+
 	var ttl = a.Answer[0].Header().Ttl
 	now := time.Now()
 	var beforeExpiry = now.Before(a.expiry)
