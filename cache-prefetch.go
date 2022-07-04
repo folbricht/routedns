@@ -101,7 +101,7 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	go r.requestAddPrefetchJob(q)
+	r.requestAddPrefetchJob(q)
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q.Copy(), ci)
