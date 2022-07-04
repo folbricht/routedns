@@ -125,20 +125,20 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 		if len(r.metrics.domainEntries) > 0 {
 			for index, entry := range r.metrics.domainEntries {
 				Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
-				r.startCachePrefetchJob(entry.msg, ci)
+				r.startCachePrefetchJob(entry, ci)
 			}
 		}
 	}
 }
-func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
+func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, ci ClientInfo) {
+	q := domainEntry.msg
 	if len(q.Question) < 1 {
 		return
 	}
 	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
-	var domainKey = r.getDomainKey(q)
-	var qname = qName(q)
-	var domainEntry = r.metrics.domainEntries[domainKey]
-	if domainEntry.prefetchState == PrefetchStateActive && domainEntry.msg != nil { // only prefetch if status is 1
+	domainKey := r.getDomainKey(q)
+	qname := qName(q)
+	if domainEntry.prefetchState == PrefetchStateActive && q != nil { // only prefetch if status is 1
 		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
 		a, err := r.resolver.Resolve(q.Copy(), ci)
 		if err != nil || a == nil {
@@ -173,8 +173,8 @@ func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
 	if len(q.Question) < 1 {
 		return ""
 	}
-	var qname = qName(q)
-	var qtype = qType(q)
+	qname := qName(q)
+	qtype := qType(q)
 	str := []string{qname, qtype}
 	var domainKey = strings.Join(str, "-")
 	return domainKey
