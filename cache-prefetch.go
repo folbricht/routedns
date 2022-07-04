@@ -134,7 +134,7 @@ func (r *CachePrefetch) startCachePrefetchJob(q *dns.Msg, ci ClientInfo) {
 	var domainKey = r.getDomainKey(q)
 	var qname = q.Question[0].Name
 	var domainEntry = r.metrics.domainEntries[domainKey]
-	if domainEntry.prefetchState == PrefetchStateActive { // only prefetch if status is 1
+	if domainEntry.prefetchState == PrefetchStateActive && domainEntry.msg != nil { // only prefetch if status is 1
 		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
 		a, err := r.resolver.Resolve(q.Copy(), ci)
 		if err != nil || a == nil {
