@@ -178,8 +178,11 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	}
 	var qname = q.Question[0].Name
 	var domainKey = r.getDomainKey(q)
+	domainEntry, found := r.metrics.domainEntries[domainKey]
+	if  !found{
+		r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
+	}
 
-	var domainEntry = r.metrics.domainEntries[domainKey]
 	if domainEntry.prefetchState == PrefetchStateNone {
 		r.mu.Lock()
 		domainEntry.hit.Add(1)
