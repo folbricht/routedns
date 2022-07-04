@@ -15,7 +15,7 @@ type CachePrefetch struct {
 	id       string
 	resolver Resolver
 	mu       sync.Mutex
-	metrics  *CachePrefetchMetrics
+	metrics  CachePrefetchMetrics
 }
 
 type CachePrefetchMetrics struct {
@@ -74,10 +74,11 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		CachePrefetchOptions: opt,
 		id:                   id,
 		resolver:             resolver,
-		metrics: &CachePrefetchMetrics{
+		metrics: CachePrefetchMetrics{
 			domainEntries: map[string]CachePrefetchEntry{},
 		},
 	}
+
 	if c.CacheTTLPollingCheckInterval == 0 {
 		c.CacheTTLPollingCheckInterval = time.Minute
 	}
