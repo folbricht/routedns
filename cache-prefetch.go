@@ -40,7 +40,7 @@ type CachePrefetchEntry struct {
 
 	prefetchState PrefetchState
 	// store the time to live
-	msg *dns.Msg
+	msg      *dns.Msg
 	ttl      int
 	// fetching error count for discarding error prone fetches
 	errorCount expvar.Int
@@ -102,13 +102,15 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	r.requestAddPrefetchJob(q)
+
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q.Copy(), ci)
 	if err != nil || a == nil {
 		return nil, err
 	}
+
+	r.requestAddPrefetchJob(q)
 
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
@@ -119,19 +121,17 @@ func (r *CachePrefetch) String() string {
 	return r.id
 }
 func (r *CachePrefetch) startCachePrefetchJobs() {
-	var ci ClientInfo
 	for {
-
 		time.Sleep(r.CacheTTLPollingCheckInterval)
 		if len(r.metrics.domainEntries) > 0 {
 			for index, entry := range r.metrics.domainEntries {
 				Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
-				r.startCachePrefetchJob(entry, ci)
+				r.startCachePrefetchJob(entry)
 			}
 		}
 	}
 }
-func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, ci ClientInfo) {
+func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry) {
 	q := domainEntry.msg
 	if len(q.Question) < 1 {
 		return
@@ -141,6 +141,7 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, ci
 	qname := qName(q)
 	if domainEntry.prefetchState == PrefetchStateActive && q != nil { // only prefetch if status is 1
 		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
+		var ci ClientInfo
 		a, err := r.resolver.Resolve(q.Copy(), ci)
 		if err != nil || a == nil {
 			r.mu.Lock()
