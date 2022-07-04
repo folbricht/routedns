@@ -22,11 +22,3 @@ func getVarMap(base string, id string, name string) *expvar.Map {
 	}
 	return expvar.NewMap(fullname)
 }
-// Get an *expvar.Map with the given path.
-func getVarString(base string, id string, name string) *expvar.String {
-	fullname := fmt.Sprintf("routedns.%s.%s.%s", base, id, name)
-	if v := expvar.Get(fullname); v != nil {
-		return v.(*expvar.String)
-	}
-	return expvar.NewString(fullname)
-}
