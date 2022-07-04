@@ -126,18 +126,17 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 		if len(r.metrics.domainEntries) > 0 {
 			for index, entry := range r.metrics.domainEntries {
 				Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
-				r.startCachePrefetchJob(entry)
+				r.startCachePrefetchJob(entry, index)
 			}
 		}
 	}
 }
-func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry) {
+func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, index string) {
 	q := domainEntry.msg
 	if len(q.Question) < 1 {
 		return
 	}
 	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
-	domainKey := r.getDomainKey(q)
 	qname := qName(q)
 	if domainEntry.prefetchState == PrefetchStateActive && q != nil { // only prefetch if status is 1
 		Log.WithFields(logrus.Fields{ "qname": qname}).Trace("prefetch request started")
@@ -148,13 +147,13 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry) {
 			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
 			domainEntry.errorCount.Add(1)
 			r.mu.Unlock()
-			r.metrics.domainEntries[domainKey] = domainEntry
+			r.metrics.domainEntries[index] = domainEntry
 		} else if domainEntry.errorCount.Value() > 0 {
 			r.mu.Lock()
 			// reset error count after a successful request
 			domainEntry.errorCount.Set(0)
 			r.mu.Unlock()
-			r.metrics.domainEntries[domainKey] = domainEntry
+			r.metrics.domainEntries[index] = domainEntry
 		}
 
 		if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
@@ -166,7 +165,7 @@ func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry) {
 			// Discard error prone dns messages because they will not be used again
 			domainEntry.msg = nil
 			r.mu.Unlock()
-			r.metrics.domainEntries[domainKey] = domainEntry
+			r.metrics.domainEntries[index] = domainEntry
 		}
 	}
 
