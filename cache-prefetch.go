@@ -199,13 +199,18 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if domainKey == "" {
 		return
 	}
+
+
 	domainEntry, found := r.metrics.domainEntries[domainKey]
+	r.mu.Lock()
 	if !found {
+		r.mu.Unlock()
 		r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
+		domainEntry = r.metrics.domainEntries[domainKey]
+		r.mu.Lock()
 	}
 
 	if domainEntry.prefetchState == PrefetchStateNone {
-		r.mu.Lock()
 		domainEntry.hit++
 		if domainEntry.hit >= r.RecordQueryHitsMin {
 			Log.WithFields(logrus.Fields{"query": qname, "qtype": qtype}).Debug("prefetch job requested")
