@@ -122,10 +122,11 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 	for {
 
 		time.Sleep(r.CacheTTLPollingCheckInterval)
-
-		for index, entry := range r.metrics.domainEntries {
-			Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
-			r.startCachePrefetchJob(entry.msg, ci)
+		if len(r.metrics.domainEntries) > 0 {
+			for index, entry := range r.metrics.domainEntries {
+				Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
+				r.startCachePrefetchJob(entry.msg, ci)
+			}
 		}
 	}
 }
