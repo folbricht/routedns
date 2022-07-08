@@ -83,8 +83,9 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil || a == nil {
 		return nil, err
 	}
-
-	r.requestAddPrefetchJob(q)
+	if rCode(a) == dns.RcodeToString[dns.RcodeSuccess] {
+		r.requestAddPrefetchJob(q)
+	}
 
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
