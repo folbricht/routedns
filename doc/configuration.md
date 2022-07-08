@@ -14,6 +14,7 @@
   - [Admin](#Admin)
 - [Modifiers, Groups and Routers](#Modifiers-Groups-and-Routers)
   - [Cache](#Cache)
+  - [Prefetch-Cache](#Prefetch-Cache)
   - [TTL Modifier](#TTL-modifier)
   - [Round-Robin group](#Round-Robin-group)
   - [Fail-Rotate group](#Fail-Rotate-group)
@@ -296,7 +297,7 @@ It is possible to pre-define a query name that will flush the cache if received 
 Caches are instantiated with `type = "cache"` in the groups section of the configuration.
 
 Options:
-
+- `gc-period` - Time-period (seconds) used to expire cached items in the "cache" type
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
@@ -336,19 +337,14 @@ cache-flush-query = "flush.cache."
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml)
 
-### Cache Prefetch
+### Prefetch-Cache
 Cache prefetch is a cron like job where a record is retrieved in the background after a hit count on the domain.
 NOTE: `prefetch-cache` should be placed in-front of `cache` but can be placed elsewhere with possible performance and dns packet modification
 
-`cache-ttl-polling-check-interval` is the polling interval of the *prefetch cron job*. This value defaults to 120 seconds and is in seconds
-
-`record-query-hits-min` is the minimum number of hits for a query to be added to the prefetch lists. This defaults to 1 which is prefetching everything
-NOTE: 
-To fetch opportunistically use 1 or 0
-
-`prefetch-size` is similar to `cache-size` it is the limit for the domains to be prefetched. This should be 1/4th of the `cache-size` value but can be smaller or bigger with a few performance impacts. Default value is 1000
-
-NOTE: Cache many not cache new items and may cause cache to fill up if `prefetch-size` is bigger or the same size as `cache-size` causing frequent fetching of domains and cache. 
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `cache-ttl-polling-check-interval` - is the polling interval of the *prefetch cron job*. This value defaults to 120 seconds and is in seconds
+- `record-query-hits-min` - is the minimum number of hits for a query to be added to the prefetch lists. This defaults to 1 which is prefetching everything. NOTE: To fetch opportunistically use 1 or 0
+- `prefetch-size` - is similar to `cache-size` it is the limit for the domains to be prefetched. This should be 1/4th of the `cache-size` value but can be smaller or bigger with a few performance impacts. Default value is 1000. NOTE: Cache many not cache new items and may cause cache to fill up if `prefetch-size` is bigger or the same size as `cache-size` causing frequent fetching of domains and cache. 
 
 ```toml
 [groups.cache-prefetch]
