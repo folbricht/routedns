@@ -102,7 +102,7 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 	}
 
 	if c.CacheTTLPollingCheckInterval == 0 {
-		c.CacheTTLPollingCheckInterval = time.Minute
+		c.CacheTTLPollingCheckInterval = time.Minute * 2
 	}
 	if c.RecordQueryHitsMin == 0 || c.RecordQueryHitsMin == 1 || c.RecordQueryHitsMin == -1 {
 		// Set to hit after one record hit

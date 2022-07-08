@@ -343,6 +343,8 @@ NOTE: `prefetch-cache` should be placed in-front of `cache` but can be placed el
 `cache-ttl-polling-check-interval` is the polling interval of the *prefetch cron job*. This value defaults to 120 seconds and is in seconds
 
 `record-query-hits-min` is the minimum number of hits for a query to be added to the prefetch lists. This defaults to 1 which is prefetching everything
+NOTE: 
+To fetch opportunistically use 1 or 0
 
 `prefetch-size` is similar to `cache-size` it is the limit for the domains to be prefetched. This should be 1/4th of the `cache-size` value but can be smaller or bigger with a few performance impacts. Default value is 1000
 
