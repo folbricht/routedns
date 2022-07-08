@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"expvar"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -21,6 +20,8 @@ type CachePrefetch struct {
 type CachePrefetchMetrics struct {
 	// Cache hit count.
 	domainEntries map[string]CachePrefetchEntry
+	// TODO item limit param
+	maxItems   int
 }
 
 // 0 for no prefetching job
@@ -36,14 +37,31 @@ const (
 
 type CachePrefetchEntry struct {
 	// request hit count.
-	hit expvar.Int
+	hit                int64
 
-	prefetchState PrefetchState
-	// store the time to live
-	msg      *dns.Msg
-	ttl      int
+	prefetchState     PrefetchState
+	// msg to refetch
+	msg               *dns.Msg
+	//ttl      int
 	// fetching error count for discarding error prone fetches
-	errorCount expvar.Int
+	errorCount         int16
+}
+func (r *CachePrefetchEntry) initItem() CachePrefetchEntry {
+	return CachePrefetchEntry{
+		hit: 0,
+		prefetchState: PrefetchStateNone,
+		msg: nil,
+		errorCount: 0,
+	}
+}
+func (c *CachePrefetchEntry) disable() CachePrefetchEntry {
+	return CachePrefetchEntry{
+		hit: 100,
+		prefetchState: PrefetchStateOther,
+		msg: nil,
+		errorCount: 100,
+	}
+
 }
 
 var _ Resolver = &CachePrefetch{}
@@ -53,10 +71,9 @@ type CachePrefetchOptions struct {
 	CacheTTLPollingCheckInterval time.Duration
 	//// Min record time remaining check for expire
 	MinRecordTimeRemainingPercent uint64
-
+	MaxNumberOfErrorsBeforeDiscardingPrefetchJob int16
 	// Number of hits a record gets before prefetch on a record is started
 	RecordQueryHitsMin int64
-	CacheResolver      Resolver
 	// Max number of responses to check in the cache. Defaults to 0 which means no limit. If
 	// the limit is reached, the least-recently used entry is removed from the cache.
 	//TODO
@@ -67,6 +84,7 @@ type CachePrefetchOptions struct {
 	// the order if nil.
 	// TODO
 	//ShuffleAnswerFunc AnswerShuffleFunc
+	PrefetchSize int
 }
 
 func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *CachePrefetch {
@@ -76,7 +94,11 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		resolver:             resolver,
 		metrics: CachePrefetchMetrics{
 			domainEntries: map[string]CachePrefetchEntry{},
+			maxItems: 0,
 		},
+	}
+	if c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob == 0 {
+		c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob = int16(5)
 	}
 
 	if c.CacheTTLPollingCheckInterval == 0 {
@@ -87,11 +109,15 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		// fetch opportunistically
 		c.RecordQueryHitsMin = 1
 	}
+	if c.PrefetchSize == 0 {
+		c.PrefetchSize = 1000 // defaults to 1000 should be 1/4th of the cache size
+	}
 	go c.startCachePrefetchJobs()
 	return c
 }
 
 func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+
 	if len(q.Question) < 1 {
 		return nil, errors.New("no question in query")
 	}
@@ -121,11 +147,13 @@ func (r *CachePrefetch) String() string {
 	return r.id
 }
 func (r *CachePrefetch) startCachePrefetchJobs() {
+	Log.WithFields(logrus.Fields{"id": r.id}).Trace("starting prefetching job")
 	for {
 		time.Sleep(r.CacheTTLPollingCheckInterval)
-		if len(r.metrics.domainEntries) > 0 {
+		domainEntriesLength := len(r.metrics.domainEntries)
+		if domainEntriesLength > 0 {
 			for index, entry := range r.metrics.domainEntries {
-				Log.WithFields(logrus.Fields{"index": index, "total": len(r.metrics.domainEntries)}).Trace("prefetch")
+				Log.WithFields(logrus.Fields{"index": index, "total": domainEntriesLength}).Trace("prefetch")
 				r.startCachePrefetchJob(entry, index)
 			}
 		}
@@ -133,57 +161,49 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 }
 func (r *CachePrefetch) startCachePrefetchJob(domainEntry CachePrefetchEntry, index string) {
 	q := domainEntry.msg
-	if q == nil {
+	if (q == nil) || len(q.Question) < 1 {
 		return
 	}
-	if len(q.Question) < 1 {
-		return
-	}
-	var maxNumberOfErrorsBeforeDiscardingPrefetchJob = int64(5)
+
 	qname := qName(q)
 	qtype := qType(q)
-	if domainEntry.prefetchState == PrefetchStateActive && q != nil { // only prefetch if status is 1
-		Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype}).Trace("prefetch request started")
+
+	if domainEntry.prefetchState == PrefetchStateActive { // only prefetch if status is 1
+		r.mu.Lock()
+		Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("prefetch request started")
 		var ci ClientInfo
 		a, err := r.resolver.Resolve(q.Copy(), ci)
+
 		if err != nil || a == nil {
-			r.mu.Lock()
 			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
-			domainEntry.errorCount.Add(1)
-			r.mu.Unlock()
-			r.metrics.domainEntries[index] = domainEntry
-		} else if domainEntry.errorCount.Value() > 0 {
-			r.mu.Lock()
-			// reset error count after a successful request
-			domainEntry.errorCount.Set(0)
-			r.mu.Unlock()
-			r.metrics.domainEntries[index] = domainEntry
-			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype}).Debug("query prefetched")
-			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype, "errorCount": domainEntry.errorCount}).Trace("query reset error count")
+
+			domainEntry.errorCount++
 		} else {
+			if domainEntry.errorCount > 0 {
+				// reset error count after a successful request
+				domainEntry.errorCount = 0
+
+				Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("query reset error count")
+			}
 			Log.WithFields(logrus.Fields{ "qname": qname, "qtype": qtype}).Debug("query prefetched")
 		}
 
 
-		if domainEntry.errorCount.Value() >= maxNumberOfErrorsBeforeDiscardingPrefetchJob {
+		if domainEntry.errorCount >= r.MaxNumberOfErrorsBeforeDiscardingPrefetchJob {
 			// We don't want a bunch of error based prefetch jobs so after a certain number of errors we discard request
 			// TODO discard error prone jobs @frank? How do I do that
-			r.mu.Lock()
-			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount.Value(), "qname": qname}).Trace("prefetch disabled")
-			domainEntry.prefetchState = PrefetchStateOther
-			// Discard error prone dns messages because they will not be used again
-			domainEntry.msg = nil
-			r.mu.Unlock()
-			r.metrics.domainEntries[index] = domainEntry
+
+			Log.WithFields(logrus.Fields{"errorCount": domainEntry.errorCount, "qname": qname}).Trace("prefetch disabled")
+			domainEntry.disable()
+
 		}
+		r.metrics.domainEntries[index] = domainEntry
+		r.mu.Unlock()
 	}
 
 }
 func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
-	if q == nil {
-		return ""
-	}
-	if len(q.Question) < 1 {
+	if (q == nil) || len(q.Question) < 1 {
 		return ""
 	}
 	qname := qName(q)
@@ -193,36 +213,39 @@ func (r *CachePrefetch) getDomainKey(q *dns.Msg) string {
 	return domainKey
 }
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
-	if q == nil {
+	if (q == nil) || len(q.Question) < 1 {
 		return
 	}
-	if len(q.Question) < 1 {
-		return
-	}
-	qname := qName(q)
-	qtype := qType(q)
 	domainKey := r.getDomainKey(q)
 
 	if domainKey == "" {
 		return
 	}
 	domainEntry, found := r.metrics.domainEntries[domainKey]
-	if !found {
-		r.metrics.domainEntries[domainKey] = CachePrefetchEntry{}
+	// Don't excide the limit of entries
+	if r.PrefetchSize > len(r.metrics.domainEntries) && !found {
+		return
+	} else if !found {
+		r.mu.Lock()
+		domainEntry.initItem()
+		r.mu.Unlock()
 	}
+	qname := qName(q)
+	qtype := qType(q)
 
 	if domainEntry.prefetchState == PrefetchStateNone {
 		r.mu.Lock()
-		domainEntry.hit.Add(1)
-		if domainEntry.hit.Value() >= r.RecordQueryHitsMin {
+		domainEntry.hit++
+		if domainEntry.hit >= r.RecordQueryHitsMin {
 			Log.WithFields(logrus.Fields{"query": qname, "qtype": qtype}).Debug("prefetch job requested")
 			domainEntry.prefetchState = PrefetchStateActive
 			domainEntry.msg = q
 		}
-		r.mu.Unlock()
 		r.metrics.domainEntries[domainKey] = domainEntry
+		r.mu.Unlock()
 
 	}
+
 
 }
 

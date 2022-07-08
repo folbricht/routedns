@@ -336,6 +336,28 @@ cache-flush-query = "flush.cache."
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml)
 
+### Cache Prefetch
+Cache prefetch is a cron like job where a record is retrieved in the background after a hit count on the domain.
+NOTE: `prefetch-cache` should be placed in-front of `cache` but can be placed elsewhere with possible performance and dns packet modification
+
+`cache-ttl-polling-check-interval` is the polling interval of the *prefetch cron job*. This value defaults to 120 seconds and is in seconds
+
+`record-query-hits-min` is the minimum number of hits for a query to be added to the prefetch lists. This defaults to 1 which is prefetching everything
+
+`prefetch-size` is similar to `cache-size` it is the limit for the domains to be prefetched. This should be 1/4th of the `cache-size` value but can be smaller or bigger with a few performance impacts. Default value is 1000
+
+NOTE: Cache many not cache new items and may cause cache to fill up if `prefetch-size` is bigger or the same size as `cache-size` causing frequent fetching of domains and cache. 
+
+```toml
+[groups.cache-prefetch]
+type = "cache-prefetch"
+cache-ttl-polling-check-interval = 120
+record-query-hits-min = 5
+prefetch-size = 1000
+resolvers = [ "cloudflare-cached-with-prefetch" ] # This should always be after a cache
+```
+Example config files: [prefetch-cache.toml](../cmd/routedns/example-config/prefetch-cache.toml)
+
 ### TTL modifier
 
 A TTL modifier is used to adjust the time-to-live (TTL) of DNS responses. This is used to avoid frequently making the same queries to upstream because many responses have a value that is unreasonably low as outlined in this [blog](https://blog.apnic.net/2019/11/12/stop-using-ridiculously-low-dns-ttls). It's also possible to restrict very high TTL values that might be used in DNS poisoning attacks.
