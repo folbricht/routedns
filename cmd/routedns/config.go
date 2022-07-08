@@ -83,9 +83,10 @@ type group struct {
 	PrefetchResolver 			 string    `toml:"prefetch-resolver"`
 
 	// Cache-Prefetch option
-	CacheTTLPollingCheckInterval  int64 `toml:"cache-ttl-polling-check-interval"`
-	RecordQueryHitsMin            int64 `toml:"record-query-hits-min"`
-	CacheResolver                 string `toml:"cache-resolver"`
+	CacheTTLPollingCheckInterval  int64 `toml:"cache-ttl-polling-check-interval"` // polling interval of prefetching defaults to 120 seconds
+	RecordQueryHitsMin            int64 `toml:"record-query-hits-min"` // number of times a query is hit before considered for prefetch status
+	PrefetchSize                  int `toml:"prefetch-size"` // defaults to 1000 should be 1/4th of the cache size
+
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
 	Format    string   // Blocklist input format: "regex", "domain", or "hosts"
