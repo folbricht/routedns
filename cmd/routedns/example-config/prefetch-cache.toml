@@ -23,3 +23,8 @@ resolvers = [ "cloudflare-cached-with-prefetch" ] # This should always be after 
 address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cache-prefetch"
+
+[listeners.local-udp-1]
+address = "127.0.0.1:5053"
+protocol = "udp"
+resolver = "cache-prefetch"
