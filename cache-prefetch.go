@@ -13,7 +13,7 @@ type CachePrefetch struct {
 	id       string
 	resolver Resolver
 	mu       sync.Mutex
-	metrics  CachePrefetchMetrics
+	metrics  cachePrefetchMetrics
 }
 
 var _ Resolver = &CachePrefetch{}
@@ -108,7 +108,7 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 		}
 	}
 }
-func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
+func (r *CachePrefetch) startCachePrefetchJob(item *cachePrefetchEntry) {
 	if (item == nil) || (item.msg == nil) || len(item.msg.Question) < 1 {
 		return
 	}

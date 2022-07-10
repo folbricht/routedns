@@ -2,7 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="85cfadf5-5124-41b2-91b1-b37a2bf45ffd" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/cmd/routedns/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.dockerignore" beforeDir="false" afterPath="$PROJECT_DIR$/.dockerignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/routedns.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/routedns.iml" afterDir="false" />
@@ -32,6 +33,7 @@
       <change beforePath="$PROJECT_DIR$/cidr-db.go" beforeDir="false" afterPath="$PROJECT_DIR$/cidr-db.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cidr-db_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/cidr-db_test.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/client-blocklist.go" beforeDir="false" afterPath="$PROJECT_DIR$/client-blocklist.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/config.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/admin.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/admin.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/block-split-cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/block-split-cache.toml" afterDir="false" />
@@ -121,7 +123,6 @@
       <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/resolver.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/resolver.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns.service" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/routedns.service" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dnsclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dnsclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient_test.go" afterDir="false" />
@@ -252,6 +253,12 @@
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="settings.editor.selected.configurable" value="com.goide.configuration.GoLibrariesConfigurableProvider" />
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\charlesp\SynologyDrive\routedns" />
+      <recent name="C:\Users\charlesp\SynologyDrive\routedns\cmd\routedns" />
+    </key>
   </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
