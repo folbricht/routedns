@@ -2,10 +2,219 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="85cfadf5-5124-41b2-91b1-b37a2bf45ffd" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/routedns.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/routedns.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/LICENSE" beforeDir="false" afterPath="$PROJECT_DIR$/LICENSE" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/adminlistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/adminlistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklist.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklist.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklist_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklist_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-domain.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-domain.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-domain_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-domain_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-hosts.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-hosts.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-hosts_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-hosts_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-multi.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-multi.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb-regexp.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb-regexp.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistdb.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistdb.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistloader-http.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistloader-http.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistloader-local.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistloader-local.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistloader-static.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistloader-static.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blocklistloader.go" beforeDir="false" afterPath="$PROJECT_DIR$/blocklistloader.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cache-prefetch-metrics.go" beforeDir="false" afterPath="$PROJECT_DIR$/cache-prefetch-metrics.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cache-prefetch.go" beforeDir="false" afterPath="$PROJECT_DIR$/cache-prefetch.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/cache.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cache_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/cache_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cidr-db.go" beforeDir="false" afterPath="$PROJECT_DIR$/cidr-db.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cidr-db_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/cidr-db_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client-blocklist.go" beforeDir="false" afterPath="$PROJECT_DIR$/client-blocklist.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/config.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/admin.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/admin.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/block-split-cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/block-split-cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-allow.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-allow.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-domain.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-domain.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-hosts.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-hosts.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-local.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-local.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-regexp.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-regexp.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-remote-cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-remote-cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-remote.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-remote.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-resolver.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/blocklist-resolver.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/bootstrap-resolver.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/bootstrap-resolver.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/cache-flush.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/cache-flush.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/cidr.txt" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/cidr.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-drop.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-drop.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-geo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-geo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-refused.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist-refused.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/client-blocklist.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doh-behind-proxy.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doh-behind-proxy.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-client-local.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-client-local.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doh-quic-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/domains.txt" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/domains.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doq-client-simple.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doq-client-simple.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doq-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doq-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/doq-listener.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/doq-listener.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/dtls-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/dtls-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/dtls-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/dtls-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-add.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-add.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-delete.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-delete.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-privacy.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/ecs-modifier-privacy.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/edns0-modifier.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/edns0-modifier.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/family-browsing.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/family-browsing.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/fastest-tcp.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/fastest-tcp.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/fastest.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/fastest.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/location.txt" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/location.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doh-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doh-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doh-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doh-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doq-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doq-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doq-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-doq-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-dot-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-dot-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-dot-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/mutual-tls-dot-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/prefetch-cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/prefetch-cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/random-resolver.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/random-resolver.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/rate-limiter.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/rate-limiter.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/request-dedup.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/request-dedup.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-geo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-geo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip-remote.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip-remote.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip-resolver.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip-resolver.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-ip.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name-remote.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name-remote.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name-resolver.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name-resolver.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-blocklist-name.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-collapse.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-collapse.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/response-minimize.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/response-minimize.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/restricted-listener.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/restricted-listener.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/rfc8482.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/rfc8482.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/router-time.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/router-time.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/router.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/router.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/server-ec.crt" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/server-ec.crt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/server-ec.key" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/server-ec.key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/server.crt" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/server.crt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/server.key" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/server.key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/simple-doh.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/simple-doh.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot-cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot-cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot-proxy.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot-proxy.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/simple-dot.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/blocklist.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/blocklist.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/cache.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/cache.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/listeners.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/listeners.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/resolvers.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-config/resolvers.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/split-dns.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/split-dns.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/syslog.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/syslog.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/truncate-retry.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/truncate-retry.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/truncate.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/truncate.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/ttl-modifier.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/ttl-modifier.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-1.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-1.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-2.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-2.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-4.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-4.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-5-client.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-5-client.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-5-server.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-5-server.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-6.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/use-case-6.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/walled-garden.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/walled-garden.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/well-known-wo-ports.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/well-known-wo-ports.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/resolver.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/resolver.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns.service" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/routedns.service" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dnsclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dnsclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dnslistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnslistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc.go" beforeDir="false" afterPath="$PROJECT_DIR$/doc.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/configuration.md" beforeDir="false" afterPath="$PROJECT_DIR$/doc/configuration.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/configuration.odg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/configuration.odg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/configuration.png" beforeDir="false" afterPath="$PROJECT_DIR$/doc/configuration.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/pipeline-overview.drawio" beforeDir="false" afterPath="$PROJECT_DIR$/doc/pipeline-overview.drawio" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/pipeline-overview.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/pipeline-overview.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-1.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-1.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-2.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-2.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-3.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-3.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-4.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-4.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-5.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-5.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-case-6.svg" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-case-6.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/use-cases.drawio" beforeDir="false" afterPath="$PROJECT_DIR$/doc/use-cases.drawio" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dohclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dohclient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dohclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dohclient_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dohlistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/dohlistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dohlistener_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dohlistener_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doqclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/doqclient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doqclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/doqclient_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doqlistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/doqlistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dotclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dotclient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dotclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dotclient_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dotlistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/dotlistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dotlistener_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dotlistener_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/drop.go" beforeDir="false" afterPath="$PROJECT_DIR$/drop.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dtls.go" beforeDir="false" afterPath="$PROJECT_DIR$/dtls.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dtlsclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dtlsclient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dtlslistener.go" beforeDir="false" afterPath="$PROJECT_DIR$/dtlslistener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dtlslistener_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dtlslistener_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ecs-modifier.go" beforeDir="false" afterPath="$PROJECT_DIR$/ecs-modifier.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/edns0-modifier.go" beforeDir="false" afterPath="$PROJECT_DIR$/edns0-modifier.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/errors.go" beforeDir="false" afterPath="$PROJECT_DIR$/errors.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/example_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/example_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/failback.go" beforeDir="false" afterPath="$PROJECT_DIR$/failback.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/failback_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/failback_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/failrotate.go" beforeDir="false" afterPath="$PROJECT_DIR$/failrotate.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/failrotate_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/failrotate_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/fastest-tcp.go" beforeDir="false" afterPath="$PROJECT_DIR$/fastest-tcp.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/fastest.go" beforeDir="false" afterPath="$PROJECT_DIR$/fastest.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/fastest_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/fastest_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/geoip-db.go" beforeDir="false" afterPath="$PROJECT_DIR$/geoip-db.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ip-blocklist-trie.go" beforeDir="false" afterPath="$PROJECT_DIR$/ip-blocklist-trie.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ip-db-multi.go" beforeDir="false" afterPath="$PROJECT_DIR$/ip-db-multi.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/listener.go" beforeDir="false" afterPath="$PROJECT_DIR$/listener.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logger.go" beforeDir="false" afterPath="$PROJECT_DIR$/logger.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lru-cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/lru-cache.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lru-cache_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/lru-cache_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/message.go" beforeDir="false" afterPath="$PROJECT_DIR$/message.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net-resolver.go" beforeDir="false" afterPath="$PROJECT_DIR$/net-resolver.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net-resolver_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/net-resolver_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/padding.go" beforeDir="false" afterPath="$PROJECT_DIR$/padding.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/padding_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/padding_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline.go" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random.go" beforeDir="false" afterPath="$PROJECT_DIR$/random.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/rate-limiter.go" beforeDir="false" afterPath="$PROJECT_DIR$/rate-limiter.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/replace.go" beforeDir="false" afterPath="$PROJECT_DIR$/replace.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/replace_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/replace_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/request-dedup.go" beforeDir="false" afterPath="$PROJECT_DIR$/request-dedup.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/request-dedup_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/request-dedup_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resolver.go" beforeDir="false" afterPath="$PROJECT_DIR$/resolver.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resolver_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/resolver_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/response-blocklist-ip.go" beforeDir="false" afterPath="$PROJECT_DIR$/response-blocklist-ip.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/response-blocklist-name.go" beforeDir="false" afterPath="$PROJECT_DIR$/response-blocklist-name.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/response-collapse.go" beforeDir="false" afterPath="$PROJECT_DIR$/response-collapse.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/response-minimize.go" beforeDir="false" afterPath="$PROJECT_DIR$/response-minimize.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/roundrobin.go" beforeDir="false" afterPath="$PROJECT_DIR$/roundrobin.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/roundrobin_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/roundrobin_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/route.go" beforeDir="false" afterPath="$PROJECT_DIR$/route.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/route_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/route_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/router.go" beforeDir="false" afterPath="$PROJECT_DIR$/router.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/router_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/router_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static.go" beforeDir="false" afterPath="$PROJECT_DIR$/static.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static_default_ports.go" beforeDir="false" afterPath="$PROJECT_DIR$/static_default_ports.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static_default_ports_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/static_default_ports_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/static_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/syslog.go" beforeDir="false" afterPath="$PROJECT_DIR$/syslog.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/ca.crt" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/ca.crt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/ca.key" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/ca.key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/client.crt" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/client.crt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/client.key" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/client.key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/server.crt" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/server.crt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testdata/server.key" beforeDir="false" afterPath="$PROJECT_DIR$/testdata/server.key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tls.go" beforeDir="false" afterPath="$PROJECT_DIR$/tls.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/truncate-retry.go" beforeDir="false" afterPath="$PROJECT_DIR$/truncate-retry.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ttl-modifier.go" beforeDir="false" afterPath="$PROJECT_DIR$/ttl-modifier.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/validate.go" beforeDir="false" afterPath="$PROJECT_DIR$/validate.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vars.go" beforeDir="false" afterPath="$PROJECT_DIR$/vars.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/version.go" beforeDir="false" afterPath="$PROJECT_DIR$/version.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,6 +230,11 @@
   </component>
   <component name="ProjectId" id="2BjRBoAuWP8dciFiA0yNaFsJNCk" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
@@ -38,10 +252,21 @@
     <property name="settings.editor.selected.configurable" value="com.goide.configuration.GoLibrariesConfigurableProvider" />
   </component>
   <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="85cfadf5-5124-41b2-91b1-b37a2bf45ffd" name="Default Changelist" comment="" />
+      <created>1657417375667</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1657417375667</updated>
+    </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
+  </component>
+  <component name="VgoProject">
+    <integration-enabled>true</integration-enabled>
+    <proxy>direct</proxy>
   </component>
   <component name="WindowStateProjectService">
     <state x="360" y="78" key="#GOROOT" timestamp="1657417011255">
