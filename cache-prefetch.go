@@ -21,8 +21,7 @@ var _ Resolver = &CachePrefetch{}
 type CachePrefetchOptions struct {
 	//// Time of cache record ttl polling for record prefetch
 	CacheTTLPollingCheckInterval time.Duration
-	//// Min record time remaining check for expire
-	MinRecordTimeRemainingPercent                uint64
+
 	MaxNumberOfErrorsBeforeDiscardingPrefetchJob int16
 	// Number of hits a record gets before prefetch on a record is started
 	RecordQueryHitsMin int64
@@ -137,7 +136,6 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 			Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Debug("query prefetched")
 		}
 	}
-
 }
 
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
@@ -147,32 +145,5 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	r.mu.Lock()
 	r.metrics.ProcessQuery(q)
 	r.mu.Unlock()
-
 }
 
-func (r *CachePrefetch) isRecordTTLExpiring(opt CachePrefetchOptions, a *cacheAnswer) float32 {
-
-	var ttl = a.Answer[0].Header().Ttl
-	now := time.Now()
-	var beforeExpiry = now.Before(a.expiry)
-	Log.WithFields(logrus.Fields{"query": a.Answer[0].Header().Name}).Trace("cache check prefetch")
-	if beforeExpiry {
-		var secondsBeforeExpiry = uint64(a.expiry.Sub(now).Seconds())
-		var expiryTimeLeftPercent = uint64(ttl) / secondsBeforeExpiry
-		if opt.MinRecordTimeRemainingPercent == 0 {
-			// fetch opportunistically
-			return 1
-		}
-		if opt.MinRecordTimeRemainingPercent < expiryTimeLeftPercent {
-			Log.WithFields(logrus.Fields{"err": 1}).Trace("cache err prefetch")
-			return 1
-		} else {
-			Log.WithFields(logrus.Fields{"err": 0}).Trace("cache err prefetch")
-			return 0
-		}
-	} else {
-		Log.WithFields(logrus.Fields{"err": -1}).Trace("cache err prefetch")
-		// -1 is expired cannot prefetch
-		return -1
-	}
-}
