@@ -6,7 +6,7 @@ import (
 
 type CachePrefetchMetrics struct {
 	// Cache hit count.
-	items map[cachePrefetchKey]*CachePrefetchEntry
+	items map[CachePrefetchKey]*CachePrefetchEntry
 	// TODO item limit param
 	maxItems int
 	errorCountMax int16
@@ -24,7 +24,7 @@ const (
 	PrefetchStateOther  = 2
 )
 
-type cachePrefetchKey struct {
+type CachePrefetchKey struct {
 	qname string
 	qtype string
 }
@@ -39,10 +39,10 @@ type CachePrefetchEntry struct {
 	//ttl      int
 	// fetching error count for discarding error prone fetches
 	errorCount int16
-	key        cachePrefetchKey
+	key        CachePrefetchKey
 }
 
-func NewCachePrefetchEntry(index cachePrefetchKey) *CachePrefetchEntry {
+func NewCachePrefetchEntry(index CachePrefetchKey) *CachePrefetchEntry {
 	return &CachePrefetchEntry{
 		hit:           0,
 		prefetchState: PrefetchStateNone,
@@ -55,15 +55,15 @@ func NewCachePrefetchEntry(index cachePrefetchKey) *CachePrefetchEntry {
 func NewCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) CachePrefetchMetrics {
 		return CachePrefetchMetrics{
 		maxItems: capacity,
-		items:    make(map[cachePrefetchKey]*CachePrefetchEntry),
+		items:    make(map[CachePrefetchKey]*CachePrefetchEntry),
 		errorCountMax: errorCountMax,
 		hitMin: hitMin,
 
 	}
 }
-func (c *CachePrefetchMetrics) processQuery(query *dns.Msg) {
+func (c *CachePrefetchMetrics) ProcessQuery(query *dns.Msg) {
 	if c.AddItem(query) == PrefetchStateNone {
-		c.addHit(query)
+		c.AddHit(query)
 	}
 }
 func (c *CachePrefetchMetrics) AddItem(query *dns.Msg) PrefetchState {
@@ -81,7 +81,7 @@ func (c *CachePrefetchMetrics) AddItem(query *dns.Msg) PrefetchState {
 	c.items[key] = item
 	return item.prefetchState
 }
-func (c *CachePrefetchMetrics) addHit(query *dns.Msg) {
+func (c *CachePrefetchMetrics) AddHit(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.hit ++
@@ -90,7 +90,7 @@ func (c *CachePrefetchMetrics) addHit(query *dns.Msg) {
 	}
 	c.items[key] = item
 }
-func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
+func (c *CachePrefetchMetrics) AddError(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.errorCount++
@@ -99,14 +99,14 @@ func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
 	}
 	c.items[key] = item
 }
-func (c *CachePrefetchMetrics) resetError(query *dns.Msg) {
+func (c *CachePrefetchMetrics) ResetError(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.errorCount = 0
 	c.items[key] = item
 }
 // Loads a cache item
-func (c *CachePrefetchMetrics) touch(key cachePrefetchKey) *CachePrefetchEntry {
+func (c *CachePrefetchMetrics) touch(key CachePrefetchKey) *CachePrefetchEntry {
 	item := c.items[key]
 	if item == nil {
 		return nil
@@ -114,22 +114,22 @@ func (c *CachePrefetchMetrics) touch(key cachePrefetchKey) *CachePrefetchEntry {
 	return item
 }
 // GET KEYS
-func (r *CachePrefetchEntry) getDomainKey(q *dns.Msg) cachePrefetchKey {
+func (r *CachePrefetchEntry) getDomainKey(q *dns.Msg) CachePrefetchKey {
 	if (q == nil) || len(q.Question) < 1 {
-		return cachePrefetchKey{}
+		return CachePrefetchKey{}
 	}
 	qname := qName(q)
 	qtype := qType(q)
-	key := cachePrefetchKey{qname, qtype}
+	key := CachePrefetchKey{qname, qtype}
 	return key
 }
 
-func (c *CachePrefetchMetrics) getDomainKey(q *dns.Msg) cachePrefetchKey {
+func (c *CachePrefetchMetrics) getDomainKey(q *dns.Msg) CachePrefetchKey {
 	if (q == nil) || len(q.Question) < 1 {
-		return cachePrefetchKey{}
+		return CachePrefetchKey{}
 	}
 	qname := qName(q)
 	qtype := qType(q)
-	key := cachePrefetchKey{qname, qtype}
+	key := CachePrefetchKey{qname, qtype}
 	return key
 }
