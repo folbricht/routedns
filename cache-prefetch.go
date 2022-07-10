@@ -124,13 +124,13 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 		if err != nil || a == nil {
 			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
 			r.mu.Lock()
-			r.metrics.addError(item.msg)
+			r.metrics.AddError(item.msg)
 			r.mu.Unlock()
 		} else {
 			if item.errorCount > 0 {
 				// reset error count after a successful request
 				r.mu.Lock()
-				r.metrics.resetError(item.msg)
+				r.metrics.ResetError(item.msg)
 				r.mu.Unlock()
 				Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("query reset error count")
 			}
@@ -145,7 +145,7 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 		return
 	}
 	r.mu.Lock()
-	r.metrics.processQuery(q)
+	r.metrics.ProcessQuery(q)
 	r.mu.Unlock()
 
 }
