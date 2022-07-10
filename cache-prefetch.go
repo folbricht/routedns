@@ -144,7 +144,9 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if (q == nil) || len(q.Question) < 1 {
 		return
 	}
+	r.mu.Lock()
 	r.metrics.processQuery(q)
+	r.mu.Unlock()
 
 }
 
