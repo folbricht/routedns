@@ -13,7 +13,7 @@ type CachePrefetch struct {
 	id       string
 	resolver Resolver
 	mu       sync.Mutex
-	metrics  cachePrefetchMetrics
+	metrics  CachePrefetchMetrics
 }
 
 var _ Resolver = &CachePrefetch{}
@@ -45,7 +45,7 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		CachePrefetchOptions: opt,
 		id:                   id,
 		resolver:             resolver,
-		metrics:              newCachePrefetchMetrics(opt.PrefetchSize, maxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
+		metrics:              NewCachePrefetchMetrics(opt.PrefetchSize, maxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
 	}
 	if c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob != maxNumberOfErrorsBeforeDiscardingPrefetchJob {
 		c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob = maxNumberOfErrorsBeforeDiscardingPrefetchJob
@@ -108,7 +108,7 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 		}
 	}
 }
-func (r *CachePrefetch) startCachePrefetchJob(item *cachePrefetchEntry) {
+func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 	if (item == nil) || (item.msg == nil) || len(item.msg.Question) < 1 {
 		return
 	}
