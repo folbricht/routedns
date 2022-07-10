@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="85cfadf5-5124-41b2-91b1-b37a2bf45ffd" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/cmd/routedns/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/routedns.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/routedns.iml" afterDir="false" />
@@ -120,6 +121,7 @@
       <change beforePath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/example-config/well-known.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/resolver.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/resolver.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/cmd/routedns/routedns.service" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/routedns/routedns.service" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dnsclient.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dnsclient_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/dnsclient_test.go" afterDir="false" />
@@ -273,6 +275,10 @@
       <screen x="0" y="0" width="1536" height="824" />
     </state>
     <state x="360" y="78" key="#GOROOT/0.0.1536.824/-1920.0.1280.680@0.0.1536.824" timestamp="1657417011255" />
+    <state x="529" y="223" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1657418023574">
+      <screen x="0" y="0" width="1536" height="824" />
+    </state>
+    <state x="529" y="223" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1536.824/-1920.0.1280.680@0.0.1536.824" timestamp="1657418023574" />
     <state x="279" y="62" key="SettingsEditor" timestamp="1657417056743">
       <screen x="0" y="0" width="1536" height="824" />
     </state>
