@@ -62,11 +62,11 @@ func NewCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) Ca
 	}
 }
 func (c *CachePrefetchMetrics) ProcessQuery(query *dns.Msg) {
-	if c.AddItem(query) == PrefetchStateNone {
-		c.AddHit(query)
+	if c.addItem(query) == PrefetchStateNone {
+		c.addHit(query)
 	}
 }
-func (c *CachePrefetchMetrics) AddItem(query *dns.Msg) PrefetchState {
+func (c *CachePrefetchMetrics) addItem(query *dns.Msg) PrefetchState {
 	key := c.getDomainKey(query)
 	item := c.touch(key)
 	if item != nil {
@@ -81,7 +81,7 @@ func (c *CachePrefetchMetrics) AddItem(query *dns.Msg) PrefetchState {
 	c.items[key] = item
 	return item.prefetchState
 }
-func (c *CachePrefetchMetrics) AddHit(query *dns.Msg) {
+func (c *CachePrefetchMetrics) addHit(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.hit ++
@@ -90,7 +90,7 @@ func (c *CachePrefetchMetrics) AddHit(query *dns.Msg) {
 	}
 	c.items[key] = item
 }
-func (c *CachePrefetchMetrics) AddError(query *dns.Msg) {
+func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.errorCount++
@@ -99,7 +99,7 @@ func (c *CachePrefetchMetrics) AddError(query *dns.Msg) {
 	}
 	c.items[key] = item
 }
-func (c *CachePrefetchMetrics) ResetError(query *dns.Msg) {
+func (c *CachePrefetchMetrics) resetError(query *dns.Msg) {
 	key := c.getDomainKey(query)
 	item := c.items[key]
 	item.errorCount = 0

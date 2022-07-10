@@ -39,15 +39,15 @@ type CachePrefetchOptions struct {
 }
 
 func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *CachePrefetch {
-	maxNumberOfErrorsBeforeDiscardingPrefetchJob := int16(5)
+	MaxNumberOfErrorsBeforeDiscardingPrefetchJob := int16(5)
 	c := &CachePrefetch{
 		CachePrefetchOptions: opt,
 		id:                   id,
 		resolver:             resolver,
-		metrics:              NewCachePrefetchMetrics(opt.PrefetchSize, maxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
+		metrics:              NewCachePrefetchMetrics(opt.PrefetchSize, MaxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
 	}
-	if c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob != maxNumberOfErrorsBeforeDiscardingPrefetchJob {
-		c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob = maxNumberOfErrorsBeforeDiscardingPrefetchJob
+	if c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob != MaxNumberOfErrorsBeforeDiscardingPrefetchJob {
+		c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob = MaxNumberOfErrorsBeforeDiscardingPrefetchJob
 	}
 
 	if c.CacheTTLPollingCheckInterval == 0 {
@@ -123,13 +123,13 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 		if err != nil || a == nil {
 			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
 			r.mu.Lock()
-			r.metrics.AddError(item.msg)
+			r.metrics.addError(item.msg)
 			r.mu.Unlock()
 		} else {
 			if item.errorCount > 0 {
 				// reset error count after a successful request
 				r.mu.Lock()
-				r.metrics.ResetError(item.msg)
+				r.metrics.resetError(item.msg)
 				r.mu.Unlock()
 				Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("query reset error count")
 			}
