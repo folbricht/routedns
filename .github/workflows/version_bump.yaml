@@ -1,0 +1,51 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      # Runs a single command using the runners shell
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+      # Runs a set of commands using the runners shell
+      - name: Run a multi-line script
+        run: |
+          echo $PWD
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull origin HEAD:${{ github.event.pull_request.head.sha }} --rebase
+          export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
+          export CURRENT_BUILD_NUMBER=$(grep BuildNumber version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
+          export CURRENT_BUILD_TIME=$(date)
+          export PR_CHANGE_BUILD_VERION=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $3}' )
+          export OLD_BUILD_VERION_PART=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $1"."$2}')
+          export CHANGE_BUILD_VERSION=$OLD_BUILD_VERION_PART.$(( $PR_CHANGE_BUILD_VERION + 1 ))
+          export CHANGE_BUILD_NUMBER=$(( $CURRENT_BUILD_NUMBER  + 1 ))
+          perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
+          perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
+          perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CURRENT_BUILD_NUMBER\"/g" version.go
+          git add .
+          git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
+          git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER
+          git push origin HEAD:master
