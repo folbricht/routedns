@@ -99,11 +99,9 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 	for {
 		time.Sleep(r.CacheTTLPollingCheckInterval)
 		domainEntriesLength := len(r.metrics.items)
-		if domainEntriesLength > 0 {
-			for index, entry := range r.metrics.items {
-				Log.WithFields(logrus.Fields{"index": index, "total": domainEntriesLength}).Trace("prefetch")
-				r.startCachePrefetchJob(entry)
-			}
+		for index, entry := range r.metrics.items {
+			Log.WithFields(logrus.Fields{"index": index, "total": domainEntriesLength}).Trace("prefetch")
+			r.startCachePrefetchJob(entry)
 		}
 	}
 }
@@ -121,7 +119,7 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 		a, err := r.resolver.Resolve(item.msg.Copy(), ci)
 
 		if err != nil || a == nil {
-			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
+			Log.WithError(err).Trace("prefetch error")
 			r.mu.Lock()
 			r.metrics.addError(item.msg)
 			r.mu.Unlock()
@@ -139,11 +137,10 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 }
 
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
-	if (q == nil) || len(q.Question) < 1 {
+	if q == nil {
 		return
 	}
 	r.mu.Lock()
 	r.metrics.processQuery(q)
 	r.mu.Unlock()
 }
-
