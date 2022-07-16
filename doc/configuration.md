@@ -184,7 +184,7 @@ Example config files: [mutual-tls-dot-server.toml](../cmd/routedns/example-confi
 
 ### DNS-over-HTTPS
 
-As per [RFC8484](https://tools.ietf.org/html/rfc8484), DNS using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC by providing the option `transport = "quic"`.
+As per [RFC8484](https://tools.ietf.org/html/rfc8484), DNS using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC by providing the option `transport = "quic"`. For TCP transport, TLS can be disabled with the `no-tls = true` option which can be used for testing or when the server is only accessible via reverse proxy that terminates TLS already.
 
 Examples:
 
@@ -223,7 +223,7 @@ server-key = "/path/to/server.key"
 frontend = { trusted-proxy = "192.168.1.0/24" }
 ```
 
-Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml), [doh-behind-proxy.toml](../cmd/routedns/example-config/doh-behind-proxy.toml)
+Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml), [doh-behind-proxy.toml](../cmd/routedns/example-config/doh-behind-proxy.toml), [doh-no-tls.toml](../cmd/routedns/example-config/doh-no-tls.toml)
 
 ### DNS-over-DTLS
 

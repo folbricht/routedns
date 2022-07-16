@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -234,9 +235,17 @@ func start(opt options, args []string) error {
 			} else if l.Transport == "quic" {
 				l.Address = rdns.AddressWithDefault(l.Address, rdns.DohQuicPort)
 			}
-			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
-			if err != nil {
-				return err
+			var tlsConfig *tls.Config
+			if l.NoTLS {
+				if l.Transport == "quic" {
+					return errors.New("no-tls is not supported for doh servers with quic transport")
+				}
+			} else {
+				fmt.Println("p4")
+				tlsConfig, err = rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+				if err != nil {
+					return err
+				}
 			}
 			var httpProxyNet *net.IPNet
 			if l.Frontend.HTTPProxyNet != "" {
@@ -250,6 +259,7 @@ func start(opt options, args []string) error {
 				ListenOptions: opt,
 				Transport:     l.Transport,
 				HTTPProxyNet:  httpProxyNet,
+				NoTLS:         l.NoTLS,
 			}
 			ln, err := rdns.NewDoHListener(id, l.Address, opt, resolver)
 			if err != nil {

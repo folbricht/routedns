@@ -1,0 +1,11 @@
+# Example of a DoH server that doesn't use TLS (insecure).
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-doh]
+address = ":8080"
+protocol = "doh"
+resolver = "cloudflare-dot"
+no-tls = true
