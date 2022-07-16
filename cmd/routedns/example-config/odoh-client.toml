@@ -1,0 +1,18 @@
+[resolvers.cloudflare-odoh-proxy]
+# Address of the odoh proxy server. Also used to resolve the target's key
+address = "https://1.1.1.1/dns-query"
+protocol = "odoh"
+# Address of the target. The hostname and path are passed to the proxy for forwarding
+# of encrypted queries. No cert or bootstrap options for the target since the proxy
+# connects to it on the client's behalf
+target = "https://odoh.cloudflare-dns.com/dns-query"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-odoh-proxy"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cloudflare-odoh-proxy"

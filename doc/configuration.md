@@ -9,6 +9,7 @@
   - [Plain DNS](#plain-dns)
   - [DNS-over-TLS](#dns-over-tls)
   - [DNS-over-HTTPS](#dns-over-https)
+  - [Oblivious DNS (ODoH)](#oblivious-dns-odoh)
   - [DNS-over-DTLS](#dns-over-dtls)
   - [DNS-over-QUIC](#dns-over-quic)
   - [Admin](#admin)
@@ -226,6 +227,31 @@ frontend = { trusted-proxy = "192.168.1.0/24" }
 ```
 
 Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml), [doh-behind-proxy.toml](../cmd/routedns/example-config/doh-behind-proxy.toml), [doh-no-tls.toml](../cmd/routedns/example-config/doh-no-tls.toml)
+
+### Oblivious DNS (ODoH)
+
+ODoH ([draft](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-03)) is intended to improve privacy of **clients** by encrypting queries for a **target** DNS server while sending the query through a **proxy**. In this configuration, neither the target nor the proxy can see the query content and the source IP of the client at the same time. A client query is resolved as follows:
+
+- The client first queries the public key of the target resolver. This is a plain query that can be resolved by any resolver, but for privacy it's best to *not* use the target for this. RouteDNS always uses the proxy for this. The response is validated with DNSSEC.
+- The client then encrypts the actual query with the public key of the target. A public key of the client is embedded in the encrypted message.
+- The encrypted query message is sent to the proxy, with information about which target it should be forwarded.
+- The target then encrypts the response with the client key and responds to the proxy, which then forwards the response to the client.
+- The client decrypts the response it received from the proxy using its private key.
+
+The ODoH resolver has all the configuration options as [DoH](#dns-over-https-resolver), with the configuration (endpoint, certs, mTLS, etc) for the proxy. In addition, a `target` option is available to specify the URL of the target. Configured with `protocol = "odoh"`.
+
+Examples:
+
+ODoH client using Cloudflare as proxy and target (since there aren't any other public proxies as of Dec 2020).
+
+```toml
+[resolvers.cloudflare-odoh-proxy]
+address = "https://1.1.1.1/dns-query"
+protocol = "odoh"
+target = "https://odoh.cloudflare-dns.com/dns-query"
+```
+
+Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-client.toml)
 
 ### DNS-over-DTLS
 
