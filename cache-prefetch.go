@@ -82,9 +82,7 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil || a == nil {
 		return nil, err
 	}
-	if rCode(a) == dns.RcodeToString[dns.RcodeSuccess] {
-		r.requestAddPrefetchJob(q)
-	}
+	r.requestAddPrefetchJob(q)
 
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
@@ -110,29 +108,32 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 		return
 	}
 
+
 	if item.prefetchState == PrefetchStateActive { // only prefetch if status is 1
 		qname := qName(item.msg)
 		qtype := qType(item.msg)
 
 		Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("prefetch request started")
 		var ci ClientInfo
-		a, err := r.resolver.Resolve(item.msg.Copy(), ci)
+		a, err := r.Resolve(item.msg, ci)
 
 		if err != nil || a == nil {
 			Log.WithError(err).Trace("prefetch error")
-			r.mu.Lock()
+			//r.mu.Lock()
 			r.metrics.addError(item.msg)
-			r.mu.Unlock()
+			//r.mu.Unlock()
 		} else {
 			if item.errorCount > 0 {
 				// reset error count after a successful request
-				r.mu.Lock()
+				//r.mu.Lock()
 				r.metrics.resetError(item.msg)
-				r.mu.Unlock()
+				//r.mu.Unlock()
 				Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("query reset error count")
 			}
 			Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Debug("query prefetched")
 		}
+	} else {
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState, "key": item.key}).Trace("prefetch request status")
 	}
 }
 
@@ -140,7 +141,7 @@ func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
 	if q == nil {
 		return
 	}
-	r.mu.Lock()
+	//r.mu.Lock()
 	r.metrics.processQuery(q)
-	r.mu.Unlock()
+	//r.mu.Unlock()
 }

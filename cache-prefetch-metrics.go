@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 	"sync"
 )
 
@@ -65,6 +66,8 @@ func NewCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) Ca
 func (c *CachePrefetchMetrics) processQuery(query *dns.Msg) {
 	c.mu.Lock()
 	if c.addItem(query) == PrefetchStateNone {
+		qname := qName(query)
+		Log.WithFields(logrus.Fields{"qname": qname}).Trace("query prefetch hit")
 		c.addHit(query)
 	}
 	c.mu.Unlock()
@@ -77,7 +80,9 @@ func (c *CachePrefetchMetrics) addItem(query *dns.Msg) PrefetchState {
 	}
 	// Add new item to the top of the linked list
 	if len(c.items) > c.maxItems {
+		Log.WithFields(logrus.Fields{"maxItems": c.maxItems, "items-count": len(c.items)}).Trace("prefetch item cache full")
 		return PrefetchStateOther
+
 	}
 
 	item = NewCachePrefetchEntry(key)
@@ -85,13 +90,17 @@ func (c *CachePrefetchMetrics) addItem(query *dns.Msg) PrefetchState {
 	return item.prefetchState
 }
 func (c *CachePrefetchMetrics) addHit(query *dns.Msg) {
+	c.mu.Lock()
 	key := getDomainKey(query)
 	item := c.items[key]
 	item.hit ++
 	if item.hit >= c.hitMin {
 		item.prefetchState = PrefetchStateActive
+		item.msg = query
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState}).Trace("prefetch item state changed")
 	}
 	c.items[key] = item
+	c.mu.Unlock()
 }
 func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
 	c.mu.Lock()
@@ -100,6 +109,7 @@ func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
 	item.errorCount++
 	if item.errorCount > c.errorCountMax {
 		item.prefetchState = PrefetchStateOther
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState}).Trace("prefetch item state changed")
 	}
 	c.items[key] = item
 	c.mu.Unlock()
@@ -110,6 +120,7 @@ func (c *CachePrefetchMetrics) resetError(query *dns.Msg) {
 	item := c.items[key]
 	item.errorCount = 0
 	c.items[key] = item
+	Log.WithFields(logrus.Fields{"key": item.key}).Trace("prefetch item error count reset")
 	c.mu.Unlock()
 }
 // Loads a cache item
