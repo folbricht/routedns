@@ -80,8 +80,8 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil || a == nil {
 		return nil, err
 	}
-	r.requestAddPrefetchJob(q)
 
+	r.requestAddPrefetchJob(q)
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
 	return a, nil
@@ -105,7 +105,6 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 	if (item == nil) || (item.msg == nil) || len(item.msg.Question) < 1 {
 		return
 	}
-
 
 	if item.prefetchState == PrefetchStateActive { // only prefetch if status is 1
 		qname := qName(item.msg)
