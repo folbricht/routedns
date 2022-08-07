@@ -1,0 +1,25 @@
+# Simple proxy using a cache.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:53"
+protocol = "udp"
+
+
+
+[groups.cloudflare-cached-with-prefetch]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-size = 100               # Optional, max number of responses to cache. Default unlimited
+cache-negative-ttl = 10         # Optional, TTL to apply to responses without a SOA
+cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached responses
+
+[groups.cache-prefetch]
+type = "cache-prefetch"
+cache-ttl-polling-check-interval = 60
+record-query-hits-min = 1
+resolvers = [ "cloudflare-cached-with-prefetch" ]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cache-prefetch"

@@ -81,6 +81,11 @@ type group struct {
 	CacheAnswerShuffle       string `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
 	CacheHardenBelowNXDOMAIN bool   `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
 	CacheFlushQuery          string `toml:"cache-flush-query"`           // Flush the cache when a query for this name is received
+	PrefetchResolver 			 string    `toml:"prefetch-resolver"`
+
+	// Cache-Prefetch option
+	CacheTTLPollingCheckInterval int64 `toml:"cache-ttl-polling-check-interval"`
+	RecordQueryHitsMin            int64 `toml:"record-query-hits-min"`
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
