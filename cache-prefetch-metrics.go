@@ -2,6 +2,8 @@ package rdns
 
 import (
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
+	"sync"
 )
 
 type CachePrefetchMetrics struct {
@@ -11,6 +13,7 @@ type CachePrefetchMetrics struct {
 	maxItems int
 	errorCountMax int16
 	hitMin int64
+	mu       sync.Mutex
 }
 
 // 0 for no prefetching job
@@ -20,8 +23,8 @@ type PrefetchState int
 
 const (
 	PrefetchStateNone   = iota
-	PrefetchStateActive = 1
-	PrefetchStateOther  = 2
+	PrefetchStateActive
+	PrefetchStateOther
 )
 
 type cachePrefetchKey struct {
@@ -42,7 +45,7 @@ type CachePrefetchEntry struct {
 	key        cachePrefetchKey
 }
 
-func newCachePrefetchEntry(index cachePrefetchKey) *CachePrefetchEntry {
+func NewCachePrefetchEntry(index cachePrefetchKey) *CachePrefetchEntry {
 	return &CachePrefetchEntry{
 		hit:           0,
 		prefetchState: PrefetchStateNone,
@@ -52,79 +55,80 @@ func newCachePrefetchEntry(index cachePrefetchKey) *CachePrefetchEntry {
 	}
 }
 
-func newCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) CachePrefetchMetrics {
-	return CachePrefetchMetrics{
+func NewCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) CachePrefetchMetrics {
+		return CachePrefetchMetrics{
 		maxItems: capacity,
 		items:    make(map[cachePrefetchKey]*CachePrefetchEntry),
 		errorCountMax: errorCountMax,
 		hitMin: hitMin,
-
 	}
 }
 func (c *CachePrefetchMetrics) processQuery(query *dns.Msg) {
+	c.mu.Lock()
 	if c.addItem(query) == PrefetchStateNone {
+		qname := qName(query)
+		Log.WithFields(logrus.Fields{"qname": qname}).Trace("query prefetch hit")
 		c.addHit(query)
 	}
+	c.mu.Unlock()
 }
 func (c *CachePrefetchMetrics) addItem(query *dns.Msg) PrefetchState {
-	key := c.getDomainKey(query)
+	key := getDomainKey(query)
 	item := c.touch(key)
 	if item != nil {
 		return item.prefetchState
 	}
 	// Add new item to the top of the linked list
 	if len(c.items) > c.maxItems {
+		Log.WithFields(logrus.Fields{"maxItems": c.maxItems, "items-count": len(c.items)}).Trace("prefetch item cache full")
 		return PrefetchStateOther
+
 	}
 
-	item = newCachePrefetchEntry(key)
+	item = NewCachePrefetchEntry(key)
 	c.items[key] = item
 	return item.prefetchState
 }
 func (c *CachePrefetchMetrics) addHit(query *dns.Msg) {
-	key := c.getDomainKey(query)
+	c.mu.Lock()
+	key := getDomainKey(query)
 	item := c.items[key]
 	item.hit ++
 	if item.hit >= c.hitMin {
 		item.prefetchState = PrefetchStateActive
+		item.msg = query
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState}).Trace("prefetch item state changed")
 	}
 	c.items[key] = item
+	c.mu.Unlock()
 }
 func (c *CachePrefetchMetrics) addError(query *dns.Msg) {
-	key := c.getDomainKey(query)
+	c.mu.Lock()
+	key := getDomainKey(query)
 	item := c.items[key]
 	item.errorCount++
 	if item.errorCount > c.errorCountMax {
 		item.prefetchState = PrefetchStateOther
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState}).Trace("prefetch item state changed")
 	}
 	c.items[key] = item
+	c.mu.Unlock()
 }
 func (c *CachePrefetchMetrics) resetError(query *dns.Msg) {
-	key := c.getDomainKey(query)
+	c.mu.Lock()
+	key := getDomainKey(query)
 	item := c.items[key]
 	item.errorCount = 0
 	c.items[key] = item
+	Log.WithFields(logrus.Fields{"key": item.key}).Trace("prefetch item error count reset")
+	c.mu.Unlock()
 }
 // Loads a cache item
 func (c *CachePrefetchMetrics) touch(key cachePrefetchKey) *CachePrefetchEntry {
 	item := c.items[key]
-	if item == nil {
-		return nil
-	}
 	return item
 }
-// GET KEYS
-func (r *CachePrefetchEntry) getDomainKey(q *dns.Msg) cachePrefetchKey {
-	if (q == nil) || len(q.Question) < 1 {
-		return cachePrefetchKey{}
-	}
-	qname := qName(q)
-	qtype := qType(q)
-	key := cachePrefetchKey{qname, qtype}
-	return key
-}
-
-func (r *CachePrefetchMetrics) getDomainKey(q *dns.Msg) cachePrefetchKey {
+func getDomainKey(q *dns.Msg) cachePrefetchKey {
 	if (q == nil) || len(q.Question) < 1 {
 		return cachePrefetchKey{}
 	}

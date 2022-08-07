@@ -4,7 +4,6 @@ import (
 	"errors"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
-	"sync"
 	"time"
 )
 
@@ -12,7 +11,6 @@ type CachePrefetch struct {
 	CachePrefetchOptions
 	id       string
 	resolver Resolver
-	mu       sync.Mutex
 	metrics  CachePrefetchMetrics
 }
 
@@ -21,8 +19,7 @@ var _ Resolver = &CachePrefetch{}
 type CachePrefetchOptions struct {
 	//// Time of cache record ttl polling for record prefetch
 	CacheTTLPollingCheckInterval time.Duration
-	//// Min record time remaining check for expire
-	MinRecordTimeRemainingPercent                uint64
+
 	MaxNumberOfErrorsBeforeDiscardingPrefetchJob int16
 	// Number of hits a record gets before prefetch on a record is started
 	RecordQueryHitsMin int64
@@ -45,7 +42,7 @@ func NewCachePrefetch(id string, resolver Resolver, opt CachePrefetchOptions) *C
 		CachePrefetchOptions: opt,
 		id:                   id,
 		resolver:             resolver,
-		metrics:              newCachePrefetchMetrics(opt.PrefetchSize, maxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
+		metrics:              NewCachePrefetchMetrics(opt.PrefetchSize, maxNumberOfErrorsBeforeDiscardingPrefetchJob, opt.RecordQueryHitsMin),
 	}
 	if c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob != maxNumberOfErrorsBeforeDiscardingPrefetchJob {
 		c.MaxNumberOfErrorsBeforeDiscardingPrefetchJob = maxNumberOfErrorsBeforeDiscardingPrefetchJob
@@ -83,10 +80,8 @@ func (r *CachePrefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil || a == nil {
 		return nil, err
 	}
-	if rCode(a) == dns.RcodeToString[dns.RcodeSuccess] {
-		r.requestAddPrefetchJob(q)
-	}
 
+	r.requestAddPrefetchJob(q)
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
 	return a, nil
@@ -100,11 +95,9 @@ func (r *CachePrefetch) startCachePrefetchJobs() {
 	for {
 		time.Sleep(r.CacheTTLPollingCheckInterval)
 		domainEntriesLength := len(r.metrics.items)
-		if domainEntriesLength > 0 {
-			for index, entry := range r.metrics.items {
-				Log.WithFields(logrus.Fields{"index": index, "total": domainEntriesLength}).Trace("prefetch")
-				r.startCachePrefetchJob(entry)
-			}
+		for index, entry := range r.metrics.items {
+			Log.WithFields(logrus.Fields{"index": index, "total": domainEntriesLength}).Trace("prefetch")
+			r.startCachePrefetchJob(entry)
 		}
 	}
 }
@@ -119,58 +112,27 @@ func (r *CachePrefetch) startCachePrefetchJob(item *CachePrefetchEntry) {
 
 		Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("prefetch request started")
 		var ci ClientInfo
-		a, err := r.resolver.Resolve(item.msg.Copy(), ci)
+		a, err := r.Resolve(item.msg, ci)
 
 		if err != nil || a == nil {
-			Log.WithFields(logrus.Fields{"err": err}).Trace("prefetch error")
-			r.mu.Lock()
+			Log.WithError(err).Trace("prefetch error")
 			r.metrics.addError(item.msg)
-			r.mu.Unlock()
 		} else {
 			if item.errorCount > 0 {
 				// reset error count after a successful request
-				r.mu.Lock()
 				r.metrics.resetError(item.msg)
-				r.mu.Unlock()
 				Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Trace("query reset error count")
 			}
 			Log.WithFields(logrus.Fields{"qname": qname, "qtype": qtype}).Debug("query prefetched")
 		}
+	} else {
+		Log.WithFields(logrus.Fields{"prefetchState": item.prefetchState, "key": item.key}).Trace("prefetch request status")
 	}
-
 }
 
 func (r *CachePrefetch) requestAddPrefetchJob(q *dns.Msg) {
-	if (q == nil) || len(q.Question) < 1 {
+	if q == nil {
 		return
 	}
 	r.metrics.processQuery(q)
-
-}
-
-func (r *CachePrefetch) isRecordTTLExpiring(opt CachePrefetchOptions, a *cacheAnswer) float32 {
-
-	var ttl = a.Answer[0].Header().Ttl
-	now := time.Now()
-	var beforeExpiry = now.Before(a.expiry)
-	Log.WithFields(logrus.Fields{"query": a.Answer[0].Header().Name}).Trace("cache check prefetch")
-	if beforeExpiry {
-		var secondsBeforeExpiry = uint64(a.expiry.Sub(now).Seconds())
-		var expiryTimeLeftPercent = uint64(ttl) / secondsBeforeExpiry
-		if opt.MinRecordTimeRemainingPercent == 0 {
-			// fetch opportunistically
-			return 1
-		}
-		if opt.MinRecordTimeRemainingPercent < expiryTimeLeftPercent {
-			Log.WithFields(logrus.Fields{"err": 1}).Trace("cache err prefetch")
-			return 1
-		} else {
-			Log.WithFields(logrus.Fields{"err": 0}).Trace("cache err prefetch")
-			return 0
-		}
-	} else {
-		Log.WithFields(logrus.Fields{"err": -1}).Trace("cache err prefetch")
-		// -1 is expired cannot prefetch
-		return -1
-	}
 }

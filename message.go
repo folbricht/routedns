@@ -29,6 +29,13 @@ func rCode(r *dns.Msg) string {
 	}
 	return strconv.Itoa(r.Rcode)
 }
+// Return the result code name from a DNS response.
+func intToRCode(r int) string {
+	if result, ok := dns.RcodeToString[r]; ok {
+		return result
+	}
+	return strconv.Itoa(r)
+}
 
 // Returns a NXDOMAIN answer for a query.
 func nxdomain(q *dns.Msg) *dns.Msg {
