@@ -263,7 +263,6 @@ func (r *Cache) startGC(period time.Duration) {
 		r.lru.deleteFunc(func(a *cacheAnswer) bool {
 			if now.After(a.expiry) {
 				removed++
-				Log.WithFields(logrus.Fields{"query": a.Answer[0].Header().Name}).Trace("query removed")
 				return true
 			}
 			return false
