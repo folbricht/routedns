@@ -64,13 +64,11 @@ func NewCachePrefetchMetrics(capacity int, errorCountMax int16, hitMin int64) Ca
 	}
 }
 func (c *CachePrefetchMetrics) processQuery(query *dns.Msg) {
-	c.mu.Lock()
 	if c.addItem(query) == PrefetchStateNone {
 		qname := qName(query)
 		Log.WithFields(logrus.Fields{"qname": qname}).Trace("query prefetch hit")
 		c.addHit(query)
 	}
-	c.mu.Unlock()
 }
 func (c *CachePrefetchMetrics) addItem(query *dns.Msg) PrefetchState {
 	key := getDomainKey(query)
