@@ -4,8 +4,6 @@
 address = "1.1.1.1:53"
 protocol = "udp"
 
-
-
 [groups.cloudflare-cached-with-prefetch]
 type = "cache"
 resolvers = ["cloudflare-dot"]

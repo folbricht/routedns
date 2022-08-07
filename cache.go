@@ -56,7 +56,6 @@ type CacheOptions struct {
 	// See RFC8020.
 	HardenBelowNXDOMAIN bool
 
-	PrefetchResolver string
 	// Query name that will trigger a cache flush. Disabled if empty.
 	FlushQuery string
 }
@@ -80,7 +79,6 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 	if c.NegativeTTL == 0 {
 		c.NegativeTTL = 60
 	}
-
 	go c.startGC(c.GCPeriod)
 	return c
 }
@@ -138,38 +136,6 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 func (r *Cache) String() string {
 	return r.id
-}
-
-func (r *Cache) ResolveWithoutCache(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
-	// While multiple questions in one DNS message is part of the standard,
-	// it's not actually supported by servers. If we do get one of those,
-	// just pass it through and bypass caching.
-	if len(q.Question) > 1 {
-		return r.resolver.Resolve(q, ci)
-	}
-
-	log := logger(r.id, q, ci)
-
-	log.WithField("resolver", r.resolver.String()).Debug("cache-prefetch, forwarding")
-
-	// Get a response from upstream
-	a, err := r.resolver.Resolve(q.Copy(), ci)
-	if err != nil || a == nil {
-		return nil, err
-	}
-
-	// Don't cache truncated responses
-	if a.Truncated {
-		return a, nil
-	}
-
-	// Put the upstream response into the cache and return it. Need to store
-	// a copy since other elements might modify the response, like the replacer.
-	r.storeInCache(q, a.Copy())
-	return a, nil
 }
 
 // Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
@@ -295,11 +261,11 @@ func (r *Cache) startGC(period time.Duration) {
 		var total, removed int
 		r.mu.Lock()
 		r.lru.deleteFunc(func(a *cacheAnswer) bool {
-				if now.After(a.expiry) {
-					removed++
-					Log.WithFields(logrus.Fields{"query": a.Answer[0].Header().Name}).Trace("query removed")
-					return true
-				}
+			if now.After(a.expiry) {
+				removed++
+				Log.WithFields(logrus.Fields{"query": a.Answer[0].Header().Name}).Trace("query removed")
+				return true
+			}
 			return false
 		})
 		total = r.lru.size()
