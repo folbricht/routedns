@@ -130,13 +130,9 @@ func (s *DoHListener) startTCP() error {
 // Start the DoH server with QUIC transport.
 func (s *DoHListener) startQUIC() error {
 	s.quicServer = &http3.Server{
-		Server: &http.Server{
-			Addr:         s.addr,
-			TLSConfig:    s.opt.TLSConfig,
-			Handler:      s.handler,
-			ReadTimeout:  dohServerTimeout,
-			WriteTimeout: dohServerTimeout,
-		},
+		Addr:       s.addr,
+		TLSConfig:  s.opt.TLSConfig,
+		Handler:    s.handler,
 		QuicConfig: &quic.Config{},
 	}
 	return s.quicServer.ListenAndServe()

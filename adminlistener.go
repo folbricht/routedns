@@ -93,13 +93,9 @@ func (s *AdminListener) startTCP() error {
 // Start the admin server with QUIC transport.
 func (s *AdminListener) startQUIC() error {
 	s.quicServer = &http3.Server{
-		Server: &http.Server{
-			Addr:         s.addr,
-			TLSConfig:    s.opt.TLSConfig,
-			Handler:      s.mux,
-			ReadTimeout:  adminServerTimeout,
-			WriteTimeout: adminServerTimeout,
-		},
+		Addr:       s.addr,
+		TLSConfig:  s.opt.TLSConfig,
+		Handler:    s.mux,
 		QuicConfig: &quic.Config{},
 	}
 	return s.quicServer.ListenAndServe()
