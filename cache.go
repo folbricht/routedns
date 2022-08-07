@@ -58,6 +58,14 @@ type CacheOptions struct {
 
 	// Query name that will trigger a cache flush. Disabled if empty.
 	FlushQuery string
+
+	// If a query is received for a record that less that PrefetchTrigger TTTL left, the
+	// cache will send another query to upstream. The goal is to automatically refresh
+	// the record in the cache.
+	PrefetchTrigger uint32
+
+	// Only records with at least PrefetchEligible seconds TTL are eligible to be prefetched.
+	PrefetchEligible uint32
 }
 
 // NewCache returns a new instance of a Cache resolver.
@@ -107,10 +115,36 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	// Returned an answer from the cache if one exists
-	a, ok := r.answerFromCache(q)
+	a, prefetchEligible, ok := r.answerFromCache(q)
 	if ok {
 		log.Debug("cache-hit")
 		r.metrics.hit.Add(1)
+
+		// If prefetch is enabled and the TTL has fallen below the trigger time, send
+		// a concurrent query upstream (to refresh the cached record)
+		if prefetchEligible && r.CacheOptions.PrefetchTrigger > 0 {
+			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchTrigger {
+				q := q.Copy()
+				go func() {
+					log.Debug("prefetching record")
+
+					// Send the same query upstream
+					a, err := r.resolver.Resolve(q, ci)
+					if err != nil || a == nil {
+						return
+					}
+
+					// Don't cache truncated responses
+					if a.Truncated {
+						return
+					}
+
+					// Put the upstream response into the cache and return it.
+					r.storeInCache(q, a)
+				}()
+			}
+		}
+
 		return a, nil
 	}
 	r.metrics.miss.Add(1)
@@ -139,9 +173,10 @@ func (r *Cache) String() string {
 }
 
 // Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
-func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
+func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var answer *dns.Msg
 	var timestamp time.Time
+	var prefetchEligible bool
 	r.mu.Lock()
 	if a := r.lru.get(q); a != nil {
 		if r.ShuffleAnswerFunc != nil {
@@ -149,6 +184,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 		}
 		answer = a.Copy()
 		timestamp = a.timestamp
+		prefetchEligible = a.prefetchEligible
 	}
 	r.mu.Unlock()
 
@@ -164,7 +200,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 			if a := r.lru.get(newQ); a != nil {
 				if a.Rcode == dns.RcodeNameError {
 					r.mu.Unlock()
-					return nxdomain(q), true
+					return nxdomain(q), false, true
 				}
 				break
 			}
@@ -174,7 +210,7 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 
 	// Return a cache-miss if there's no answer record in the map
 	if answer == nil {
-		return nil, false
+		return nil, false, false
 	}
 
 	// Make a copy of the response before returning it. Some later
@@ -197,13 +233,13 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 			h := a.Header()
 			if age >= h.Ttl {
 				r.evictFromCache(q)
-				return nil, false
+				return nil, false, false
 			}
 			h.Ttl -= age
 		}
 	}
 
-	return answer, true
+	return answer, prefetchEligible, true
 }
 
 func (r *Cache) storeInCache(query, answer *dns.Msg) {
@@ -220,6 +256,7 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	case dns.RcodeSuccess, dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
 		if ok {
 			item.expiry = now.Add(time.Duration(min) * time.Second)
+			item.prefetchEligible = min > r.CacheOptions.PrefetchEligible
 		} else {
 			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}

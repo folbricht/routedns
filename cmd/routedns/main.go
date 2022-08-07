@@ -560,6 +560,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			ShuffleAnswerFunc:   shuffleFunc,
 			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 			FlushQuery:          g.CacheFlushQuery,
+			PrefetchTrigger:     g.PrefetchTrigger,
+			PrefetchEligible:    g.PrefetchEligible,
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
