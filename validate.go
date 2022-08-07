@@ -24,7 +24,7 @@ func validEndpoint(addr string) error {
 	return validHostname(host)
 }
 
-// Returns nil if the given name is a valid hostnam as per https://tools.ietf.org/html/rfc3696#section-2
+// Returns nil if the given name is a valid hostname as per https://tools.ietf.org/html/rfc3696#section-2
 // and https://tools.ietf.org/html/rfc1123#page-13
 func validHostname(name string) error {
 	if name == "" {
@@ -58,11 +58,3 @@ func validHostname(name string) error {
 	}
 	return fmt.Errorf("invalid hostname %q: last label can not be all numeric", name)
 }
-
-//func validPercent(percent uint32) error {
-//	if (percent < 0) {
-//		return fmt.Errorf("Cannot have a percent of less then 0%. You have a percent of", percent)
-//	} else if (percent > 100) {
-//		return fmt.Errorf("Cannot have a percent of more then 100%. You have a percent of", percent)
-//	}
-//}
