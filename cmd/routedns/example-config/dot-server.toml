@@ -1,0 +1,14 @@
+# DNS-over-HTTPS using the QUIC protocol to a local test server. See "doh-quic-server.toml"
+# for the matching server-side configuration.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+bootstrap-address = "1.1.1.1"
+
+[listeners.local-dot-server]
+address = "127.0.0.1:853"
+protocol = "dot"
+resolver = "cloudflare-dot"
+server-crt = "example-config/server-ec.crt"
+server-key = "example-config/server-ec.key"
