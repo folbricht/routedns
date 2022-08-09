@@ -1,0 +1,20 @@
+# Apply TTL limits before caching responses.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-updated-ttl]
+type = "ttl-modifier"
+resolvers = ["cloudflare-dot"]
+ttl-select = "average"
+ttl-max = 86400
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-updated-ttl"]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"

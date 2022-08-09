@@ -67,6 +67,7 @@ type group struct {
 	ECSPrefix6 uint8                   `toml:"ecs-prefix6"` // ECS IPv6 address prefix, 0-128. Used for "add" and "privacy"
 	TTLMin     uint32                  `toml:"ttl-min"`     // TTL minimum to apply to responses in the TTL-modifier
 	TTLMax     uint32                  `toml:"ttl-max"`     // TTL maximum to apply to responses in the TTL-modifier
+	TTLSelect  string                  `toml:"ttl-select"`  // Modifier selection function, "lowest", "highest", "average", "first", "last", "random"
 	EDNS0Op    string                  `toml:"edns0-op"`    // EDNS0 modifier operation, "add" or "delete"
 	EDNS0Code  uint16                  `toml:"edns0-code"`  // EDNS0 modifier option code
 	EDNS0Data  []byte                  `toml:"edns0-data"`  // EDNS0 modifier option data
