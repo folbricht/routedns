@@ -8,7 +8,7 @@ resolver = "cloudflare-rrl"
 [groups.cloudflare-rrl]
 type = "rate-limiter"
 resolvers = ["cloudflare-dot"]
-limit-resolver = "cloudflare-dot" # Using the same resolver means it'll only log requests exceeding the limit, not actually block them
+limit-resolver = "google-dot"
 requests = 30  # Number of requests allowed per time period
 window = 60    # Number of seconds in the time period, default 60
 prefix4 = 24   # Prefix length for identifying an IPv4 client, default 24
@@ -18,3 +18,6 @@ prefix6 = 56   # Prefix length for identifying an IPv6 client, default 56
 address = "1.1.1.1:853"
 protocol = "dot"
 
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
