@@ -3,17 +3,22 @@ set -e
 
 arch=$(uname -m)
 
-if [ "$arch" = "x86_64" ]; then
+case "$arch" in
+"x86_64")
     goarch="amd64"
-elif [ "$arch" = "armv7l" ]; then
+    ;;
+"armv7l")
     goarch="arm"
-elif [ "$arch" = "aarch64" ]; then
+    ;;
+"aarch64")
     goarch="arm64"
-elif [ "$arch" = "arm64" ]; then
+    ;;
+"arm64")
     goarch="arm64"
-else
+    ;;
+*)
     printf "Platform '%s' is not supported\n" "$arch" >&2
     exit 1
-fi
+esac
 
 GOOS="linux" GOARCH="$goarch" CGO_ENABLED=0 go build 
