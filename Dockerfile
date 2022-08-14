@@ -1,10 +1,11 @@
 FROM golang:alpine as builder
-ARG GOARCH
+ARG GOOS=linux
+ARG GOARCH=amd64
 
 WORKDIR /build
 COPY . .
 WORKDIR cmd/routedns
-RUN chmod +x dockerbuild.sh && ./dockerbuild.sh $GOARCH
+RUN GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build 
 
 FROM alpine:latest
 COPY --from=builder /build/cmd/routedns/routedns .
