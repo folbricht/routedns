@@ -1,6 +1,6 @@
 FROM golang:alpine as builder
-ARG GOOS=linux
-ARG GOARCH=amd64
+ARG GOOS
+ARG GOARCH
 
 WORKDIR /build
 COPY . .
