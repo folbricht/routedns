@@ -2,7 +2,8 @@ package rdns
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"encoding/binary"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -123,11 +124,16 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer func() { q.Id = id }()
 
 	// Encode the query
-	b, err := q.Pack()
+	p, err := q.Pack()
 	if err != nil {
 		d.metrics.err.Add("pack", 1)
 		return nil, err
 	}
+
+	// Add a length prefix
+	b := make([]byte, 2+len(p))
+	binary.BigEndian.PutUint16(b, uint16(len(p)))
+	copy(b[2:], p)
 
 	// Get a new stream in the connection
 	stream, err := d.connection.getStream()
@@ -138,7 +144,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Write the query into the stream and close is. Only one stream per query/response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second))
-	if _, err = stream.Write(b); err != nil {
+	if _, err = stream.Write(p); err != nil {
 		d.metrics.err.Add("write", 1)
 		return nil, err
 	}
@@ -147,10 +153,18 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Read the response
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second))
-	b, err = ioutil.ReadAll(stream)
-	if err != nil {
+
+	// DoQ requires a length prefix, like TCP
+	var length uint16
+	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
+		d.metrics.err.Add("read", 1)
+		return nil, err
+	}
+
+	// Read the response
+	b = make([]byte, length)
+	if _, err = io.ReadFull(stream, b); err != nil {
 		d.metrics.err.Add("read", 1)
 		return nil, err
 	}
