@@ -123,7 +123,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		// If prefetch is enabled and the TTL has fallen below the trigger time, send
 		// a concurrent query upstream (to refresh the cached record)
 		if prefetchEligible && r.CacheOptions.PrefetchTrigger > 0 {
-			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchTrigger {
+			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchEligible {
 				q := q.Copy()
 				go func() {
 					log.Debug("prefetching record")
