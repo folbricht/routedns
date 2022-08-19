@@ -139,10 +139,11 @@ type group struct {
 
 // Block/Allowlist items for blocklist-v2
 type list struct {
-	Name     string
-	Format   string
-	Source   string
-	CacheDir string `toml:"cache-dir"` // Where to store copies of remote blocklists for faster startup
+	Name             string
+	Format           string
+	Source           string
+	CacheDir         string `toml:"cache-dir"`             // Where to store copies of remote blocklists for faster startup
+	AllowFailOnStart bool   `toml:"allow-fail-on-startup"` // Don't fail if the blocklist can't be loaded on startup, just print a warning
 }
 
 type router struct {

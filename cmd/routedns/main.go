@@ -766,16 +766,27 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
+	var db rdns.BlocklistDB
 	switch l.Format {
 	case "regexp", "":
-		return rdns.NewRegexpDB(name, loader)
+		db, err = rdns.NewRegexpDB(name, loader)
+		// TODO: Remove err
 	case "domain":
-		return rdns.NewDomainDB(name, loader)
+		db = rdns.NewDomainDB(name, loader)
 	case "hosts":
-		return rdns.NewHostsDB(name, loader)
+		db, err = rdns.NewHostsDB(name, loader)
+		// TODO: Remove err
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+	db, err = db.Reload()
+	if err != nil {
+		rdns.Log.WithError(err).Warn("failed to load list")
+		if !l.AllowFailOnStart {
+			return nil, fmt.Errorf("failed to load list on startup, set allow-fail-on-startup to skip: %w", err)
+		}
+	}
+	return db, nil
 }
 
 func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
