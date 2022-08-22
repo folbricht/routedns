@@ -769,13 +769,11 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 	var db rdns.BlocklistDB
 	switch l.Format {
 	case "regexp", "":
-		db, err = rdns.NewRegexpDB(name, loader)
-		// TODO: Remove err
+		db = rdns.NewRegexpDB(name, loader)
 	case "domain":
 		db = rdns.NewDomainDB(name, loader)
 	case "hosts":
-		db, err = rdns.NewHostsDB(name, loader)
-		// TODO: Remove err
+		db = rdns.NewHostsDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
