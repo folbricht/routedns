@@ -19,7 +19,7 @@ var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
 func NewRegexpDB(name string, loader BlocklistLoader) *RegexpDB {
-	return NewRegexpDB(name, loader)
+	return &RegexpDB{name, nil, loader}
 }
 
 func  (m *RegexpDB) Reload() (BlocklistDB, error) {
