@@ -123,24 +123,31 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		// If prefetch is enabled and the TTL has fallen below the trigger time, send
 		// a concurrent query upstream (to refresh the cached record)
 		if prefetchEligible && r.CacheOptions.PrefetchTrigger > 0 {
-			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchEligible {
-				q := q.Copy()
+			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchTrigger {
+				prefetchQ := q.Copy()
 				go func() {
 					log.Debug("prefetching record")
 
 					// Send the same query upstream
-					a, err := r.resolver.Resolve(q, ci)
-					if err != nil || a == nil {
+					prefetchA, err := r.resolver.Resolve(prefetchQ, ci)
+					if err != nil || prefetchA == nil {
 						return
 					}
 
 					// Don't cache truncated responses
-					if a.Truncated {
+					if prefetchA.Truncated {
+						return
+					}
+
+					// If the prefetched record has a lower TTL than what we had already, there
+					// is no point in storing it in the cache. This can happen when the upstream
+					// resolver also uses caching.
+					if prefetchAMin, ok := minTTL(prefetchA); !ok || prefetchAMin < min {
 						return
 					}
 
 					// Put the upstream response into the cache and return it.
-					r.storeInCache(q, a)
+					r.storeInCache(prefetchQ, prefetchA)
 				}()
 			}
 		}
