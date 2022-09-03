@@ -246,9 +246,9 @@ Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-ser
 
 ### DNS-over-QUIC
 
-Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS) for how to configure this.
+Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS) for how to configure this.
 
-Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
+Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
 
 Examples:
 
@@ -1496,7 +1496,7 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 
 ### DNS-over-QUIC Resolver
 
-Similar to DoT, but uses a QUIC connection as transport as per [draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
+Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
 
 Examples:
 
