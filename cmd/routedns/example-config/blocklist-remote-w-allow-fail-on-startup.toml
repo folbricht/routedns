@@ -1,0 +1,30 @@
+# Config with a remote blocklist that is refreshed once a day and also a remote
+# allowlist that overrides any blocking rules. Multiple block and allow-lists
+# with different formats can be specified, but the refresh-period is the same.
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type = "blocklist-v2"
+resolvers = ["cloudflare-dot"]
+blocklist-refresh = 86400
+blocklist-source = [
+   {format = "domain", source = "https://raw.githubusercontent.com/no-list.list", allow-fail-on-startup = true},
+   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list", allow-fail-on-startup = false},
+]
+allowlist-refresh = 86400
+allowlist-source = [
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.allowlist.domain.list"},
+   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.allowlist.regexp.list", allow-fail-on-startup = true},
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"
