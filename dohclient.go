@@ -40,6 +40,28 @@ type DoHClientOptions struct {
 	TLSConfig *tls.Config
 }
 
+// Returns an HTTP client based on the DoH options
+func (opt DoHClientOptions) client(endpoint string) (*http.Client, error) {
+	var (
+		tr  http.RoundTripper
+		err error
+	)
+	switch opt.Transport {
+	case "tcp", "":
+		tr, err = dohTcpTransport(opt)
+	case "quic":
+		tr, err = dohQuicTransport(endpoint, opt)
+	default:
+		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Transport: tr,
+	}, nil
+}
+
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
 type DoHClient struct {
 	id       string
@@ -59,21 +81,9 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 		return nil, err
 	}
 
-	var tr http.RoundTripper
-	switch opt.Transport {
-	case "tcp", "":
-		tr, err = dohTcpTransport(opt)
-	case "quic":
-		tr, err = dohQuicTransport(endpoint, opt)
-	default:
-		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
-	}
+	client, err := opt.client(endpoint)
 	if err != nil {
 		return nil, err
-	}
-
-	client := &http.Client{
-		Transport: tr,
 	}
 
 	if opt.Method == "" {
@@ -104,56 +114,70 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Add padding before sending the query over HTTPS
 	padQuery(q)
 
-	d.metrics.query.Add(1)
-	switch d.opt.Method {
-	case "POST":
-		return d.ResolvePOST(q)
-	case "GET":
-		return d.ResolveGET(q)
-	}
-	return nil, errors.New("unsupported method")
-}
-
-// ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
-func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 	// Pack the DNS query into wire format
-	b, err := q.Pack()
+	msg, err := q.Pack()
 	if err != nil {
 		d.metrics.err.Add("pack", 1)
 		return nil, err
 	}
+
+	d.metrics.query.Add(1)
+
+	// Build a DoH request and execute it
+	req, err := d.buildRequest(msg)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := d.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Extract the DNS response from the HTTP response
+	return d.responseFromHTTP(resp)
+}
+
+func (d *DoHClient) buildRequest(msg []byte) (*http.Request, error) {
+	switch d.opt.Method {
+	case "POST":
+		return d.buildPostRequest(msg)
+	case "GET":
+		return d.buildGetRequest(msg)
+	default:
+		return nil, errors.New("unsupported method")
+	}
+}
+
+func (d *DoHClient) do(req *http.Request) (*http.Response, error) {
+	resp, err := d.client.Do(req)
+	if err != nil {
+		d.metrics.err.Add(req.Method, 1)
+		return nil, err
+	}
+	return resp, err
+}
+
+func (d *DoHClient) buildPostRequest(msg []byte) (*http.Request, error) {
 	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
 	u, err := d.template.Expand(map[string]interface{}{})
 	if err != nil {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", u, bytes.NewReader(b))
+	req, err := http.NewRequest("POST", u, bytes.NewReader(msg))
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
 	req.Header.Add("content-type", "application/dns-message")
-	resp, err := d.client.Do(req)
-	if err != nil {
-		d.metrics.err.Add("post", 1)
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return d.responseFromHTTP(resp)
+	return req, nil
 }
 
-// ResolveGET resolves a DNS query via DNS-over-HTTP using the GET method.
-func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
-	// Pack the DNS query into wire format
-	b, err := q.Pack()
-	if err != nil {
-		d.metrics.err.Add("pack", 1)
-		return nil, err
-	}
-	// Encode the query as base64url without padding
-	b64 := base64.RawURLEncoding.EncodeToString(b)
+func (d *DoHClient) buildGetRequest(msg []byte) (*http.Request, error) {
+	// Encode the query as base64url
+	b64 := base64.RawURLEncoding.EncodeToString(msg)
 
 	// The URL must be a template. Process it with the "dns" param containing the encoded query.
 	u, err := d.template.Expand(map[string]interface{}{"dns": b64})
@@ -167,13 +191,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
-	resp, err := d.client.Do(req)
-	if err != nil {
-		d.metrics.err.Add("get", 1)
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return d.responseFromHTTP(resp)
+	return req, nil
 }
 
 func (d *DoHClient) String() string {

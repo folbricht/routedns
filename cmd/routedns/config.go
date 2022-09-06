@@ -49,6 +49,7 @@ type resolver struct {
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
+	Target        string // URL for Oblivious DNS target
 }
 
 // DoH-specific resolver options

@@ -11,6 +11,7 @@ Features:
 - Support for DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)), client and server
 - Support for DNS-over-DTLS ([RFC8094](https://tools.ietf.org/html/rfc8094)), client and server
 - DNS-over-HTTPS using a QUIC transport, client and server
+- Oblivious DNS client, ODoH ([draft](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-03))
 - Custom CAs and mutual-TLS
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency

@@ -79,6 +79,22 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		if err != nil {
 			return err
 		}
+	case "odoh":
+		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		if err != nil {
+			return err
+		}
+		opt := rdns.DoHClientOptions{
+			Method:        r.DoH.Method,
+			TLSConfig:     tlsConfig,
+			BootstrapAddr: r.BootstrapAddr,
+			Transport:     r.Transport,
+			LocalAddr:     net.ParseIP(r.LocalAddr),
+		}
+		resolvers[id], err = rdns.NewODoHClient(id, r.Address, r.Target, opt)
+		if err != nil {
+			return err
+		}
 	case "tcp", "udp":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.PlainDNSPort)
 

@@ -3,8 +3,9 @@ module github.com/folbricht/routedns
 go 1.17
 
 require (
-	github.com/BurntSushi/toml v1.1.0
+	github.com/BurntSushi/toml v0.3.1
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
+	github.com/cloudflare/odoh-go v0.1.3
 	github.com/heimdalr/dag v1.0.1
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/lucas-clemente/quic-go v0.28.1
@@ -19,7 +20,11 @@ require (
 )
 
 require (
+	git.schwanenlied.me/yawning/x448.git v0.0.0-20170617130356-01b048fb03d6 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
+	github.com/cisco/go-hpke v0.0.0-20201023221920-2866d2aa0603 // indirect
+	github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b // indirect
+	github.com/cloudflare/circl v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
