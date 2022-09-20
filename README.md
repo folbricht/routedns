@@ -8,7 +8,7 @@ Features:
 
 - Support for DNS-over-TLS (DoT, [RFC7858](https://tools.ietf.org/html/rfc7858)), client and server
 - Support for DNS-over-HTTPS (DoH, [RFC8484](https://tools.ietf.org/html/rfc8484)), client and server with HTTP2
-- Support for DNS-over-QUIC (doq-i02, [draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic)), client and server
+- Support for DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)), client and server
 - Support for DNS-over-DTLS ([RFC8094](https://tools.ietf.org/html/rfc8094)), client and server
 - DNS-over-HTTPS using a QUIC transport, client and server
 - Custom CAs and mutual-TLS
@@ -81,7 +81,7 @@ RouteDNS supports building complex DNS processing pipelines. A typically configu
 
 ## QUIC support
 
-Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC ([draft-ietf-dprive-dnsoquic-02](https://datatracker.ietf.org/doc/html/draft-ietf-dprive-dnsoquic)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations.
+Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations.
 
 ## Use-cases / Examples
 

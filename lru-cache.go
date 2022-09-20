@@ -24,8 +24,9 @@ type lruKey struct {
 }
 
 type cacheAnswer struct {
-	timestamp time.Time // Time the record was cached. Needed to adjust TTL
-	expiry    time.Time // Time the record expires and should be removed
+	timestamp        time.Time // Time the record was cached. Needed to adjust TTL
+	expiry           time.Time // Time the record expires and should be removed
+	prefetchEligible bool      // The cache can prefetch this record
 	*dns.Msg
 }
 
@@ -47,6 +48,9 @@ func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) {
 	key := lruKeyFromQuery(query)
 	item := c.touch(key)
 	if item != nil {
+		// Update the item, it's already at the top of the list
+		// so we can just change the value
+		item.cacheAnswer = answer
 		return
 	}
 	// Add new item to the top of the linked list

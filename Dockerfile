@@ -1,9 +1,11 @@
 FROM golang:alpine as builder
+ARG GOOS
+ARG GOARCH
 
 WORKDIR /build
 COPY . .
 WORKDIR cmd/routedns
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build
+RUN GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build 
 
 FROM alpine:latest
 COPY --from=builder /build/cmd/routedns/routedns .

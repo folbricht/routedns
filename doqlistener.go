@@ -3,8 +3,9 @@ package rdns
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"expvar"
-	"io/ioutil"
+	"io"
 	"net"
 	"time"
 
@@ -142,10 +143,18 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 	defer stream.Close()
 	s.metrics.stream.Add(1)
 
+	// DoQ requires a length prefix, like TCP
+	var length uint16
+	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
+		s.metrics.err.Add("read", 1)
+		log.WithError(err).Error("failed to read query")
+		return
+	}
+
 	// Read the raw query
+	b := make([]byte, length)
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
-	b, err := ioutil.ReadAll(stream)
-	if err != nil {
+	if _, err := io.ReadFull(stream, b); err != nil {
 		s.metrics.err.Add("read", 1)
 		log.WithError(err).Error("failed to read query")
 		return
@@ -182,12 +191,17 @@ func (s DoQListener) handleStream(stream quic.Stream, log *logrus.Entry, ci Clie
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
 
-	out, err := a.Pack()
+	p, err := a.Pack()
 	if err != nil {
 		log.WithError(err).Error("failed to encode response")
 		s.metrics.err.Add("encode", 1)
 		return
 	}
+
+	// Add a length prefix
+	out := make([]byte, 2+len(p))
+	binary.BigEndian.PutUint16(out, uint16(len(p)))
+	copy(out[2:], p)
 
 	// Send the response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout

@@ -560,6 +560,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			ShuffleAnswerFunc:   shuffleFunc,
 			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 			FlushQuery:          g.CacheFlushQuery,
+			PrefetchTrigger:     g.PrefetchTrigger,
+			PrefetchEligible:    g.PrefetchEligible,
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
@@ -766,25 +768,16 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
-	var db rdns.BlocklistDB
 	switch l.Format {
 	case "regexp", "":
-		db = rdns.NewRegexpDB(name, loader)
+		return rdns.NewRegexpDB(name, loader)
 	case "domain":
-		db = rdns.NewDomainDB(name, loader)
+		return rdns.NewDomainDB(name, loader)
 	case "hosts":
-		db = rdns.NewHostsDB(name, loader)
+		return rdns.NewHostsDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
-	db, err = db.Reload()
-	if err != nil {
-		rdns.Log.WithError(err).Warn("failed to load list")
-		if !l.AllowFailOnStart {
-			return nil, fmt.Errorf("failed to load list on startup, set allow-fail-on-startup to skip: %w", err)
-		}
-	}
-	return db, nil
 }
 
 func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
