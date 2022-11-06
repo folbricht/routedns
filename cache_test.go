@@ -198,3 +198,25 @@ func TestCacheNoTruncated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, r.HitCount())
 }
+
+func TestCacheNullEDNS0(t *testing.T) {
+	var ci ClientInfo
+	q := new(dns.Msg)
+	r := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			a.SetEdns0(4096, false)
+			edns0 := a.IsEdns0()
+			edns0.Option = append(edns0.Option, nil)
+			return a, nil
+		},
+	}
+
+	c := NewCache("test-cache", r, CacheOptions{})
+
+	// Both queries should hit the upstream resolver
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err := c.Resolve(q, ci)
+	require.NoError(t, err)
+}

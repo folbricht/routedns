@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/miekg/dns"
+	"github.com/sirupsen/logrus"
 )
 
 // Return the query name from a DNS query.
@@ -87,4 +88,18 @@ func setUDPSize(q *dns.Msg, size uint16) *dns.Msg {
 		q.SetEdns0(size, false)
 	}
 	return copy
+}
+
+func alertNilEDNS0Opt(m *dns.Msg, id string) {
+	if m == nil {
+		return
+	}
+	edns0 := m.IsEdns0()
+	if edns0 != nil {
+		for _, opt := range edns0.Option {
+			if opt == nil {
+				logrus.New().Errorf("NILOPTREC: found nil options record, ID: %s, QName: %s, QType: %s", id, m.Question[0].Name, dns.TypeToString[m.Question[0].Qtype])
+			}
+		}
+	}
 }

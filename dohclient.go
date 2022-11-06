@@ -116,6 +116,7 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 // ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
 func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
+	alertNilEDNS0Opt(q, "doh-client-query-start")
 	// Pack the DNS query into wire format
 	b, err := q.Pack()
 	if err != nil {
@@ -198,6 +199,7 @@ func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 	} else {
 		d.metrics.response.Add(rCode(a), 1)
 	}
+	alertNilEDNS0Opt(a, "responseFromHTTP-answer")
 	return a, err
 }
 

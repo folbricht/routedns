@@ -74,6 +74,7 @@ func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBac
 // Resolve a DNS query using a failover resolver group that switches to the next
 // resolver on error.
 func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	alertNilEDNS0Opt(q, "fail-back-query")
 	log := logger(r.id, q, ci)
 	var (
 		err error
@@ -84,6 +85,7 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
+		alertNilEDNS0Opt(a, "fail-back-answer1")
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
@@ -92,6 +94,7 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 		r.errorFrom(active)
 	}
+	alertNilEDNS0Opt(a, "fail-back-answer2")
 	return a, err
 }
 

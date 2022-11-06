@@ -75,7 +75,9 @@ func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Add padding to the query before sending over TLS
 	padQuery(q)
-	return d.pipeline.Resolve(q)
+	a, err := d.pipeline.Resolve(q)
+	alertNilEDNS0Opt(a, "p3")
+	return a, err
 }
 
 func (d *DoTClient) String() string {

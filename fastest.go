@@ -25,6 +25,7 @@ func NewFastest(id string, resolvers ...Resolver) *Fastest {
 // Resolve a DNS query by sending it to all resolvers and returning the fastest
 // non-error response
 func (r *Fastest) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	alertNilEDNS0Opt(q, "fastest-query")
 	log := logger(r.id, q, ci)
 
 	type response struct {
@@ -40,6 +41,7 @@ func (r *Fastest) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		resolver := resolver
 		go func() {
 			a, err := resolver.Resolve(q, ci)
+			alertNilEDNS0Opt(a, "fastest-answer1")
 			responseCh <- response{resolver, a, err}
 		}()
 	}
@@ -51,12 +53,14 @@ func (r *Fastest) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		resolver, a, err := resolverResponse.r, resolverResponse.a, resolverResponse.err
 		if err == nil && (a == nil || a.Rcode != dns.RcodeServerFailure) { // Return immediately if successful
 			log.WithField("resolver", resolver.String()).Trace("using response from resolver")
+			alertNilEDNS0Opt(a, "fastest-answer2")
 			return a, err
 		}
 		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure, waiting for next response")
 
 		// If all responses were bad, return the last one
 		if i++; i >= len(r.resolvers) {
+			alertNilEDNS0Opt(a, "fastest-answer3")
 			return a, err
 		}
 	}

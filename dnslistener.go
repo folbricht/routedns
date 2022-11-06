@@ -49,6 +49,7 @@ func (s DNSListener) String() string {
 func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
 	metrics := NewListenerMetrics("listener", id)
 	return func(w dns.ResponseWriter, req *dns.Msg) {
+		alertNilEDNS0Opt(req, "listener-query")
 		var (
 			ci  ClientInfo
 			err error
@@ -69,6 +70,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		if isAllowed(allowedNet, ci.SourceIP) {
 			log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
 			a, err = r.Resolve(req, ci)
+			alertNilEDNS0Opt(a, "listener-answer")
 			if err != nil {
 				metrics.err.Add("resolve", 1)
 				log.WithError(err).Error("failed to resolve")

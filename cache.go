@@ -86,6 +86,7 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 // Resolve a DNS query by first checking an internal cache for existing
 // results
 func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	alertNilEDNS0Opt(q, "cache-query-start")
 	if len(q.Question) < 1 {
 		return nil, errors.New("no question in query")
 	}
@@ -118,14 +119,26 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log.WithField("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
 	// Get a response from upstream
+	alertNilEDNS0Opt(q, "cache-query-forward")
 	a, err := r.resolver.Resolve(q.Copy(), ci)
 	if err != nil || a == nil {
 		return nil, err
 	}
+	alertNilEDNS0Opt(a, "cache-answer-forward")
 
 	// Don't cache truncated responses
 	if a.Truncated {
 		return a, nil
+	}
+
+	// Strip option records that are nil - TODO: remove this
+	edns0 := a.IsEdns0()
+	if edns0 != nil {
+		for i, opt := range edns0.Option {
+			if opt == nil {
+				edns0.Option = append(edns0.Option[:i], edns0.Option[i+1:]...)
+			}
+		}
 	}
 
 	// Put the upstream response into the cache and return it. Need to store
@@ -147,6 +160,8 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 		if r.ShuffleAnswerFunc != nil {
 			r.ShuffleAnswerFunc(a.Msg)
 		}
+		// Make a copy of the response before returning it. Some later
+		// elements might make changes.
 		answer = a.Copy()
 		timestamp = a.timestamp
 	}
@@ -177,9 +192,6 @@ func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool) {
 		return nil, false
 	}
 
-	// Make a copy of the response before returning it. Some later
-	// elements might make changes.
-	answer = answer.Copy()
 	answer.Id = q.Id
 
 	// Calculate the time the record spent in the cache. We need to

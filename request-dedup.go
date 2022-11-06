@@ -45,6 +45,7 @@ func NewRequestDedup(id string, resolver Resolver) *requestDedup {
 }
 
 func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	alertNilEDNS0Opt(q, "request-dedup-query")
 	var (
 		ecsIPv4              uint32
 		ecsIPv6Lo, ecsIPv6Hi uint64
@@ -106,6 +107,9 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Not already in flight, make the request
 	a, err := r.resolver.Resolve(q, ci)
+
+	alertNilEDNS0Opt(a, "request-dedup-answer")
+
 	req.answer = a
 	req.err = err
 	close(req.done) // release other goroutines waiting for the response
