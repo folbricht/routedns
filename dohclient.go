@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -115,7 +116,16 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 }
 
 // ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
-func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
+func (d *DoHClient) ResolvePOST(q *dns.Msg) (a *dns.Msg, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.New().WithError(fmt.Errorf("%v", r)).Errorf("NILOPTREC: QName: %s, QType: %s", q.Question[0].Name, dns.TypeToString[q.Question[0].Qtype])
+			// fmt.Println("NILOPTREC, recovered from ", r)
+			debug.PrintStack()
+			err = errors.New("NILOPTREC error, see message and stack trace")
+		}
+	}()
+
 	alertNilEDNS0Opt(q, "doh-client-query-start")
 	// Pack the DNS query into wire format
 	b, err := q.Pack()

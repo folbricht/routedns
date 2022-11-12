@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/miekg/dns"
 )
@@ -18,10 +19,13 @@ type TestResolver struct {
 	ResolveFunc func(*dns.Msg, ClientInfo) (*dns.Msg, error)
 	hitCount    int
 	shouldFail  bool
+	mu          sync.Mutex
 }
 
 func (r *TestResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	r.mu.Lock()
 	r.hitCount++
+	r.mu.Unlock()
 	if r.shouldFail {
 		return nil, errors.New("failed")
 	}
@@ -36,6 +40,8 @@ func (r *TestResolver) String() string {
 }
 
 func (r *TestResolver) HitCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.hitCount
 }
 
