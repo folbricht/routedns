@@ -95,12 +95,20 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 }
 
 // Resolve a DNS query.
-func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (a *dns.Msg, err error) {
 	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "doh",
 		"method":   d.opt.Method,
 	}).Debug("querying upstream resolver")
+
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.New().WithError(fmt.Errorf("%v", r)).Errorf("NILOPTREC (padQuery): QName: %s, QType: %s", q.Question[0].Name, dns.TypeToString[q.Question[0].Qtype])
+			debug.PrintStack()
+			err = errors.New("NILOPTREC error (padQuery), see message and stack trace")
+		}
+	}()
 
 	// Add padding before sending the query over HTTPS
 	padQuery(q)
