@@ -1063,6 +1063,8 @@ A route has the following fields:
 - `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
 - `invert` - Invert the result of the matching if set to `true`. Optional.
 - `doh-path` - Regexp that matches on the DoH query path the client used.
+- `listener` - Regexp that matches on the ID of the listener that first received.
+- `servername` - Regexp that matches on the TLS server name used in the TLS handshake with the listener.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
 
 Examples:
@@ -1348,6 +1350,7 @@ Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure 
 - `client-crt` - Client certificate file.
 - `client-key` - Client certificate key file
 - `ca` - CA certificate to validate server certificates.
+- `server-name` - Name of the certificate presented by the server if it does not match the name in the endpoint address.
 
 Examples:
 

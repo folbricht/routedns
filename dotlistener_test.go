@@ -29,7 +29,7 @@ func TestDoTListenerSimple(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Make a client talking to the listener. Need to trust the issue of the server certificate.
-	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
 	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsConfig})
 
@@ -64,7 +64,7 @@ func TestDoTListenerMutual(t *testing.T) {
 
 	// Make a client talking to the listener. Need to trust the issue of the server certificate and
 	// present a client certificate.
-	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key", "")
 	require.NoError(t, err)
 	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsClientConfig})
 
@@ -99,7 +99,7 @@ func TestDoTListenerPadding(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Make a client talking to the listener. Need to trust the issue of the server certificate.
-	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
 	c, _ := NewDoTClient("test-dot", addr, DoTClientOptions{TLSConfig: tlsConfig})
 

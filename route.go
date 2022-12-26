@@ -13,20 +13,22 @@ import (
 )
 
 type route struct {
-	types    []uint16
-	class    uint16
-	name     *regexp.Regexp
-	source   *net.IPNet
-	weekdays []time.Weekday
-	before   *TimeOfDay
-	after    *TimeOfDay
-	inverted bool // invert the matching behavior
-	dohPath  *regexp.Regexp
-	resolver Resolver
+	types         []uint16
+	class         uint16
+	name          *regexp.Regexp
+	source        *net.IPNet
+	weekdays      []time.Weekday
+	before        *TimeOfDay
+	after         *TimeOfDay
+	inverted      bool // invert the matching behavior
+	dohPath       *regexp.Regexp
+	resolver      Resolver
+	listenerID    *regexp.Regexp
+	tlsServerName *regexp.Regexp
 }
 
 // NewRoute initializes a route from string parameters.
-func NewRoute(name, class string, types, weekdays []string, before, after, source, dohPath string, resolver Resolver) (*route, error) {
+func NewRoute(name, class string, types, weekdays []string, before, after, source, dohPath, listenerID, tlsServerName string, resolver Resolver) (*route, error) {
 	if resolver == nil {
 		return nil, errors.New("no resolver defined for route")
 	}
@@ -58,6 +60,14 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 	if err != nil {
 		return nil, err
 	}
+	listenerRe, err := regexp.Compile(listenerID)
+	if err != nil {
+		return nil, err
+	}
+	tlsRe, err := regexp.Compile(tlsServerName)
+	if err != nil {
+		return nil, err
+	}
 	var sNet *net.IPNet
 	if source != "" {
 		_, sNet, err = net.ParseCIDR(source)
@@ -66,15 +76,17 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 		}
 	}
 	return &route{
-		types:    t,
-		class:    c,
-		name:     re,
-		weekdays: w,
-		before:   b,
-		after:    a,
-		source:   sNet,
-		dohPath:  dohRe,
-		resolver: resolver,
+		types:         t,
+		class:         c,
+		name:          re,
+		weekdays:      w,
+		before:        b,
+		after:         a,
+		source:        sNet,
+		dohPath:       dohRe,
+		listenerID:    listenerRe,
+		tlsServerName: tlsRe,
+		resolver:      resolver,
 	}, nil
 }
 
@@ -93,6 +105,12 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		return r.inverted
 	}
 	if !r.dohPath.MatchString(ci.DoHPath) {
+		return r.inverted
+	}
+	if !r.listenerID.MatchString(ci.Listener) {
+		return r.inverted
+	}
+	if !r.tlsServerName.MatchString(ci.TLSServerName) {
 		return r.inverted
 	}
 	if len(r.weekdays) > 0 || r.before != nil || r.after != nil {
@@ -150,6 +168,12 @@ func (r *route) String() string {
 	}
 	if r.dohPath.String() != "" {
 		fragments = append(fragments, "doh-path="+r.dohPath.String())
+	}
+	if r.listenerID.String() != "" {
+		fragments = append(fragments, "listener="+r.listenerID.String())
+	}
+	if r.tlsServerName.String() != "" {
+		fragments = append(fragments, "servername="+r.tlsServerName.String())
 	}
 	if len(r.weekdays) > 0 {
 		fragments = append(fragments, fmt.Sprintf("weekdays=%v", r.weekdays))

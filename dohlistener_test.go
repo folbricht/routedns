@@ -28,7 +28,7 @@ func TestDoHListenerSimple(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Make a client talking to the listener using POST
-	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "")
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
 	cPost, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsConfig, Method: "POST"})
@@ -82,7 +82,7 @@ func TestDoHListenerMutual(t *testing.T) {
 
 	// Make a client talking to the listener. Need to trust the issuer of the server certificate and
 	// present a client certificate.
-	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key", "")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
 	c, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsClientConfig})
@@ -116,7 +116,7 @@ func TestDoHListenerMutualQUIC(t *testing.T) {
 
 	// Make a client talking to the listener. Need to trust the issuer of the server certificate and
 	// present a client certificate.
-	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key")
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "testdata/client.crt", "testdata/client.key", "")
 	require.NoError(t, err)
 	u := "https://" + addr + "/dns-query"
 	c, err := NewDoHClient("test-doh", u, DoHClientOptions{TLSConfig: tlsClientConfig, Transport: "quic"})

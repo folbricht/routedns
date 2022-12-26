@@ -15,7 +15,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	case "doq":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoQPort)
 
-		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey, r.ServerName)
 		if err != nil {
 			return err
 		}
@@ -31,7 +31,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	case "dot":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoTPort)
 
-		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey, r.ServerName)
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	case "doh":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DoHPort)
 
-		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey, r.ServerName)
 		if err != nil {
 			return err
 		}

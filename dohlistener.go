@@ -240,9 +240,15 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
 		return
 	}
+	var tlsServerName string
+	if r.TLS != nil {
+		tlsServerName = r.TLS.ServerName
+	}
 	ci := ClientInfo{
-		SourceIP: clientIP,
-		DoHPath:  r.URL.Path,
+		SourceIP:      clientIP,
+		DoHPath:       r.URL.Path,
+		TLSServerName: tlsServerName,
+		Listener:      s.id,
 	}
 	log := Log.WithFields(logrus.Fields{
 		"id":       s.id,

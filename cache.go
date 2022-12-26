@@ -307,7 +307,7 @@ func minTTL(answer *dns.Msg) (uint32, bool) {
 type AnswerShuffleFunc func(*dns.Msg)
 
 // Randomly re-order the A/AAAA answer records.
-func AnswerShuffleRandon(msg *dns.Msg) {
+func AnswerShuffleRandom(msg *dns.Msg) {
 	if len(msg.Answer) < 2 {
 		return
 	}
