@@ -117,7 +117,10 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Return a copy since it could be modified in the chain (i.e. in the listener)
 	// but it's also stored for other goroutines which need to copy it.
-	return a.Copy(), err
+	if a != nil {
+		return a.Copy(), err
+	}
+	return a, err
 }
 
 func (r *requestDedup) String() string {
