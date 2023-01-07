@@ -128,6 +128,10 @@ func TTLSelectAverage(r *TTLModifier, a *dns.Msg) bool {
 		n++
 		sum += int(h.Ttl)
 	})
+	if n == 0 {
+		// Avoid division by 0 for empty responses
+		n = 1
+	}
 	average := uint32(sum / n)
 	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
 		if h.Ttl != average {
