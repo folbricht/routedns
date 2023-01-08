@@ -9,18 +9,18 @@ import (
 type ResponseCollapse struct {
 	id       string
 	resolver Resolver
-	ResponseCollapsOptions
+	ResponseCollapseOptions
 }
 
-type ResponseCollapsOptions struct {
+type ResponseCollapseOptions struct {
 	NullRCode int // Response code when there's nothing left after collapsing the response
 }
 
 var _ Resolver = &ResponseCollapse{}
 
 // NewResponseMinimize returns a new instance of a response minimizer.
-func NewResponseCollapse(id string, resolver Resolver, opt ResponseCollapsOptions) *ResponseCollapse {
-	return &ResponseCollapse{id: id, resolver: resolver, ResponseCollapsOptions: opt}
+func NewResponseCollapse(id string, resolver Resolver, opt ResponseCollapseOptions) *ResponseCollapse {
+	return &ResponseCollapse{id: id, resolver: resolver, ResponseCollapseOptions: opt}
 }
 
 // Resolve a DNS query, then collapse the response to remove anything from the

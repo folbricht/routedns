@@ -105,7 +105,12 @@ func (s DoQListener) Stop() error {
 }
 
 func (s DoQListener) handleConnection(connection quic.Connection) {
-	var ci ClientInfo
+	tlsServerName := connection.ConnectionState().TLS.ServerName
+
+	ci := ClientInfo{
+		Listener:      s.id,
+		TLSServerName: tlsServerName,
+	}
 	switch addr := connection.RemoteAddr().(type) {
 	case *net.TCPAddr:
 		ci.SourceIP = addr.IP

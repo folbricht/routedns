@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"crypto/tls"
 	"net"
 
 	"github.com/miekg/dns"
@@ -49,10 +50,18 @@ func (s DNSListener) String() string {
 func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
 	metrics := NewListenerMetrics("listener", id)
 	return func(w dns.ResponseWriter, req *dns.Msg) {
-		var (
-			ci  ClientInfo
-			err error
-		)
+		var err error
+
+		ci := ClientInfo{
+			Listener: id,
+		}
+
+		if r, ok := w.(interface{ ConnectionState() *tls.ConnectionState }); ok {
+			connState := r.ConnectionState()
+			if connState != nil {
+				ci.TLSServerName = connState.ServerName
+			}
+		}
 
 		switch addr := w.RemoteAddr().(type) {
 		case *net.TCPAddr:

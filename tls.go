@@ -41,9 +41,10 @@ func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Conf
 
 // TLSClientConfig is a convenience function that builds a tls.Config instance for TLS clients
 // based on common options and certificate+key files.
-func TLSClientConfig(caFile, crtFile, keyFile string) (*tls.Config, error) {
+func TLSClientConfig(caFile, crtFile, keyFile, serverName string) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
+		ServerName: serverName,
 	}
 
 	// Add client key/cert if provided
