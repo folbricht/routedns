@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	quic "github.com/lucas-clemente/quic-go"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
+	quic "github.com/quic-go/quic-go"
 	"github.com/sirupsen/logrus"
 )
 

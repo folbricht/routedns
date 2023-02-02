@@ -9,8 +9,8 @@ import (
 	"net"
 	"time"
 
-	quic "github.com/lucas-clemente/quic-go"
 	"github.com/miekg/dns"
+	quic "github.com/quic-go/quic-go"
 	"github.com/sirupsen/logrus"
 )
 
