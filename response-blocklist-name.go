@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -88,7 +89,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				continue
 			}
 			if _, _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
-				log := logger(r.id, query, ci).WithField("rule", rule.Rule)
+				log := logger(r.id, query, ci).WithField("rule", rule.Rule).WithField("issue-276-debug", fmt.Sprintf("%T-%#v", rule.Rule, rule.Rule))
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
