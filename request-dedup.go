@@ -115,6 +115,11 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	delete(r.inflight, k)
 	r.mu.Unlock()
 
+	// Return a copy since it could be modified in the chain (i.e. in the listener)
+	// but it's also stored for other goroutines which need to copy it.
+	if a != nil {
+		return a.Copy(), err
+	}
 	return a, err
 }
 

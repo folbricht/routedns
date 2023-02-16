@@ -1,0 +1,16 @@
+# Simple proxy using a cache.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-prefetch-trigger = 10   # Prefetch when the TTL has fallen below this value
+cache-prefetch-eligible = 20  # Only prefetch records if their original TTL is above this
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"

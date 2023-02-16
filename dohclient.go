@@ -14,9 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+
 	"github.com/jtacoma/uritemplates"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
@@ -290,7 +291,7 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 	return quic.DialEarly(udpConn, udpAddr, hostname, tlsConfig, config)
 }
 
-// Wrapper for http3.RoundTripper due to https://github.com/lucas-clemente/quic-go/issues/765
+// Wrapper for http3.RoundTripper due to https://github.com/quic-go/quic-go/issues/765
 // This wrapper will transparently re-open expired connections. Should be removed once the issue
 // has been fixed upstream.
 type http3ReliableRoundTripper struct {

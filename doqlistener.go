@@ -9,8 +9,8 @@ import (
 	"net"
 	"time"
 
-	quic "github.com/lucas-clemente/quic-go"
 	"github.com/miekg/dns"
+	quic "github.com/quic-go/quic-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -105,7 +105,12 @@ func (s DoQListener) Stop() error {
 }
 
 func (s DoQListener) handleConnection(connection quic.Connection) {
-	var ci ClientInfo
+	tlsServerName := connection.ConnectionState().TLS.ServerName
+
+	ci := ClientInfo{
+		Listener:      s.id,
+		TLSServerName: tlsServerName,
+	}
 	switch addr := connection.RemoteAddr().(type) {
 	case *net.TCPAddr:
 		ci.SourceIP = addr.IP

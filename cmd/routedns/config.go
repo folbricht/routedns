@@ -46,6 +46,7 @@ type resolver struct {
 	CA            string
 	ClientKey     string `toml:"client-key"`
 	ClientCrt     string `toml:"client-crt"`
+	ServerName    string `toml:"server-name"` // TLS server name presented in the server certificate
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
@@ -162,6 +163,8 @@ type route struct {
 	Invert        bool     // Invert the result of the match
 	DoHPath       string   `toml:"doh-path"` // DoH query path if received over DoH (regexp)
 	Resolver      string
+	Listener      string // ID of the listener that received the original request
+	TLSServerName string `toml:"servername"` // TLS servername
 }
 
 // LoadConfig reads a config file and returns the decoded structure.

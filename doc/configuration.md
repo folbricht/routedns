@@ -301,8 +301,10 @@ Options:
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
-- `cache-harden-below-nxdomain` - Return NXDOMAIN for sudomain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
+- `cache-harden-below-nxdomain` - Return NXDOMAIN for domain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
 - `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
+- `cache-prefetch-trigger`- If a query is received for a record with less that `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
+- `cache-prefetch-eligible` - Only records with at least `prefetch-eligible` seconds TTL are eligible to be prefetched.
 
 #### Examples
 
@@ -334,7 +336,7 @@ resolvers = ["cloudflare-dot"]
 cache-flush-query = "flush.cache."
 ```
 
-Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml)
+Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml)
 
 ### TTL modifier
 
@@ -1063,6 +1065,8 @@ A route has the following fields:
 - `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
 - `invert` - Invert the result of the matching if set to `true`. Optional.
 - `doh-path` - Regexp that matches on the DoH query path the client used.
+- `listener` - Regexp that matches on the ID of the listener that first received.
+- `servername` - Regexp that matches on the TLS server name used in the TLS handshake with the listener.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
 
 Examples:
@@ -1348,6 +1352,7 @@ Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure 
 - `client-crt` - Client certificate file.
 - `client-key` - Client certificate key file
 - `ca` - CA certificate to validate server certificates.
+- `server-name` - Name of the certificate presented by the server if it does not match the name in the endpoint address.
 
 Examples:
 

@@ -20,6 +20,13 @@ type ClientInfo struct {
 	// DoH query path used by the client. Only populated when
 	// the query was received over DoH.
 	DoHPath string
+
+	// TLS SNI server name
+	TLSServerName string
+
+	// Listener ID of the listener that first received the request. Can be
+	// used to route queries.
+	Listener string
 }
 
 // Metrics that are available from listeners and clients.

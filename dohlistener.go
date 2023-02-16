@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/miekg/dns"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -240,9 +240,15 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
 		return
 	}
+	var tlsServerName string
+	if r.TLS != nil {
+		tlsServerName = r.TLS.ServerName
+	}
 	ci := ClientInfo{
-		SourceIP: clientIP,
-		DoHPath:  r.URL.Path,
+		SourceIP:      clientIP,
+		DoHPath:       r.URL.Path,
+		TLSServerName: tlsServerName,
+		Listener:      s.id,
 	}
 	log := Log.WithFields(logrus.Fields{
 		"id":       s.id,

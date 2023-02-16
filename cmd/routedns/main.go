@@ -182,7 +182,7 @@ func start(opt options, args []string) error {
 		resolver, ok := resolvers[l.Resolver]
 		// All Listeners should route queries (except the admin service).
 		if !ok && l.Protocol != "admin" {
-			return fmt.Errorf("listener '%s' references non-existant resolver, group or router '%s'", id, l.Resolver)
+			return fmt.Errorf("listener '%s' references non-existent resolver, group or router '%s'", id, l.Resolver)
 		}
 		allowedNet, err := parseCIDRList(l.AllowedNet)
 		if err != nil {
@@ -301,7 +301,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	for _, rid := range g.Resolvers {
 		resolver, ok := resolvers[rid]
 		if !ok {
-			return fmt.Errorf("group '%s' references non-existant resolver or group '%s'", id, rid)
+			return fmt.Errorf("group '%s' references non-existent resolver or group '%s'", id, rid)
 		}
 		gr = append(gr, resolver)
 	}
@@ -547,7 +547,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		switch g.CacheAnswerShuffle {
 		case "": // default
 		case "random":
-			shuffleFunc = rdns.AnswerShuffleRandon
+			shuffleFunc = rdns.AnswerShuffleRandom
 		case "round-robin":
 			shuffleFunc = rdns.AnswerShuffleRoundRobin
 		default:
@@ -695,7 +695,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-collapse only supports one resolver in '%s'", id)
 		}
-		opt := rdns.ResponseCollapsOptions{
+		opt := rdns.ResponseCollapseOptions{
 			NullRCode: g.NullRCode,
 		}
 		resolvers[id] = rdns.NewResponseCollapse(id, gr[0], opt)
@@ -726,13 +726,13 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 	for _, route := range r.Routes {
 		resolver, ok := resolvers[route.Resolver]
 		if !ok {
-			return fmt.Errorf("router '%s' references non-existant resolver or group '%s'", id, route.Resolver)
+			return fmt.Errorf("router '%s' references non-existent resolver or group '%s'", id, route.Resolver)
 		}
 		types := route.Types
 		if route.Type != "" { // Support the deprecated "Type" by just adding it to "Types" if defined
 			types = append(types, route.Type)
 		}
-		r, err := rdns.NewRoute(route.Name, route.Class, types, route.Weekdays, route.Before, route.After, route.Source, route.DoHPath, resolver)
+		r, err := rdns.NewRoute(route.Name, route.Class, types, route.Weekdays, route.Before, route.After, route.Source, route.DoHPath, route.Listener, route.TLSServerName, resolver)
 		if err != nil {
 			return fmt.Errorf("failure parsing routes for router '%s' : %s", id, err.Error())
 		}

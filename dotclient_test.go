@@ -33,7 +33,7 @@ func TestDoTClientCA(t *testing.T) {
 	conn.Close()
 
 	// Create a config with CA using the temp file
-	tlsConfig, err := TLSClientConfig(crtFile, "", "")
+	tlsConfig, err := TLSClientConfig(crtFile, "", "", "")
 	require.NoError(t, err)
 
 	// DoT client with valid CA
