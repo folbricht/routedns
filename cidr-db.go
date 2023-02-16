@@ -17,16 +17,20 @@ type CidrDB struct {
 var _ IPBlocklistDB = &CidrDB{}
 
 // NewCidrDB returns a new instance of a matcher for a list of networks.
-func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
-	rules, err := loader.Load()
+func NewCidrDB(name string, loader BlocklistLoader) *CidrDB {
+	return &CidrDB{name, nil, nil, loader}
+}
+
+func (m *CidrDB) Reload() (IPBlocklistDB, error) {
+	rules, err := m.loader.Load()
 	if err != nil {
 		return nil, err
 	}
 	db := &CidrDB{
-		name:   name,
+		name:   m.name,
 		ip4:    new(ipBlocklistTrie),
 		ip6:    new(ipBlocklistTrie),
-		loader: loader,
+		loader: m.loader,
 	}
 	for _, r := range rules {
 		r = strings.TrimSpace(r)
@@ -51,11 +55,7 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 			db.ip4.add(n)
 		}
 	}
-	return db, nil
-}
-
-func (m *CidrDB) Reload() (IPBlocklistDB, error) {
-	return NewCidrDB(m.name, m.loader)
+	return &CidrDB{m.name, db.ip4, db.ip6, m.loader}, nil
 }
 
 func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
