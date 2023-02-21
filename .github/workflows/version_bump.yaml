@@ -32,20 +32,38 @@ jobs:
       - name: Run a multi-line script
         run: |
           echo $PWD
+
+	  # PULL
           git config user.name github-actions
           git config user.email github-actions@github.com
           git pull origin HEAD:${{ github.event.pull_request.head.sha }} --rebase
-          export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
+
+	  # MODIFY BUILD NUMBER
           export CURRENT_BUILD_NUMBER=$(grep BuildNumber version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
-          export CURRENT_BUILD_TIME=$(date)
-          export PR_CHANGE_BUILD_VERION=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $3}' )
-          export OLD_BUILD_VERION_PART=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $1"."$2}')
-          export CHANGE_BUILD_VERSION=$OLD_BUILD_VERION_PART.$(( $PR_CHANGE_BUILD_VERION + 1 ))
           export CHANGE_BUILD_NUMBER=$(( $CURRENT_BUILD_NUMBER  + 1 ))
+
+	  # GET CURRENT BUILD VERSION
+          export CURRENT_BUILD_VERSION=$(grep BuildVersion version.go | awk -F= '{print $2}' | cut -d'"' -f 2-2 )
+
+	  # SPLIT BUILD VERSION
+	  export PR_CHANGE_BUILD_VERION=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $3}' ) 
+          export OLD_BUILD_VERION_PART=$(echo $CURRENT_BUILD_VERSION | awk -F. '{print $1"."$2}')
+
+	  # UPDATE BUILD VERSION
+	  export CHANGE_BUILD_VERSION=$OLD_BUILD_VERION_PART.$(( $PR_CHANGE_BUILD_VERION + 1 ))
+
+	  # INIT DATE
+          export CURRENT_BUILD_TIME=$(date)
+
+	  # UPDATE
           perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
           perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
-          perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CURRENT_BUILD_NUMBER\"/g" version.go
+          perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CHANGE_BUILD_NUMBER\"/g" version.go
+
+	  # GIT
           git add .
-          git commit -m "Automatic Version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
-          git tag -a $CHANGE_BUILD_VERSION -m $CHANGE_BUILD_NUMBER
+          git commit -m "Automatic version bump from GitHub Action at: `date` $CHANGE_BUILD_VERSION"
+          git tag -a $CHANGE_BUILD_VERSION -m "Automatic release version number: $CHANGE_BUILD_NUMBER. Automatic build number: $CHANGE_BUILD_VERSION. Build date: $CURRENT_BUILD_TIME"
+	  # PUSH
           git push origin HEAD:master
+          git push origin HEAD:$CHANGE_BUILD_VERSION

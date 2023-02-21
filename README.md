@@ -1,5 +1,6 @@
 # RouteDNS - DNS stub resolver, proxy and router
-
+[![CI Version](https://github.com/folbricht/routedns/actions/workflows/version_bump.yaml/badge.svg)](https://github.com/folbricht/routedns/actions/workflows/version_bump.yaml)
+[![CI Builder](https://github.com/folbricht/routedns/actions/workflows/build.yaml/badge.svg)](https://github.com/folbricht/routedns/actions/workflows/build.yaml)
 [![GoDoc](https://godoc.org/github.com/folbricht/routedns?status.svg)](https://godoc.org/github.com/folbricht/routedns) ![build](https://github.com/folbricht/routedns/workflows/build/badge.svg) ![license](https://img.shields.io/badge/License-BSD-green.svg)
 
 RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex processing pipelines allowing routing of queries based on query name, type or source address as well as blocklists, caches and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
