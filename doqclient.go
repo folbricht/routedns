@@ -87,8 +87,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 			config: &quic.Config{
 				TokenStore: quic.NewLRUTokenStore(10, 10),
 			},
-			pool: new(udpConnPool),
-			log:  log,
+			log: log,
 		},
 		metrics: NewListenerMetrics("client", id),
 	}, nil
@@ -144,7 +143,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Write the query into the stream and close is. Only one stream per query/response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second))
-	if _, err = stream.Write(p); err != nil {
+	if _, err = stream.Write(b); err != nil {
 		d.metrics.err.Add("write", 1)
 		return nil, err
 	}
@@ -201,7 +200,7 @@ type doqConnection struct {
 	tlsConfig *tls.Config
 	config    *quic.Config
 	log       *logrus.Entry
-	pool      *udpConnPool
+	udpConn   *net.UDPConn
 
 	connection quic.Connection
 
@@ -215,7 +214,7 @@ func (s *doqConnection) getStream() (quic.Stream, error) {
 	// If we don't have a connection yet, make one
 	if s.connection == nil {
 		var err error
-		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
+		s.connection, s.udpConn, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open connection")
 			return nil, err
@@ -224,9 +223,16 @@ func (s *doqConnection) getStream() (quic.Stream, error) {
 
 	stream, err := s.connection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		// Try to open a new connection
+		// Try to open a new connection, but clean up our mess before we do so
 		_ = s.connection.CloseWithError(DOQNoError, "")
-		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
+		// and then we need to close the connection / socket ourselves as we own
+		// the UDP socket not quic-go
+		// c.f. https://github.com/quic-go/quic-go/issues/1457
+		_ = s.udpConn.Close()
+		s.udpConn = nil
+		s.log.Infoln("temporary fail when trying to open stream, attempting new connection")
+
+		s.connection, s.udpConn, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			s.log.WithError(err).Error("failed to open connection")
 			return nil, err
