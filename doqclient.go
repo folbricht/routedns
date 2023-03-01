@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -27,7 +26,7 @@ type DoQClient struct {
 	log      *logrus.Entry
 	metrics  *ListenerMetrics
 
-	connection doqConnection
+	connection quicConnection
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -79,15 +78,13 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		connection: doqConnection{
+		connection: quicConnection{
 			hostname:  host,
-			endpoint:  endpoint,
 			lAddr:     lAddr,
 			tlsConfig: tlsConfig,
 			config: &quic.Config{
 				TokenStore: quic.NewLRUTokenStore(10, 10),
 			},
-			log: log,
 		},
 		metrics: NewListenerMetrics("client", id),
 	}, nil
@@ -135,13 +132,13 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	copy(b[2:], p)
 
 	// Get a new stream in the connection
-	stream, err := d.connection.getStream()
+	stream, err := d.connection.getStream(d.endpoint, d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
 	}
 
-	// Write the query into the stream and close is. Only one stream per query/response
+	// Write the query into the stream and close it. Only one stream per query/response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err = stream.Write(b); err != nil {
 		d.metrics.err.Add("write", 1)
@@ -193,54 +190,36 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
-type doqConnection struct {
-	hostname  string
-	endpoint  string
-	lAddr     net.IP
-	tlsConfig *tls.Config
-	config    *quic.Config
-	log       *logrus.Entry
-	udpConn   *net.UDPConn
-
-	connection quic.Connection
-
-	mu sync.Mutex
-}
-
-func (s *doqConnection) getStream() (quic.Stream, error) {
+func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// If we don't have a connection yet, make one
-	if s.connection == nil {
+	if s.EarlyConnection == nil {
 		var err error
-		s.connection, s.udpConn, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.EarlyConnection, s.udpConn, err = quicDial(s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
-			s.log.WithError(err).Error("failed to open connection")
+			log.WithFields(logrus.Fields{
+				"hostname": s.hostname,
+			}).WithError(err).Error("failed to open connection")
 			return nil, err
 		}
+		s.rAddr = endpoint
 	}
 
-	stream, err := s.connection.OpenStream()
+	// If we can't get a stream then restart the connection and try again once
+	stream, err := s.EarlyConnection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		// Try to open a new connection, but clean up our mess before we do so
-		_ = s.connection.CloseWithError(DOQNoError, "")
-		// and then we need to close the connection / socket ourselves as we own
-		// the UDP socket not quic-go
-		// c.f. https://github.com/quic-go/quic-go/issues/1457
-		_ = s.udpConn.Close()
-		s.udpConn = nil
-		s.log.Infoln("temporary fail when trying to open stream, attempting new connection")
-
-		s.connection, s.udpConn, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config)
-		if err != nil {
-			s.log.WithError(err).Error("failed to open connection")
+		log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		if err = quicRestart(s); err != nil {
+			log.WithFields(logrus.Fields{
+				"hostname": s.hostname,
+			}).WithError(err).Error("failed to open connection")
 			return nil, err
 		}
-		stream, err = s.connection.OpenStream()
+		stream, err = s.EarlyConnection.OpenStream()
 		if err != nil {
-			s.log.WithError(err).Error("failed to open stream")
-			return nil, err
+			log.WithError(err).Error("failed to open stream")
 		}
 	}
 	return stream, err

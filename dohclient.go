@@ -278,10 +278,10 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 
 // QUIC connection that automatically restarts when it's used after having timed out. Needed
 // since the quic-go RoundTripper doesn't have any connection management and timed out
-// connection aren't restarted. This one doesn't support Early connection, and instead just
-// uses a regular connection.
+// connections aren't restarted. This one uses EarlyConnection so we can use 0-RTT if the
+// server supports it (lower latency)
 type quicConnection struct {
-	quic.Connection
+	quic.EarlyConnection
 
 	hostname  string
 	rAddr     string
@@ -290,8 +290,6 @@ type quicConnection struct {
 	config    *quic.Config
 	mu        sync.Mutex
 	udpConn   *net.UDPConn
-
-	expiredContext context.Context
 }
 
 func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
@@ -299,46 +297,35 @@ func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Conf
 	if err != nil {
 		return nil, err
 	}
-	expired, cancel := context.WithCancel(context.Background())
-	cancel()
+
+	Log.WithFields(logrus.Fields{
+		"protocol": "quic",
+		"hostname": hostname,
+		"remote":   rAddr,
+		"local":    lAddr.String(),
+	}).Debug("new quic connection")
 
 	return &quicConnection{
-		hostname:       hostname,
-		rAddr:          rAddr,
-		lAddr:          lAddr,
-		tlsConfig:      tlsConfig,
-		config:         config,
-		udpConn:        udpConn,
-		Connection:     connection,
-		expiredContext: expired,
+		hostname:        hostname,
+		rAddr:           rAddr,
+		lAddr:           lAddr,
+		tlsConfig:       tlsConfig,
+		config:          config,
+		udpConn:         udpConn,
+		EarlyConnection: connection,
 	}, nil
-}
-
-func (s *quicConnection) HandshakeComplete() context.Context {
-	return s.expiredContext
 }
 
 func (s *quicConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	stream, err := s.Connection.OpenStreamSync(ctx)
-	if err != nil {
-		// Try to open a new connection, but clean up our mess before we do so
-		_ = s.Connection.CloseWithError(DOQNoError, "")
-		// and then we need to close the connection / socket ourselves as we own
-		// the UDP socket not quic-go
-		// c.f. https://github.com/quic-go/quic-go/issues/1457
-		_ = s.udpConn.Close()
-		s.udpConn = nil
-		logrus.Infoln("temporary fail when trying to open stream, attempting new connection")
-
-		var connection quic.Connection
-		connection, s.udpConn, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
-		if err != nil {
+	stream, err := s.EarlyConnection.OpenStreamSync(ctx)
+	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+		Log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
-		s.Connection = connection
-		stream, err = s.Connection.OpenStreamSync(ctx)
+		stream, err = s.EarlyConnection.OpenStreamSync(ctx)
 	}
 	return stream, err
 }
@@ -346,18 +333,13 @@ func (s *quicConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error
 func (s *quicConnection) OpenStream() (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	stream, err := s.Connection.OpenStream()
-	if err != nil {
-		_ = s.Connection.CloseWithError(DOQNoError, "")
-		_ = s.udpConn.Close()
-		s.udpConn = nil
-		var connection quic.Connection
-		connection, s.udpConn, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
-		if err != nil {
+	stream, err := s.EarlyConnection.OpenStream()
+	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+		Log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
-		s.Connection = connection
-		stream, err = s.Connection.OpenStream()
+		stream, err = s.EarlyConnection.OpenStream()
 	}
 	return stream, err
 }
@@ -366,20 +348,64 @@ func (s *quicConnection) NextConnection() quic.Connection {
 	return nil
 }
 
-func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.Connection, *net.UDPConn, error) {
+func quicRestart(s *quicConnection) error {
+	// Try to open a new connection, but clean up our mess before we do so
+	// This function should be called with the quicConnection locked, but lock checking isn't provided
+	// in golang; the issue was closed with "Won't fix"
+	_ = s.EarlyConnection.CloseWithError(DOQNoError, "")
+
+	// We need to close the UDP socket ourselves as we own the socket not the quic-go module
+	// c.f. https://github.com/quic-go/quic-go/issues/1457
+	if s.udpConn != nil {
+		_ = s.udpConn.Close()
+		s.udpConn = nil
+	}
+	Log.WithFields(logrus.Fields{
+		"protocol": "quic",
+		"hostname": s.hostname,
+		"local":    s.lAddr.String(),
+		"remote":   s.rAddr,
+	}).Debug("attempt reconnect")
+	var err error
+	var earlyConn quic.EarlyConnection
+	earlyConn, s.udpConn, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+	if err != nil || s.udpConn == nil {
+		Log.WithFields(logrus.Fields{
+			"protocol": "quic",
+			"address":  s.hostname,
+			"local":    s.lAddr.String(),
+		}).WithError(err).Error("couldn't restart quic connection")
+		return err
+	}
+	Log.WithFields(logrus.Fields{
+		"protocol": "quic",
+		"address":  s.hostname,
+		"local":    s.lAddr.String(),
+		"rAddr":    s.rAddr,
+	}).Debug("restarted quic connection")
+
+	s.EarlyConnection = earlyConn
+	return nil
+}
+
+func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
+		Log.WithError(err).Debug("couldn't resolve remote addr (" + rAddr + ") for UDP quic client")
 		return nil, nil, err
 	}
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
+		Log.WithError(err).Debug("couldn't listen on UDP socket on local address [" + lAddr.String() + "]")
 		return nil, nil, err
 	}
-	connection, err := quic.Dial(udpConn, udpAddr, hostname, tlsConfig, config)
+	// use DialEarly so that we attempt to use 0-RTT DNS queries, it's lower latency (if the server supports it)
+	earlyConn, err := quic.DialEarly(udpConn, udpAddr, hostname, tlsConfig, config)
 	if err != nil {
-		// don't leak filehandles / sockets
+		// don't leak filehandles / sockets; if we got here udpConn must exist
 		_ = udpConn.Close()
+		Log.WithError(err).Debug("couldn't dial quic early connection")
 		return nil, nil, err
 	}
-	return connection, udpConn, nil
+	return earlyConn, udpConn, nil
 }
