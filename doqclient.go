@@ -112,15 +112,15 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		edns0.Option = newOpt
 	}
 
-	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero. Don't forget
-	// to restore the ID in the original query, it could be needed for error responses further
-	// up
-	id := q.Id
-	q.Id = 0
-	defer func() { q.Id = id }()
+	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
+	// Make a deep copy because if there are multiple upstreams second
+	// and subsequent replies downstream will have 0 for an Id (by default a
+	// query is shared with all upstreams)
+	qc := q.Copy()
+	qc.Id = 0
 
 	// Encode the query
-	p, err := q.Pack()
+	p, err := qc.Pack()
 	if err != nil {
 		d.metrics.err.Add("pack", 1)
 		return nil, err
@@ -168,7 +168,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Decode the response and restore the ID
 	a := new(dns.Msg)
 	err = a.Unpack(b)
-	a.Id = id
+	a.Id = q.Id
 
 	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
 	edns0 = a.IsEdns0()
