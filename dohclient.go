@@ -352,6 +352,9 @@ func (s *quicConnection) NextConnection() quic.Connection {
 }
 
 func quicRestart(s *quicConnection) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Try to open a new connection, but clean up our mess before we do so
 	// This function should be called with the quicConnection locked, but lock checking isn't provided
 	// in golang; the issue was closed with "Won't fix"
