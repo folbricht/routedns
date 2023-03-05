@@ -68,6 +68,9 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 
 // Resolve a DNS query.
 func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// Packing a message is not always a read-only operation, make a copy
+	q = q.Copy()
+
 	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "dot",
