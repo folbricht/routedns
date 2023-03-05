@@ -1531,3 +1531,4 @@ protocol = "dot"
 ```
 
 Example config files: [bootstrap-resolver.toml](../cmd/routedns/example-config/bootstrap-resolver.toml), [use-case-6.toml](../cmd/routedns/example-config/use-case-6.toml)
+
