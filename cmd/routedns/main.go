@@ -768,17 +768,27 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
+	var db rdns.BlocklistDB
 	switch l.Format {
 	case "regexp", "":
-		return rdns.NewRegexpDB(name, loader)
+		db = rdns.NewRegexpDB(name, loader)
 	case "domain":
-		return rdns.NewDomainDB(name, loader)
+		db = rdns.NewDomainDB(name, loader)
 	case "hosts":
-		return rdns.NewHostsDB(name, loader)
+		db = rdns.NewHostsDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+	db, err = db.Reload()
+	if err != nil {
+		rdns.Log.WithError(err).Warn("failed to load list")
+		if !l.AllowFailOnStart {
+			return nil, fmt.Errorf("failed to load list on startup, set allow-fail-on-startup to skip: %w", err)
+		}
+	}
+	return db, nil
 }
+
 
 func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
 	loc, err := url.Parse(l.Source)
@@ -805,15 +815,24 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
 	}
-
+	var db rdns.IPBlocklistDB
 	switch l.Format {
-	case "cidr", "":
-		return rdns.NewCidrDB(name, loader)
-	case "location":
-		return rdns.NewGeoIPDB(name, loader, locationDB)
-	default:
-		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
+		case "cidr", "":
+			db = rdns.NewCidrDB(name, loader)
+		case "location":
+			return rdns.NewGeoIPDB(name, loader, locationDB)
+		default:
+			return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+	db, err = db.Reload()
+
+	if err != nil {
+                rdns.Log.WithError(err).Warn("failed to load list")
+                if !l.AllowFailOnStart {
+			return nil, fmt.Errorf("failed to load list on startup, set allow-fail-on-startup to skip: %w", err)
+		}
+        }
+        return db, nil
 }
 
 func printVersion() {

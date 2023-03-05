@@ -25,8 +25,12 @@ type ipRecords struct {
 var _ BlocklistDB = &HostsDB{}
 
 // NewHostsDB returns a new instance of a matcher for a list of regular expressions.
-func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
-	rules, err := loader.Load()
+func NewHostsDB(name string, loader BlocklistLoader) *HostsDB {
+	return &HostsDB{name, nil,nil, loader}
+}
+
+func (m *HostsDB) Reload() (BlocklistDB, error) {
+	rules, err := m.loader.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +74,8 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		}
 		ptrMap[reverseAddr] = names[0]
 	}
-	return &HostsDB{name, filters, ptrMap, loader}, nil
-}
+	return &HostsDB{m.name, filters, ptrMap, m.loader}, nil
 
-func (m *HostsDB) Reload() (BlocklistDB, error) {
-	return NewHostsDB(m.name, m.loader)
 }
 
 func (m *HostsDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {

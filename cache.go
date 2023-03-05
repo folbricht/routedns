@@ -59,7 +59,7 @@ type CacheOptions struct {
 	// Query name that will trigger a cache flush. Disabled if empty.
 	FlushQuery string
 
-	// If a query is received for a record with less that PrefetchTrigger TTL left, the
+	// If a query is received for a record that less that PrefetchTrigger TTL left, the
 	// cache will send another query to upstream. The goal is to automatically refresh
 	// the record in the cache.
 	PrefetchTrigger uint32
