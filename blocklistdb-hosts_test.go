@@ -20,7 +20,8 @@ func TestHostsDB(t *testing.T) {
 		"192.168.1.1 domain6.com",
 	})
 
-	m, err := NewHostsDB("testlist", loader)
+	db := NewHostsDB("testlist", loader)
+	m, err := db.Reload()
 	require.NoError(t, err)
 
 	tests := []struct {

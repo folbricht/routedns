@@ -13,7 +13,8 @@ func TestCidrDB(t *testing.T) {
 		"1.2.0.0/16",
 		"2a03:2880:f101:83::0/64",
 	})
-	db, err := NewCidrDB("testlist", loader)
+	cidr := NewCidrDB("testlist", loader)
+	db, err := cidr.Reload()
 	require.NoError(t, err)
 
 	tests := []struct {

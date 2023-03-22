@@ -14,8 +14,8 @@ type MultiDB struct {
 var _ BlocklistDB = MultiDB{}
 
 // NewMultiDB returns a new instance of a wrapper for blocklists
-func NewMultiDB(dbs ...BlocklistDB) (MultiDB, error) {
-	return MultiDB{dbs}, nil
+func NewMultiDB(dbs ...BlocklistDB) MultiDB {
+	return MultiDB{dbs}
 }
 
 func (m MultiDB) Reload() (BlocklistDB, error) {
@@ -27,7 +27,7 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 		}
 		newDBs = append(newDBs, n)
 	}
-	return NewMultiDB(newDBs...)
+	return NewMultiDB(newDBs...), nil
 }
 
 func (m MultiDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {

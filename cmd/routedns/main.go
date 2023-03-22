@@ -371,10 +371,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				}
 				dbs = append(dbs, db)
 			}
-			blocklistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+			blocklistDB = rdns.NewMultiDB(dbs...)
 		}
 		var allowlistDB rdns.BlocklistDB
 		if len(g.Allowlist) > 0 {
@@ -391,10 +388,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				}
 				dbs = append(dbs, db)
 			}
-			allowlistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+			allowlistDB = rdns.NewMultiDB(dbs...)
 		}
 		opt := rdns.BlocklistOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
@@ -623,10 +617,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				}
 				dbs = append(dbs, db)
 			}
-			blocklistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+			blocklistDB = rdns.NewMultiDB(dbs...)
 		}
 		opt := rdns.ResponseBlocklistNameOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
@@ -789,7 +780,6 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 	return db, nil
 }
 
-
 func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
 	loc, err := url.Parse(l.Source)
 	if err != nil {
@@ -817,22 +807,22 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 	}
 	var db rdns.IPBlocklistDB
 	switch l.Format {
-		case "cidr", "":
-			db = rdns.NewCidrDB(name, loader)
-		case "location":
-			return rdns.NewGeoIPDB(name, loader, locationDB)
-		default:
-			return nil, fmt.Errorf("unsupported format '%s'", l.Format)
+	case "cidr", "":
+		db = rdns.NewCidrDB(name, loader)
+	case "location":
+		return rdns.NewGeoIPDB(name, loader, locationDB)
+	default:
+		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
 	db, err = db.Reload()
 
 	if err != nil {
-                rdns.Log.WithError(err).Warn("failed to load list")
-                if !l.AllowFailOnStart {
+		rdns.Log.WithError(err).Warn("failed to load list")
+		if !l.AllowFailOnStart {
 			return nil, fmt.Errorf("failed to load list on startup, set allow-fail-on-startup to skip: %w", err)
 		}
-        }
-        return db, nil
+	}
+	return db, nil
 }
 
 func printVersion() {
