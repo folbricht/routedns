@@ -18,17 +18,12 @@ type RegexpDB struct {
 var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
-func NewRegexpDB(name string, loader BlocklistLoader) *RegexpDB {
-	return &RegexpDB{name, nil, loader}
-}
-
-func (m *RegexpDB) Reload() (BlocklistDB, error) {
-	rules, err := m.loader.Load()
+func NewRegexpDB(name string, loader BlocklistLoader) (*RegexpDB, error) {
+	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
 	}
 	var filters []*regexp.Regexp
-
 	for _, r := range rules {
 		r = strings.TrimSpace(r)
 		if r == "" || strings.HasPrefix(r, "#") {
@@ -41,7 +36,11 @@ func (m *RegexpDB) Reload() (BlocklistDB, error) {
 		filters = append(filters, re)
 	}
 
-	return &RegexpDB{m.name, filters, m.loader}, nil
+	return &RegexpDB{name, filters, loader}, nil
+}
+
+func (m *RegexpDB) Reload() (BlocklistDB, error) {
+	return NewRegexpDB(m.name, m.loader)
 }
 
 func (m *RegexpDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
