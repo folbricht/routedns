@@ -36,7 +36,7 @@ func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
 		// Strip trailing . in case the list has FQDN names with . suffixes.
 		r = strings.TrimSuffix(r, ".")
 
-		// Break up the domain into its parts and iterare backwards over them, building
+		// Break up the domain into its parts and iterate backwards over them, building
 		// a graph of maps
 		parts := strings.Split(r, ".")
 		n := root

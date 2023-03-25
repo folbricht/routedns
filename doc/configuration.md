@@ -557,9 +557,11 @@ Options:
 - `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
 - `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
-- `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir`.
+- `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 
 When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup).
+
+To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
 
 #### Examples
 
@@ -573,6 +575,7 @@ blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaul
 blocklist        = [                     # Define the names to be blocked
   '(^|\.)evil\.com\.$',
   '(^|\.)unsafe[123]\.org\.$',
+]
 ```
 
 Simple blocklist with static `domain`-format rule in the configuration.
@@ -615,7 +618,7 @@ blocklist-source = [
 ]
 ```
 
-Remote blocklist that is cached to local disk (`cache-dir="/var/tmp"`) and loaded from it at startup.
+Remote blocklist that is cached to local disk (`cache-dir="/var/tmp"`) and loaded from it at startup. It also ignores failures to load the remote blocklist and does not prevent startup.
 
 ```toml
 [groups.cloudflare-blocklist]
@@ -623,7 +626,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
 ]
 ```
 
