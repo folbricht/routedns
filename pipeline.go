@@ -10,8 +10,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Defines how long to wait for a response from the resolver.
-const queryTimeout = time.Second
+// Defines how long to wait for a response from the resolver if no other timeout is given.
+const defaultQueryTimeout = 2 * time.Second
 
 // Tear down an upstream connection if nothing has been received for this long.
 const idleTimeout = 10 * time.Second
@@ -25,6 +25,7 @@ type Pipeline struct {
 	client   DNSDialer
 	requests chan *request
 	metrics  *ListenerMetrics
+	timeout  time.Duration
 }
 
 // DNSDialer is an abstraction for a dns.Client that returns a *dns.Conn.
@@ -33,12 +34,16 @@ type DNSDialer interface {
 }
 
 // NewPipeline returns an initialized (and running) DNS connection manager.
-func NewPipeline(id string, addr string, client DNSDialer) *Pipeline {
+func NewPipeline(id string, addr string, client DNSDialer, timeout time.Duration) *Pipeline {
+	if timeout == 0 {
+		timeout = defaultQueryTimeout
+	}
 	c := &Pipeline{
 		addr:     addr,
 		client:   client,
 		requests: make(chan *request),
 		metrics:  NewListenerMetrics("client", id),
+		timeout:  timeout,
 	}
 	go c.start()
 	return c
@@ -48,7 +53,7 @@ func NewPipeline(id string, addr string, client DNSDialer) *Pipeline {
 func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	r := newRequest(q)
 
-	timeout := time.NewTimer(queryTimeout)
+	timeout := time.NewTimer(c.timeout)
 	defer timeout.Stop()
 
 	// Queue up the request or time out

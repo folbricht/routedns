@@ -39,6 +39,8 @@ type DoHClientOptions struct {
 	LocalAddr net.IP
 
 	TLSConfig *tls.Config
+
+	QueryTimeout time.Duration
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
@@ -82,6 +84,9 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 	}
 	if opt.Method != "POST" && opt.Method != "GET" {
 		return nil, fmt.Errorf("unsupported method '%s'", opt.Method)
+	}
+	if opt.QueryTimeout == 0 {
+		opt.QueryTimeout = defaultQueryTimeout
 	}
 
 	return &DoHClient{
@@ -129,7 +134,11 @@ func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", u, bytes.NewReader(b))
+
+	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(b))
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err
@@ -162,7 +171,11 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-	req, err := http.NewRequest("GET", u, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err

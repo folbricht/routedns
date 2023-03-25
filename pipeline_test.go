@@ -20,7 +20,7 @@ func TestPipelineQueryTimeout(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		return nil, errors.New("failed")
 	}
-	p := NewPipeline("test", "localhost:53", testDialer(df))
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
@@ -35,5 +35,5 @@ func TestPipelineQueryTimeout(t *testing.T) {
 
 	// Make sure we get a timeout error and it took the right amount to come back
 	require.ErrorAs(t, err, &QueryTimeoutError{})
-	require.WithinDuration(t, start.Add(queryTimeout), time.Now(), 10*time.Millisecond)
+	require.WithinDuration(t, start.Add(time.Second), time.Now(), 10*time.Millisecond)
 }
