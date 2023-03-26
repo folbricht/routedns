@@ -1346,6 +1346,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
+- `query-timeout` - Sets the query timeout to allow. In seconds.
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 

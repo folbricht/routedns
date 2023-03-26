@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	rdns "github.com/folbricht/routedns"
 )
@@ -23,6 +24,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			TLSConfig:     tlsConfig,
+			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
 		if err != nil {
@@ -39,6 +41,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			TLSConfig:     tlsConfig,
+			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
 		if err != nil {
@@ -56,6 +59,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			DTLSConfig:    dtlsConfig,
 			UDPSize:       r.EDNS0UDPSize,
+			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
 		if err != nil {
@@ -74,6 +78,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 		if err != nil {
@@ -83,8 +88,9 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.PlainDNSPort)
 
 		opt := rdns.DNSClientOptions{
-			LocalAddr: net.ParseIP(r.LocalAddr),
-			UDPSize:   r.EDNS0UDPSize,
+			LocalAddr:    net.ParseIP(r.LocalAddr),
+			UDPSize:      r.EDNS0UDPSize,
+			QueryTimeout: time.Duration(r.QueryTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		if err != nil {
