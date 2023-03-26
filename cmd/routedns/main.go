@@ -759,11 +759,15 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 		switch loc.Scheme {
 		case "http", "https":
 			opt := rdns.HTTPLoaderOptions{
-				CacheDir: l.CacheDir,
+				CacheDir:     l.CacheDir,
+				AllowFailure: l.AllowFailure,
 			}
 			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(l.Source)
+			opt := rdns.FileLoaderOptions{
+				AllowFailure: l.AllowFailure,
+			}
+			loader = rdns.NewFileLoader(l.Source, opt)
 		default:
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
@@ -796,11 +800,15 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 		switch loc.Scheme {
 		case "http", "https":
 			opt := rdns.HTTPLoaderOptions{
-				CacheDir: l.CacheDir,
+				CacheDir:     l.CacheDir,
+				AllowFailure: l.AllowFailure,
 			}
 			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(l.Source)
+			opt := rdns.FileLoaderOptions{
+				AllowFailure: l.AllowFailure,
+			}
+			loader = rdns.NewFileLoader(l.Source, opt)
 		default:
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}

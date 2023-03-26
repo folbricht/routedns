@@ -14,14 +14,18 @@ import (
 
 // HTTPLoader reads blocklist rules from a server via HTTP(S).
 type HTTPLoader struct {
-	url      string
-	opt      HTTPLoaderOptions
-	fromDisk bool
+	url         string
+	opt         HTTPLoaderOptions
+	fromDisk    bool
+	lastSuccess []string
 }
 
 // HTTPLoaderOptions holds options for HTTP blocklist loaders.
 type HTTPLoaderOptions struct {
 	CacheDir string
+
+	// Don't fail when trying to load the list
+	AllowFailure bool
 }
 
 var _ BlocklistLoader = &HTTPLoader{}
@@ -29,12 +33,24 @@ var _ BlocklistLoader = &HTTPLoader{}
 const httpTimeout = 30 * time.Minute
 
 func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
-	return &HTTPLoader{url, opt, opt.CacheDir != ""}
+	return &HTTPLoader{url, opt, opt.CacheDir != "", nil}
 }
 
-func (l *HTTPLoader) Load() ([]string, error) {
+func (l *HTTPLoader) Load() (rules []string, err error) {
 	log := Log.WithField("url", l.url)
 	log.Trace("loading blocklist")
+
+	// If AllowFailure is enabled, return the last successfully loaded list
+	// and nil
+	defer func() {
+		if err != nil && l.opt.AllowFailure {
+			log.WithError(err).Warn("failed to load blocklist, continuing with previous ruleset")
+			rules = l.lastSuccess
+			err = nil
+		} else {
+			l.lastSuccess = rules
+		}
+	}()
 
 	// If a cache-dir was given, try to load the list from disk on first load
 	if l.fromDisk {
@@ -67,7 +83,6 @@ func (l *HTTPLoader) Load() ([]string, error) {
 	}
 
 	start := time.Now()
-	var rules []string
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		rules = append(rules, scanner.Text())
