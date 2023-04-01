@@ -104,8 +104,15 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	d.metrics.query.Add(1)
 
+	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
+	// Make a deep copy because if there are multiple upstreams second
+	// and subsequent replies downstream will have 0 for an Id (by default a
+	// query is shared with all upstreams)
+	qc := q.Copy()
+	qc.Id = 0
+
 	// Sending a edns-tcp-keepalive EDNS(0) option over DoQ is an error. Filter it out.
-	edns0 := q.IsEdns0()
+	edns0 := qc.IsEdns0()
 	if edns0 != nil {
 		newOpt := make([]dns.EDNS0, 0, len(edns0.Option))
 		for _, opt := range edns0.Option {
@@ -116,13 +123,6 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 		edns0.Option = newOpt
 	}
-
-	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
-	// Make a deep copy because if there are multiple upstreams second
-	// and subsequent replies downstream will have 0 for an Id (by default a
-	// query is shared with all upstreams)
-	qc := q.Copy()
-	qc.Id = 0
 
 	// Encode the query
 	p, err := qc.Pack()
