@@ -6,11 +6,9 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // Cache stores results received from its upstream resolver for
@@ -19,9 +17,8 @@ type Cache struct {
 	CacheOptions
 	id       string
 	resolver Resolver
-	mu       sync.Mutex
-	lru      *lruCache
 	metrics  *CacheMetrics
+	backend  cacheBackend
 }
 
 type CacheMetrics struct {
@@ -68,13 +65,25 @@ type CacheOptions struct {
 	PrefetchEligible uint32
 }
 
+type cacheBackend interface {
+	Store(query *dns.Msg, item *cacheAnswer)
+
+	// Lookup a cached response
+	Lookup(q *dns.Msg) (answer *dns.Msg, prefetchEligible bool, ok bool)
+
+	// Remove one or more cached responses
+	Evict(queries ...*dns.Msg)
+
+	// Flush all records in the store
+	Flush()
+}
+
 // NewCache returns a new instance of a Cache resolver.
 func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 	c := &Cache{
 		CacheOptions: opt,
 		id:           id,
 		resolver:     resolver,
-		lru:          newLRUCache(opt.Capacity),
 		metrics: &CacheMetrics{
 			hit:     getVarInt("cache", id, "hit"),
 			miss:    getVarInt("cache", id, "miss"),
@@ -87,7 +96,8 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 	if c.NegativeTTL == 0 {
 		c.NegativeTTL = 60
 	}
-	go c.startGC(c.GCPeriod)
+	c.backend = newMemoryBackend(opt.Capacity, c.GCPeriod, c.metrics)
+
 	return c
 }
 
@@ -109,7 +119,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Flush the cache if the magic query name is received and flushing is enabled.
 	if r.FlushQuery != "" && r.FlushQuery == q.Question[0].Name {
 		log.Info("flushing cache")
-		r.flush()
+		r.backend.Flush()
 		a := new(dns.Msg)
 		return a.SetReply(q), nil
 	}
@@ -181,72 +191,32 @@ func (r *Cache) String() string {
 
 // Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
 func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool, bool) {
-	var answer *dns.Msg
-	var timestamp time.Time
-	var prefetchEligible bool
-	r.mu.Lock()
-	if a := r.lru.get(q); a != nil {
+	a, prefetchEligible, ok := r.backend.Lookup(q)
+	if ok {
 		if r.ShuffleAnswerFunc != nil {
-			r.ShuffleAnswerFunc(a.Msg)
+			r.ShuffleAnswerFunc(a)
 		}
-		answer = a.Copy()
-		timestamp = a.timestamp
-		prefetchEligible = a.prefetchEligible
+		return a, prefetchEligible, true
 	}
-	r.mu.Unlock()
 
 	// We couldn't find it in the cache, but a parent domain may already be with NXDOMAIN.
 	// Return that instead if enabled.
-	if answer == nil && r.HardenBelowNXDOMAIN {
+	if r.HardenBelowNXDOMAIN {
 		name := q.Question[0].Name
 		newQ := q.Copy()
 		fragments := strings.Split(name, ".")
-		r.mu.Lock()
 		for i := 1; i < len(fragments)-1; i++ {
 			newQ.Question[0].Name = strings.Join(fragments[i:], ".")
-			if a := r.lru.get(newQ); a != nil {
+			if a, _, ok := r.backend.Lookup(newQ); ok {
 				if a.Rcode == dns.RcodeNameError {
-					r.mu.Unlock()
 					return nxdomain(q), false, true
 				}
 				break
 			}
 		}
-		r.mu.Unlock()
 	}
 
-	// Return a cache-miss if there's no answer record in the map
-	if answer == nil {
-		return nil, false, false
-	}
-
-	// Make a copy of the response before returning it. Some later
-	// elements might make changes.
-	answer = answer.Copy()
-	answer.Id = q.Id
-
-	// Calculate the time the record spent in the cache. We need to
-	// subtract that from the TTL of each answer record.
-	age := uint32(time.Since(timestamp).Seconds())
-
-	// Go through all the answers, NS, and Extra and adjust the TTL (subtract the time
-	// it's spent in the cache). If the record is too old, evict it from the cache
-	// and return a cache-miss. OPT records have a TTL of 0 and are ignored.
-	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
-		for _, a := range rr {
-			if _, ok := a.(*dns.OPT); ok {
-				continue
-			}
-			h := a.Header()
-			if age >= h.Ttl {
-				r.evictFromCache(q)
-				return nil, false, false
-			}
-			h.Ttl -= age
-		}
-	}
-
-	return answer, prefetchEligible, true
+	return nil, false, false
 }
 
 func (r *Cache) storeInCache(query, answer *dns.Msg) {
@@ -279,50 +249,7 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	}
 
 	// Store it in the cache
-	r.mu.Lock()
-	r.lru.add(query, item)
-	r.mu.Unlock()
-}
-
-func (r *Cache) evictFromCache(queries ...*dns.Msg) {
-	r.mu.Lock()
-	for _, query := range queries {
-		r.lru.delete(query)
-	}
-	r.mu.Unlock()
-}
-
-// Runs every period time and evicts all items from the cache that are
-// older than max, regardless of TTL. Note that the cache can hold old
-// records that are no longer valid. These will only be evicted once
-// a new query for them is made (and TTL is too old) or when they are
-// older than max.
-func (r *Cache) startGC(period time.Duration) {
-	for {
-		time.Sleep(period)
-		now := time.Now()
-		var total, removed int
-		r.mu.Lock()
-		r.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.expiry) {
-				removed++
-				return true
-			}
-			return false
-		})
-		total = r.lru.size()
-		r.mu.Unlock()
-
-		r.metrics.entries.Set(int64(total))
-		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
-	}
-}
-
-// Flush the cache (reset to empty).
-func (r *Cache) flush() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.lru.reset()
+	r.backend.Store(query, item)
 }
 
 // Find the lowest TTL in all resource records (except OPT).
