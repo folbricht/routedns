@@ -11,6 +11,7 @@ protocol = "dot"
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-dot"]
+backend = {type = "memory"}
 
 [routers.router1]
 routes = [

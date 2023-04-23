@@ -61,7 +61,7 @@ func TestLRUAddGet(t *testing.T) {
 
 	// Use an iterator to delete two more
 	c.deleteFunc(func(a *cacheAnswer) bool {
-		question := a.Question[0]
+		question := a.Msg.Question[0]
 		return question.Name == "test8.com." || question.Name == "test9.com."
 	})
 	require.Equal(t, 2, c.size())

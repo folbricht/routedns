@@ -291,6 +291,8 @@ Caches can be combined with a [TTL Modifier](#TTL-Modifier) to avoid too many ca
 
 It is possible to pre-define a query name that will flush the cache if received from a client.
 
+The content of memory caches can be persisted to and loaded from disk.
+
 #### Configuration
 
 Caches are instantiated with `type = "cache"` in the groups section of the configuration.
@@ -298,7 +300,7 @@ Caches are instantiated with `type = "cache"` in the groups section of the confi
 Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
-- `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
+- `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Deprecated, set limit in the backend instead.
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
 - `cache-rcode-max-ttl` - Map of RCODE to max TTL (in seconds) to use for records based on the status code regardless of SOA. Response codes are given in their numerical form: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3) for a more complete list. For example `{1 = 60, 3 = 60}` would set a limit on how long FORMERR or NXDOMAIN responses can be cached.
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
@@ -306,6 +308,17 @@ Options:
 - `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
 - `cache-prefetch-trigger`- If a query is received for a record with less that `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
 - `cache-prefetch-eligible` - Only records with at least `prefetch-eligible` seconds TTL are eligible to be prefetched.
+- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to memory backend if not configued.
+
+Backends:
+
+**Memory backend**
+
+The memory backend will keep all cache items in memory. It can be configured to write the content of the cache to disk on shutdown. Memmory backend config has the following options:
+
+- `type="memory"`
+- `size` - Max number of responses to cache. Defaults to 0 which means no limit.
+- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence
 
 #### Examples
 
@@ -315,6 +328,7 @@ Simple cache without size-limit:
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-dot"]
+backend = {type = "memory"}
 ```
 
 Cache that only stores up to 1000 records in memory and keeps negative responses for 1h. Responses are randomized for cached responses.
@@ -323,18 +337,19 @@ Cache that only stores up to 1000 records in memory and keeps negative responses
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-dot"]
-cache-size = 1000
 cache-negative-ttl = 3600
 cache-answer-shuffle = "random"
+backend = {type = "memory", size = 1000}
 ```
 
-Cache that is flushed if a query for `flush.cache.` is received.
+Cache that is flushed if a query for `flush.cache.` is received. Also persists the cache to disk.
 
 ```toml
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-flush-query = "flush.cache."
+backend = {type = "memory", filename = "/var/tmp/cache.json"}
 ```
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml)

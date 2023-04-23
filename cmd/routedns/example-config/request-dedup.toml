@@ -9,6 +9,7 @@ resolver = "cache"
 [groups.cache]
 type = "cache"
 resolvers = ["dedup"]
+backend = {type = "memory"}
 
 [groups.dedup]
 type = "request-dedup"

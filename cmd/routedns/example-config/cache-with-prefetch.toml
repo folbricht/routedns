@@ -9,6 +9,7 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-prefetch-trigger = 10   # Prefetch when the TTL has fallen below this value
 cache-prefetch-eligible = 20  # Only prefetch records if their original TTL is above this
+backend = {type = "memory", filename = "/var/tmp/cache.json"}
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

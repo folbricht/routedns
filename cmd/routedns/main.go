@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	syslog "github.com/RackSec/srslog"
@@ -69,6 +71,9 @@ var _ dag.IDInterface = Node{}
 func (n Node) ID() string {
 	return n.id
 }
+
+// Functions to call on shutdown
+var onClose []func()
 
 func start(opt options, args []string) error {
 	// Set the log level in the library package
@@ -292,7 +297,16 @@ func start(opt options, args []string) error {
 		}(l)
 	}
 
-	select {}
+	// Graceful shutdown
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGHUP)
+	<-sig
+	rdns.Log.Info("stopping")
+	for _, f := range onClose {
+		f()
+	}
+
+	return nil
 }
 
 // Instantiate a group object based on configuration and add to the map of resolvers by ID.
@@ -574,6 +588,15 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			FlushQuery:          g.CacheFlushQuery,
 			PrefetchTrigger:     g.PrefetchTrigger,
 			PrefetchEligible:    g.PrefetchEligible,
+		}
+		if g.Backend != nil {
+			backend := rdns.NewMemoryBackend(rdns.MemoryBackendOptions{
+				Capacity: g.Backend.Size,
+				GCPeriod: time.Duration(g.Backend.GCPeriod) * time.Second,
+				Filename: g.Backend.Filename,
+			})
+			onClose = append(onClose, func() { backend.Close() })
+			opt.Backend = backend
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
 	case "response-blocklist-ip", "response-blocklist-cidr": // "response-blocklist-cidr" has been retired/renamed to "response-blocklist-ip"
