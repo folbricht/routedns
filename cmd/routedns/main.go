@@ -299,7 +299,7 @@ func start(opt options, args []string) error {
 
 	// Graceful shutdown
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGHUP)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-sig
 	rdns.Log.Info("stopping")
 	for _, f := range onClose {
