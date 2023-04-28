@@ -60,10 +60,11 @@ type doh struct {
 
 // Cache backend options
 type cacheBackend struct {
-	Type     string // Cache backend type.Defaults to "memory"
-	Size     int    // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
-	GCPeriod int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
-	Filename string // File to load/store cache content, optional, for "memory" type cache
+	Type         string // Cache backend type.Defaults to "memory"
+	Size         int    // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
+	GCPeriod     int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
+	Filename     string // File to load/store cache content, optional, for "memory" type cache
+	SaveInterval int    `toml:"save-interval"` // Seconds to write the cache to file
 }
 
 type group struct {

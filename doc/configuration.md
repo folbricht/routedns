@@ -319,6 +319,7 @@ The memory backend will keep all cache items in memory. It can be configured to 
 - `type="memory"`
 - `size` - Max number of responses to cache. Defaults to 0 which means no limit.
 - `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence
+- `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
 
 #### Examples
 

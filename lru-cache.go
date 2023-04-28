@@ -184,8 +184,6 @@ func (c *lruCache) size() int {
 }
 
 func (c *lruCache) serialize(w io.Writer) error {
-	Log.Info("writing to disk")
-
 	enc := json.NewEncoder(w)
 	for item := c.tail.prev; item != c.head; item = item.prev {
 		if err := enc.Encode(item); err != nil {
@@ -196,7 +194,6 @@ func (c *lruCache) serialize(w io.Writer) error {
 }
 
 func (c *lruCache) deserialize(r io.Reader) error {
-	Log.Info("reading from disk")
 	dec := json.NewDecoder(r)
 	for dec.More() {
 		item := new(cacheItem)

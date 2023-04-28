@@ -591,9 +591,10 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		if g.Backend != nil {
 			backend := rdns.NewMemoryBackend(rdns.MemoryBackendOptions{
-				Capacity: g.Backend.Size,
-				GCPeriod: time.Duration(g.Backend.GCPeriod) * time.Second,
-				Filename: g.Backend.Filename,
+				Capacity:     g.Backend.Size,
+				GCPeriod:     time.Duration(g.Backend.GCPeriod) * time.Second,
+				Filename:     g.Backend.Filename,
+				SaveInterval: time.Duration(g.Backend.SaveInterval) * time.Second,
 			})
 			onClose = append(onClose, func() { backend.Close() })
 			opt.Backend = backend
