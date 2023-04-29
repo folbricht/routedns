@@ -79,13 +79,14 @@ type group struct {
 	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
 
 	// Cache options
-	CacheSize                int    `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
-	CacheNegativeTTL         uint32 `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
-	CacheAnswerShuffle       string `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
-	CacheHardenBelowNXDOMAIN bool   `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
-	CacheFlushQuery          string `toml:"cache-flush-query"`           // Flush the cache when a query for this name is received
-	PrefetchTrigger          uint32 `toml:"cache-prefetch-trigger"`      // Prefetch when the TTL of a query has fallen below this value
-	PrefetchEligible         uint32 `toml:"cache-prefetch-eligible"`     // Only records with TTL greater than this are considered for prefetch
+	CacheSize                int               `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
+	CacheNegativeTTL         uint32            `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
+	CacheAnswerShuffle       string            `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
+	CacheHardenBelowNXDOMAIN bool              `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
+	CacheFlushQuery          string            `toml:"cache-flush-query"`           // Flush the cache when a query for this name is received
+	PrefetchTrigger          uint32            `toml:"cache-prefetch-trigger"`      // Prefetch when the TTL of a query has fallen below this value
+	PrefetchEligible         uint32            `toml:"cache-prefetch-eligible"`     // Only records with TTL greater than this are considered for prefetch
+	CacheRcodeMaxTTL         map[string]uint32 `toml:"cache-rcode-max-ttl"`         // Rcode specific max TTL to keep in the cache
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type

@@ -35,16 +35,24 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var answer *dns.Msg
 	var timestamp time.Time
 	var prefetchEligible bool
+	var expiry time.Time
 	b.mu.Lock()
 	if a := b.lru.get(q); a != nil {
 		answer = a.Copy()
 		timestamp = a.timestamp
 		prefetchEligible = a.prefetchEligible
+		expiry = a.expiry
 	}
 	b.mu.Unlock()
 
 	// Return a cache-miss if there's no answer record in the map
 	if answer == nil {
+		return nil, false, false
+	}
+
+	// Check if item has expired from the cache
+	if time.Now().After(expiry) {
+		b.Evict(q)
 		return nil, false, false
 	}
 
