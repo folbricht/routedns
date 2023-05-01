@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	syslog "github.com/RackSec/srslog"
@@ -553,10 +554,21 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		default:
 			return fmt.Errorf("unsupported shuffle function %q", g.CacheAnswerShuffle)
 		}
+
+		cacheRcodeMaxTTL := make(map[int]uint32)
+		for k, v := range g.CacheRcodeMaxTTL {
+			code, err := strconv.Atoi(k)
+			if err != nil {
+				return fmt.Errorf("failed to decode key in cache-rcode-max-ttl: %w", err)
+			}
+			cacheRcodeMaxTTL[code] = v
+		}
+
 		opt := rdns.CacheOptions{
 			GCPeriod:            time.Duration(g.GCPeriod) * time.Second,
 			Capacity:            g.CacheSize,
 			NegativeTTL:         g.CacheNegativeTTL,
+			CacheRcodeMaxTTL:    cacheRcodeMaxTTL,
 			ShuffleAnswerFunc:   shuffleFunc,
 			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 			FlushQuery:          g.CacheFlushQuery,

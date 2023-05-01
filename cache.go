@@ -43,6 +43,10 @@ type CacheOptions struct {
 	// TTL to use for negative responses that do not have an SOA record, default 60
 	NegativeTTL uint32
 
+	// Define upper limits on cache TTLs based on RCODE, regardless of SOA. For example this
+	// allows settings a limit on how long NXDOMAIN (code 3) responses can be kept in the cache.
+	CacheRcodeMaxTTL map[int]uint32
+
 	// Allows control over the order of answer RRs in cached responses. Default is to keep
 	// the order if nil.
 	ShuffleAnswerFunc AnswerShuffleFunc
@@ -246,6 +250,14 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 		}
 	default:
 		return
+	}
+
+	// Set the RCODE-based limit if one was configured
+	if rcodeLimit, ok := r.CacheOptions.CacheRcodeMaxTTL[answer.Rcode]; ok {
+		limit := now.Add(time.Duration(rcodeLimit) * time.Second)
+		if item.expiry.After(limit) {
+			item.expiry = limit
+		}
 	}
 
 	// Store it in the cache
