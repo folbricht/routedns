@@ -300,6 +300,7 @@ Options:
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Optional
 - `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
+- `cache-rcode-max-ttl` - Map of RCODE to max TTL (in seconds) to use for records based on the status code regardless of SOA. Response codes are given in their numerical form: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3) for a more complete list. For example `{1 = 60, 3 = 60}` would set a limit on how long FORMERR or NXDOMAIN responses can be cached.
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
 - `cache-harden-below-nxdomain` - Return NXDOMAIN for domain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
 - `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
@@ -336,7 +337,7 @@ resolvers = ["cloudflare-dot"]
 cache-flush-query = "flush.cache."
 ```
 
-Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml)
+Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml)
 
 ### TTL modifier
 
@@ -557,9 +558,11 @@ Options:
 - `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
 - `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
-- `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir`.
+- `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 
 When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup).
+
+To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
 
 #### Examples
 
@@ -573,6 +576,7 @@ blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaul
 blocklist        = [                     # Define the names to be blocked
   '(^|\.)evil\.com\.$',
   '(^|\.)unsafe[123]\.org\.$',
+]
 ```
 
 Simple blocklist with static `domain`-format rule in the configuration.
@@ -615,7 +619,7 @@ blocklist-source = [
 ]
 ```
 
-Remote blocklist that is cached to local disk (`cache-dir="/var/tmp"`) and loaded from it at startup.
+Remote blocklist that is cached to local disk (`cache-dir="/var/tmp"`) and loaded from it at startup. It also ignores failures to load the remote blocklist and does not prevent startup.
 
 ```toml
 [groups.cloudflare-blocklist]
@@ -623,7 +627,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
 ]
 ```
 
@@ -1346,6 +1350,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
+- `query-timeout` - Sets the query timeout to allow. In seconds.
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 

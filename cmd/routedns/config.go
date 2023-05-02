@@ -50,6 +50,7 @@ type resolver struct {
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
+	QueryTimeout  int    `toml:"query-timeout"`  // Query timout in seconds
 }
 
 // DoH-specific resolver options
@@ -61,6 +62,7 @@ type group struct {
 	Resolvers  []string
 	Type       string
 	Replace    []rdns.ReplaceOperation // only used by "replace" type
+	Subdomain    []rdns.SubDomainReplaceOperation // only used by "SubDomainReplace" type
 	GCPeriod   int                     `toml:"gc-period"`   // Time-period (seconds) used to expire cached items in the "cache" type
 	ECSOp      string                  `toml:"ecs-op"`      // ECS modifier operation, "add", "delete", "privacy"
 	ECSAddress net.IP                  `toml:"ecs-address"` // ECS address. If empty for "add", uses the client IP. Ignored for "privacy" and "delete"
@@ -78,13 +80,14 @@ type group struct {
 	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
 
 	// Cache options
-	CacheSize                int    `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
-	CacheNegativeTTL         uint32 `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
-	CacheAnswerShuffle       string `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
-	CacheHardenBelowNXDOMAIN bool   `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
-	CacheFlushQuery          string `toml:"cache-flush-query"`           // Flush the cache when a query for this name is received
-	PrefetchTrigger          uint32 `toml:"cache-prefetch-trigger"`      // Prefetch when the TTL of a query has fallen below this value
-	PrefetchEligible         uint32 `toml:"cache-prefetch-eligible"`     // Only records with TTL greater than this are considered for prefetch
+	CacheSize                int               `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
+	CacheNegativeTTL         uint32            `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
+	CacheAnswerShuffle       string            `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
+	CacheHardenBelowNXDOMAIN bool              `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain
+	CacheFlushQuery          string            `toml:"cache-flush-query"`           // Flush the cache when a query for this name is received
+	PrefetchTrigger          uint32            `toml:"cache-prefetch-trigger"`      // Prefetch when the TTL of a query has fallen below this value
+	PrefetchEligible         uint32            `toml:"cache-prefetch-eligible"`     // Only records with TTL greater than this are considered for prefetch
+	CacheRcodeMaxTTL         map[string]uint32 `toml:"cache-rcode-max-ttl"`         // Rcode specific max TTL to keep in the cache
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
@@ -142,10 +145,11 @@ type group struct {
 
 // Block/Allowlist items for blocklist-v2
 type list struct {
-	Name     string
-	Format   string
-	Source   string
-	CacheDir string `toml:"cache-dir"` // Where to store copies of remote blocklists for faster startup
+	Name         string
+	Format       string
+	Source       string
+	CacheDir     string `toml:"cache-dir"`     // Where to store copies of remote blocklists for faster startup
+	AllowFailure bool   `toml:"allow-failure"` // Don't fail on error and keep using the prior ruleset
 }
 
 type router struct {

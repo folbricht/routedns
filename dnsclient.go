@@ -3,6 +3,7 @@ package rdns
 import (
 	"crypto/tls"
 	"net"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -24,6 +25,8 @@ type DNSClientOptions struct {
 	// Sets the EDNS0 UDP size for all queries sent upstream. If set to 0, queries
 	// are not changed.
 	UDPSize uint16
+
+	QueryTimeout time.Duration
 }
 
 var _ Resolver = &DNSClient{}
@@ -55,13 +58,16 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		id:       id,
 		net:      network,
 		endpoint: endpoint,
-		pipeline: NewPipeline(id, endpoint, client),
+		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout),
 		opt:      opt,
 	}, nil
 }
 
 // Resolve a DNS query.
 func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// Packing a message is not always a read-only operation, make a copy
+	q = q.Copy()
+
 	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": d.net,

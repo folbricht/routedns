@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/pion/dtls/v2"
@@ -32,6 +33,8 @@ type DTLSClientOptions struct {
 	UDPSize uint16
 
 	DTLSConfig *dtls.Config
+
+	QueryTimeout time.Duration
 }
 
 var _ Resolver = &DTLSClient{}
@@ -83,13 +86,16 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	return &DTLSClient{
 		id:       id,
 		endpoint: endpoint,
-		pipeline: NewPipeline(id, endpoint, client),
+		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout),
 		opt:      opt,
 	}, nil
 }
 
 // Resolve a DNS query.
 func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// Packing a message is not always a read-only operation, make a copy
+	q = q.Copy()
+
 	logger(d.id, q, ci).WithFields(logrus.Fields{
 		"resolver": d.endpoint,
 		"protocol": "dtls",

@@ -19,12 +19,13 @@ Features:
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
+- Support for 0-RTT Quic queries if the upstream server supports it
 - Optional metrics export (expvar) to support monitoring and graphing
 - Written in Go - Platform independent
 
 ## Installation
 
-Install [Go](https://golang.org/dl) version 1.15+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
+Install [Go](https://golang.org/dl) version 1.19+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
 
 ```text
 GO111MODULE=on go get -v github.com/folbricht/routedns/cmd/routedns
@@ -81,7 +82,7 @@ RouteDNS supports building complex DNS processing pipelines. A typically configu
 
 ## QUIC support
 
-Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations.
+Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations. Quic also supports 0-RTT queries if the upstream server supports it.
 
 ## Use-cases / Examples
 
@@ -145,6 +146,7 @@ The configuration can be found [here](cmd/routedns/example-config/use-case-6.tom
 
 - DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
 - DNS-over-HTTPS RFC - [https://tools.ietf.org/html/rfc8484](https://tools.ietf.org/html/rfc8484)
+- DNS-over-QUIC RFC - [https://www.rfc-editor.org/rfc/rfc9250](https://www.rfc-editor.org/rfc/rfc9250)
 - EDNS0 padding [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
 - Go QUIC implementation - [https://github.com/lucas-clemente/quic-go](https://github.com/lucas-clemente/quic-go)
 - Go DNS library - [https://github.com/miekg/dns](https://github.com/miekg/dns)

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	syslog "github.com/RackSec/srslog"
@@ -416,7 +417,16 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "subdomain-replace":
+		if len(gr) != 1 {
+			return fmt.Errorf("type replace only supports one resolver in '%s'", id)
+		}
+		resolvers[id], err = rdns.NewSubDomainReplace(id, gr[0], g.Subdomain...)
+		if err != nil {
+			return err
+		}
 	case "ttl-modifier":
+
 		if len(gr) != 1 {
 			return fmt.Errorf("type ttl-modifier only supports one resolver in '%s'", id)
 		}
@@ -553,10 +563,21 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		default:
 			return fmt.Errorf("unsupported shuffle function %q", g.CacheAnswerShuffle)
 		}
+
+		cacheRcodeMaxTTL := make(map[int]uint32)
+		for k, v := range g.CacheRcodeMaxTTL {
+			code, err := strconv.Atoi(k)
+			if err != nil {
+				return fmt.Errorf("failed to decode key in cache-rcode-max-ttl: %w", err)
+			}
+			cacheRcodeMaxTTL[code] = v
+		}
+
 		opt := rdns.CacheOptions{
 			GCPeriod:            time.Duration(g.GCPeriod) * time.Second,
 			Capacity:            g.CacheSize,
 			NegativeTTL:         g.CacheNegativeTTL,
+			CacheRcodeMaxTTL:    cacheRcodeMaxTTL,
 			ShuffleAnswerFunc:   shuffleFunc,
 			HardenBelowNXDOMAIN: g.CacheHardenBelowNXDOMAIN,
 			FlushQuery:          g.CacheFlushQuery,
@@ -759,11 +780,15 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 		switch loc.Scheme {
 		case "http", "https":
 			opt := rdns.HTTPLoaderOptions{
-				CacheDir: l.CacheDir,
+				CacheDir:     l.CacheDir,
+				AllowFailure: l.AllowFailure,
 			}
 			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(l.Source)
+			opt := rdns.FileLoaderOptions{
+				AllowFailure: l.AllowFailure,
+			}
+			loader = rdns.NewFileLoader(l.Source, opt)
 		default:
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}
@@ -796,11 +821,15 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 		switch loc.Scheme {
 		case "http", "https":
 			opt := rdns.HTTPLoaderOptions{
-				CacheDir: l.CacheDir,
+				CacheDir:     l.CacheDir,
+				AllowFailure: l.AllowFailure,
 			}
 			loader = rdns.NewHTTPLoader(l.Source, opt)
 		case "":
-			loader = rdns.NewFileLoader(l.Source)
+			opt := rdns.FileLoaderOptions{
+				AllowFailure: l.AllowFailure,
+			}
+			loader = rdns.NewFileLoader(l.Source, opt)
 		default:
 			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
 		}

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -27,7 +26,7 @@ type DoQClient struct {
 	log      *logrus.Entry
 	metrics  *ListenerMetrics
 
-	connection doqConnection
+	connection quicConnection
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -40,6 +39,8 @@ type DoQClientOptions struct {
 	LocalAddr net.IP
 
 	TLSConfig *tls.Config
+
+	QueryTimeout time.Duration
 }
 
 var _ Resolver = &DoQClient{}
@@ -72,6 +73,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		tlsConfig.ServerName = host
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)
 	}
+	if opt.QueryTimeout == 0 {
+		opt.QueryTimeout = defaultQueryTimeout
+	}
 	log := Log.WithFields(logrus.Fields{"protocol": "doq", "endpoint": endpoint})
 	return &DoQClient{
 		id:               id,
@@ -79,16 +83,13 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		connection: doqConnection{
+		connection: quicConnection{
 			hostname:  host,
-			endpoint:  endpoint,
 			lAddr:     lAddr,
 			tlsConfig: tlsConfig,
 			config: &quic.Config{
 				TokenStore: quic.NewLRUTokenStore(10, 10),
 			},
-			pool: new(udpConnPool),
-			log:  log,
 		},
 		metrics: NewListenerMetrics("client", id),
 	}, nil
@@ -103,8 +104,15 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	d.metrics.query.Add(1)
 
+	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero.
+	// Make a deep copy because if there are multiple upstreams second
+	// and subsequent replies downstream will have 0 for an Id (by default a
+	// query is shared with all upstreams)
+	qc := q.Copy()
+	qc.Id = 0
+
 	// Sending a edns-tcp-keepalive EDNS(0) option over DoQ is an error. Filter it out.
-	edns0 := q.IsEdns0()
+	edns0 := qc.IsEdns0()
 	if edns0 != nil {
 		newOpt := make([]dns.EDNS0, 0, len(edns0.Option))
 		for _, opt := range edns0.Option {
@@ -116,15 +124,8 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		edns0.Option = newOpt
 	}
 
-	// When sending queries over a DoQ, the DNS Message ID MUST be set to zero. Don't forget
-	// to restore the ID in the original query, it could be needed for error responses further
-	// up
-	id := q.Id
-	q.Id = 0
-	defer func() { q.Id = id }()
-
 	// Encode the query
-	p, err := q.Pack()
+	p, err := qc.Pack()
 	if err != nil {
 		d.metrics.err.Add("pack", 1)
 		return nil, err
@@ -136,15 +137,15 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	copy(b[2:], p)
 
 	// Get a new stream in the connection
-	stream, err := d.connection.getStream()
+	stream, err := d.connection.getStream(d.endpoint, d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
 	}
 
-	// Write the query into the stream and close is. Only one stream per query/response
-	_ = stream.SetWriteDeadline(time.Now().Add(time.Second))
-	if _, err = stream.Write(p); err != nil {
+	// Write the query into the stream and close it. Only one stream per query/response
+	_ = stream.SetWriteDeadline(time.Now().Add(d.DoQClientOptions.QueryTimeout))
+	if _, err = stream.Write(b); err != nil {
 		d.metrics.err.Add("write", 1)
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	_ = stream.SetReadDeadline(time.Now().Add(time.Second))
+	_ = stream.SetReadDeadline(time.Now().Add(d.DoQClientOptions.QueryTimeout))
 
 	// DoQ requires a length prefix, like TCP
 	var length uint16
@@ -172,7 +173,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Decode the response and restore the ID
 	a := new(dns.Msg)
 	err = a.Unpack(b)
-	a.Id = id
+	a.Id = q.Id
 
 	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
 	edns0 = a.IsEdns0()
@@ -194,47 +195,36 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
-type doqConnection struct {
-	hostname  string
-	endpoint  string
-	lAddr     net.IP
-	tlsConfig *tls.Config
-	config    *quic.Config
-	log       *logrus.Entry
-	pool      *udpConnPool
-
-	connection quic.Connection
-
-	mu sync.Mutex
-}
-
-func (s *doqConnection) getStream() (quic.Stream, error) {
+func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// If we don't have a connection yet, make one
-	if s.connection == nil {
+	if s.EarlyConnection == nil {
 		var err error
-		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
+		s.EarlyConnection, s.udpConn, err = quicDial(s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
-			s.log.WithError(err).Error("failed to open connection")
+			log.WithFields(logrus.Fields{
+				"hostname": s.hostname,
+			}).WithError(err).Error("failed to open connection")
 			return nil, err
 		}
+		s.rAddr = endpoint
 	}
 
-	stream, err := s.connection.OpenStream()
+	// If we can't get a stream then restart the connection and try again once
+	stream, err := s.EarlyConnection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		// Try to open a new connection
-		_ = s.connection.CloseWithError(DOQNoError, "")
-		s.connection, err = quicDial(s.hostname, s.endpoint, s.lAddr, s.tlsConfig, s.config, s.pool)
-		if err != nil {
-			s.log.WithError(err).Error("failed to open connection")
+		log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		if err = quicRestart(s); err != nil {
+			log.WithFields(logrus.Fields{
+				"hostname": s.hostname,
+			}).WithError(err).Error("failed to open connection")
 			return nil, err
 		}
-		stream, err = s.connection.OpenStream()
+		stream, err = s.EarlyConnection.OpenStream()
 		if err != nil {
-			s.log.WithError(err).Error("failed to open stream")
-			return nil, err
+			log.WithError(err).Error("failed to open stream")
 		}
 	}
 	return stream, err

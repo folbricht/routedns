@@ -1,0 +1,29 @@
+# Basic DNS proxy. Translate all plain DNS queries received on port 53
+# into DNS-over-TLS queries to Cloudflare's DNS server.
+[bootstrap-resolver]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot]
+address = "gcp.ctptech.dev:853"
+protocol = "dot"
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "sub-domain-replace"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "sub-domain-replace"
+
+[groups.sub-domain-replace]
+  type = "subdomain-replace"
+  resolvers = [ "cloudflare-dot" ]
+  subdomain = [
+    { from = '{}.ctptech.dev.', to = '{}.whiskey.software.' },
+    { from = '{}.whiskey.software.', to = '{}.charlesp.tech.' },
+    { from = '{}.whisky.software.', to = '{}.whiskey.dev.' },
+    { from = '{}.local.', to = '{}.' },
+]
