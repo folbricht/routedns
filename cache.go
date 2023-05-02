@@ -257,17 +257,17 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	switch answer.Rcode {
 	case dns.RcodeSuccess, dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
 		if ok {
-			item.expiry = now.Add(time.Duration(min) * time.Second)
+			item.Expiry = now.Add(time.Duration(min) * time.Second)
 			item.PrefetchEligible = min > r.CacheOptions.PrefetchEligible
 		} else {
-			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
+			item.Expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}
 	case dns.RcodeServerFailure:
 		// According to RFC2308, a SERVFAIL response must not be cached for longer than 5 minutes.
 		if r.NegativeTTL < 300 {
-			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
+			item.Expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		} else {
-			item.expiry = now.Add(300 * time.Second)
+			item.Expiry = now.Add(300 * time.Second)
 		}
 	default:
 		return
@@ -276,8 +276,8 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	// Set the RCODE-based limit if one was configured
 	if rcodeLimit, ok := r.CacheOptions.CacheRcodeMaxTTL[answer.Rcode]; ok {
 		limit := now.Add(time.Duration(rcodeLimit) * time.Second)
-		if item.expiry.After(limit) {
-			item.expiry = limit
+		if item.Expiry.After(limit) {
+			item.Expiry = limit
 		}
 	}
 

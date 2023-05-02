@@ -27,7 +27,7 @@ type lruKey struct {
 
 type cacheAnswer struct {
 	Timestamp        time.Time // Time the record was cached. Needed to adjust TTL
-	expiry           time.Time // Time the record expires and should be removed
+	Expiry           time.Time // Time the record expires and should be removed
 	PrefetchEligible bool      // The cache can prefetch this record
 	Msg              *dns.Msg
 }

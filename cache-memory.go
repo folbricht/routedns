@@ -63,7 +63,7 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		answer = a.Msg.Copy()
 		timestamp = a.Timestamp
 		prefetchEligible = a.PrefetchEligible
-		expiry = a.expiry
+		expiry = a.Expiry
 	}
 	b.mu.Unlock()
 
@@ -133,7 +133,7 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.expiry) {
+			if now.After(a.Expiry) {
 				removed++
 				return true
 			}
