@@ -24,14 +24,13 @@ type subDomainReplaceExp struct {
 }
 
 type subDomainReplaceExpressions []subDomainReplaceExp
-func (r subDomainReplaceExp)  substitute (qname string) (string, bool) {
-	 fromDomain := r.from
+
+func (r subDomainReplaceExp) substitute(qname string) (string, bool) {
+	fromDomain := r.from
 	toDomain := r.to
 	// from {}.ctptech.dev to {}.charlesp.tech
 	// from test.ctptech.dev to test.charlesp.tech
-	fromDomain = strings.Replace(fromDomain, "{}", "", 1)
-	toDomain = strings.Replace(toDomain, "{}", "", 1)
-	if strings.HasSuffix(qname,fromDomain ) {
+	if strings.HasSuffix(qname, fromDomain) {
 		str := strings.Replace(qname, fromDomain, toDomain, 1)
 		Log.WithField("qname", qname).Debug("matches: modifying query")
 		return str, true
@@ -44,7 +43,6 @@ func (r subDomainReplaceExpressions) apply(qname string) string {
 		s, result := e.substitute(qname)
 		if result {
 			return s
-		} else {
 		}
 	}
 	return qname
@@ -62,7 +60,7 @@ func NewSubDomainReplace(id string, resolver Resolver, list ...SubDomainReplaceO
 		if strings.Contains(o.From, "{}") && strings.Contains(o.To, "{}") {
 			exp = append(exp, subDomainReplaceExp{o.From, o.To})
 		} else {
-				return nil, errors.New("{} not found")
+			return nil, errors.New("{} not found")
 		}
 	}
 	Log.WithField("exp", exp).Debug("exp query")

@@ -1,4 +1,4 @@
-# Basic DNS proxy. Translate all plain DNS queries received on port 53
+
 # into DNS-over-TLS queries to Cloudflare's DNS server.
 [bootstrap-resolver]
 address = "1.1.1.1:853"
@@ -18,12 +18,14 @@ address = ":53"
 protocol = "tcp"
 resolver = "sub-domain-replace"
 
+# must have dots on both ends to work
 [groups.sub-domain-replace]
   type = "subdomain-replace"
   resolvers = [ "cloudflare-dot" ]
   subdomain = [
-    { from = '{}.ctptech.dev.', to = '{}.whiskey.software.' },
-    { from = '{}.whiskey.software.', to = '{}.charlesp.tech.' },
-    { from = '{}.whisky.software.', to = '{}.whiskey.dev.' },
-    { from = '{}.local.', to = '{}.' },
+
+    { from = '.ctptech.dev.', to = '.whiskey.software.' },
+    { from = '.whiskey.software.', to = '.charlesp.tech.' },
+    { from = '.whisky.software.', to = '.whiskey.dev.' },
+    { from = '.local.', to = '.' },
 ]
