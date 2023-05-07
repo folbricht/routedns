@@ -62,6 +62,7 @@ type group struct {
 	Resolvers  []string
 	Type       string
 	Replace    []rdns.ReplaceOperation // only used by "replace" type
+	Subdomain    []rdns.SubDomainReplaceOperation // only used by "SubDomainReplace" type
 	GCPeriod   int                     `toml:"gc-period"`   // Time-period (seconds) used to expire cached items in the "cache" type
 	ECSOp      string                  `toml:"ecs-op"`      // ECS modifier operation, "add", "delete", "privacy"
 	ECSAddress net.IP                  `toml:"ecs-address"` // ECS address. If empty for "add", uses the client IP. Ignored for "privacy" and "delete"
