@@ -22,7 +22,7 @@ func NewResponseMinimize(id string, resolver Resolver) *ResponseMinimize {
 // records in the response.
 func (r *ResponseMinimize) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess {
+	if err != nil || answer == nil {
 		return answer, err
 	}
 	logger(r.id, q, ci).Debug("stripping response")
