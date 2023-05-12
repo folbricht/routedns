@@ -1,6 +1,8 @@
 package rdns
 
 import (
+	"encoding/json"
+	"io"
 	"time"
 
 	"github.com/miekg/dns"
@@ -13,21 +15,52 @@ type lruCache struct {
 }
 
 type cacheItem struct {
-	key lruKey
-	*cacheAnswer
+	Key        lruKey
+	Answer     *cacheAnswer
 	prev, next *cacheItem
 }
 
 type lruKey struct {
-	question dns.Question
-	net      string
+	Question dns.Question
+	Net      string
 }
 
 type cacheAnswer struct {
-	timestamp        time.Time // Time the record was cached. Needed to adjust TTL
-	expiry           time.Time // Time the record expires and should be removed
-	prefetchEligible bool      // The cache can prefetch this record
-	*dns.Msg
+	Timestamp        time.Time // Time the record was cached. Needed to adjust TTL
+	Expiry           time.Time // Time the record expires and should be removed
+	PrefetchEligible bool      // The cache can prefetch this record
+	Msg              *dns.Msg
+}
+
+func (c cacheAnswer) MarshalJSON() ([]byte, error) {
+	msg, err := c.Msg.Pack()
+	if err != nil {
+		return nil, err
+	}
+	type alias cacheAnswer
+	record := struct {
+		alias
+		Msg []byte
+	}{
+		alias: alias(c),
+		Msg:   msg,
+	}
+	return json.Marshal(record)
+}
+
+func (c *cacheAnswer) UnmarshalJSON(data []byte) error {
+	type alias cacheAnswer
+	aux := struct {
+		*alias
+		Msg []byte
+	}{
+		alias: (*alias)(c),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.Msg = new(dns.Msg)
+	return c.Msg.Unpack(aux.Msg)
 }
 
 func newLRUCache(capacity int) *lruCache {
@@ -46,19 +79,23 @@ func newLRUCache(capacity int) *lruCache {
 
 func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) {
 	key := lruKeyFromQuery(query)
+	c.addKey(key, answer)
+}
+
+func (c *lruCache) addKey(key lruKey, answer *cacheAnswer) {
 	item := c.touch(key)
 	if item != nil {
 		// Update the item, it's already at the top of the list
 		// so we can just change the value
-		item.cacheAnswer = answer
+		item.Answer = answer
 		return
 	}
 	// Add new item to the top of the linked list
 	item = &cacheItem{
-		key:         key,
-		cacheAnswer: answer,
-		next:        c.head.next,
-		prev:        c.head,
+		Key:    key,
+		Answer: answer,
+		next:   c.head.next,
+		prev:   c.head,
 	}
 	c.head.next.prev = item
 	c.head.next = item
@@ -97,7 +134,7 @@ func (c *lruCache) get(query *dns.Msg) *cacheAnswer {
 	key := lruKeyFromQuery(query)
 	item := c.touch(key)
 	if item != nil {
-		return item.cacheAnswer
+		return item.Answer
 	}
 	return nil
 }
@@ -112,7 +149,7 @@ func (c *lruCache) resize() {
 		item := c.tail.prev
 		item.prev.next = c.tail
 		c.tail.prev = item.prev
-		delete(c.items, item.key)
+		delete(c.items, item.Key)
 	}
 }
 
@@ -133,10 +170,10 @@ func (c *lruCache) reset() {
 func (c *lruCache) deleteFunc(f func(*cacheAnswer) bool) {
 	item := c.head.next
 	for item != c.tail {
-		if f(item.cacheAnswer) {
+		if f(item.Answer) {
 			item.prev.next = item.next
 			item.next.prev = item.prev
-			delete(c.items, item.key)
+			delete(c.items, item.Key)
 		}
 		item = item.next
 	}
@@ -146,15 +183,37 @@ func (c *lruCache) size() int {
 	return len(c.items)
 }
 
+func (c *lruCache) serialize(w io.Writer) error {
+	enc := json.NewEncoder(w)
+	for item := c.tail.prev; item != c.head; item = item.prev {
+		if err := enc.Encode(item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *lruCache) deserialize(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	for dec.More() {
+		item := new(cacheItem)
+		if err := dec.Decode(item); err != nil {
+			return err
+		}
+		c.addKey(item.Key, item.Answer)
+	}
+	return nil
+}
+
 func lruKeyFromQuery(q *dns.Msg) lruKey {
-	key := lruKey{question: q.Question[0]}
+	key := lruKey{Question: q.Question[0]}
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
 		// See if we have a subnet option
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
-				key.net = subnet.Address.String()
+				key.Net = subnet.Address.String()
 			}
 		}
 	}

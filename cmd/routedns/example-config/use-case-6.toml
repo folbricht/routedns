@@ -28,6 +28,7 @@ type = "cache"
 resolvers = ["ttl-update"]
 cache-size = 8192
 cache-negative-ttl = 120
+backend = {type = "memory"}
 
 # Update TTL to avoid noise using values that are too low
 [groups.ttl-update]

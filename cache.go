@@ -18,7 +18,7 @@ type Cache struct {
 	id       string
 	resolver Resolver
 	metrics  *CacheMetrics
-	backend  cacheBackend
+	backend  CacheBackend
 }
 
 type CacheMetrics struct {
@@ -34,10 +34,14 @@ var _ Resolver = &Cache{}
 
 type CacheOptions struct {
 	// Time period the cache garbage collection runs. Defaults to one minute if set to 0.
+	//
+	// Deprecated: Pass a configured cache backend instead.
 	GCPeriod time.Duration
 
 	// Max number of responses to keep in the cache. Defaults to 0 which means no limit. If
 	// the limit is reached, the least-recently used entry is removed from the cache.
+	//
+	// Deprecated: Pass a configured cache backend instead.
 	Capacity int
 
 	// TTL to use for negative responses that do not have an SOA record, default 60
@@ -67,19 +71,24 @@ type CacheOptions struct {
 
 	// Only records with at least PrefetchEligible seconds TTL are eligible to be prefetched.
 	PrefetchEligible uint32
+
+	// Cache backend used to store records.
+	Backend CacheBackend
 }
 
-type cacheBackend interface {
+type CacheBackend interface {
 	Store(query *dns.Msg, item *cacheAnswer)
 
 	// Lookup a cached response
 	Lookup(q *dns.Msg) (answer *dns.Msg, prefetchEligible bool, ok bool)
 
-	// Remove one or more cached responses
-	Evict(queries ...*dns.Msg)
+	// Return the number of items in the cache
+	Size() int
 
 	// Flush all records in the store
 	Flush()
+
+	Close() error
 }
 
 // NewCache returns a new instance of a Cache resolver.
@@ -94,13 +103,25 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 			entries: getVarInt("cache", id, "entries"),
 		},
 	}
-	if c.GCPeriod == 0 {
-		c.GCPeriod = time.Minute
-	}
 	if c.NegativeTTL == 0 {
 		c.NegativeTTL = 60
 	}
-	c.backend = newMemoryBackend(opt.Capacity, c.GCPeriod, c.metrics)
+	if opt.Backend == nil {
+		opt.Backend = NewMemoryBackend(MemoryBackendOptions{
+			Capacity: opt.Capacity,
+			GCPeriod: opt.GCPeriod,
+		})
+	}
+	c.backend = opt.Backend
+
+	// Regularly query the cache size and emit metrics
+	go func() {
+		for {
+			time.Sleep(time.Minute)
+			total := c.backend.Size()
+			c.metrics.entries.Set(int64(total))
+		}
+	}()
 
 	return c
 }
@@ -227,7 +248,7 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	now := time.Now()
 
 	// Prepare an item for the cache, without expiry for now
-	item := &cacheAnswer{Msg: answer, timestamp: now}
+	item := &cacheAnswer{Msg: answer, Timestamp: now}
 
 	// Find the lowest TTL in the response, this determines the expiry for the whole answer in the cache.
 	min, ok := minTTL(answer)
@@ -236,17 +257,17 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	switch answer.Rcode {
 	case dns.RcodeSuccess, dns.RcodeNameError, dns.RcodeRefused, dns.RcodeNotImplemented, dns.RcodeFormatError:
 		if ok {
-			item.expiry = now.Add(time.Duration(min) * time.Second)
-			item.prefetchEligible = min > r.CacheOptions.PrefetchEligible
+			item.Expiry = now.Add(time.Duration(min) * time.Second)
+			item.PrefetchEligible = min > r.CacheOptions.PrefetchEligible
 		} else {
-			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
+			item.Expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		}
 	case dns.RcodeServerFailure:
 		// According to RFC2308, a SERVFAIL response must not be cached for longer than 5 minutes.
 		if r.NegativeTTL < 300 {
-			item.expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
+			item.Expiry = now.Add(time.Duration(r.NegativeTTL) * time.Second)
 		} else {
-			item.expiry = now.Add(300 * time.Second)
+			item.Expiry = now.Add(300 * time.Second)
 		}
 	default:
 		return
@@ -255,8 +276,8 @@ func (r *Cache) storeInCache(query, answer *dns.Msg) {
 	// Set the RCODE-based limit if one was configured
 	if rcodeLimit, ok := r.CacheOptions.CacheRcodeMaxTTL[answer.Rcode]; ok {
 		limit := now.Add(time.Duration(rcodeLimit) * time.Second)
-		if item.expiry.After(limit) {
-			item.expiry = limit
+		if item.Expiry.After(limit) {
+			item.Expiry = limit
 		}
 	}
 

@@ -8,6 +8,7 @@ protocol = "dot"
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-dot"]
+backend = {type = "memory"}
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

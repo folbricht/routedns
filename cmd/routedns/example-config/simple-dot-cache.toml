@@ -15,6 +15,7 @@ title = "RouteDNS configuration"
   type = "cache"
   resolvers = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
   #gc-period = 60                 # Number of seconds between cache cleanups. Defaults to 1min
+  backend = {type = "memory"}
 
 [listeners]
 

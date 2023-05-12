@@ -9,6 +9,7 @@ resolver = "cloudflare-cached"
 type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-flush-query = "flush.cache." # When a query for this name is received, the cache is reset.
+backend = {type = "memory"}
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"

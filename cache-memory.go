@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"os"
 	"sync"
 	"time"
 
@@ -9,19 +10,40 @@ import (
 )
 
 type memoryBackend struct {
-	lru     *lruCache
-	mu      sync.Mutex
-	metrics *CacheMetrics
+	lru *lruCache
+	mu  sync.Mutex
+	opt MemoryBackendOptions
 }
 
-var _ cacheBackend = (*memoryBackend)(nil)
+type MemoryBackendOptions struct {
+	// Total capacity of the cache, default unlimited
+	Capacity int
 
-func newMemoryBackend(capacity int, gcperiod time.Duration, metrics *CacheMetrics) *memoryBackend {
-	b := &memoryBackend{
-		lru:     newLRUCache(capacity),
-		metrics: metrics,
+	// How often to run garbage collection, default 1 minute
+	GCPeriod time.Duration
+
+	// Load the cache from file on startup and write it on close
+	Filename string
+
+	// Write the file in an interval. Only write on shutdown if not set
+	SaveInterval time.Duration
+}
+
+var _ CacheBackend = (*memoryBackend)(nil)
+
+func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
+	if opt.GCPeriod == 0 {
+		opt.GCPeriod = time.Minute
 	}
-	go b.startGC(gcperiod)
+	b := &memoryBackend{
+		lru: newLRUCache(opt.Capacity),
+		opt: opt,
+	}
+	if opt.Filename != "" {
+		b.loadFromFile(opt.Filename)
+	}
+	go b.startGC(opt.GCPeriod)
+	go b.intervalSave()
 	return b
 }
 
@@ -38,10 +60,10 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var expiry time.Time
 	b.mu.Lock()
 	if a := b.lru.get(q); a != nil {
-		answer = a.Copy()
-		timestamp = a.timestamp
-		prefetchEligible = a.prefetchEligible
-		expiry = a.expiry
+		answer = a.Msg.Copy()
+		timestamp = a.Timestamp
+		prefetchEligible = a.PrefetchEligible
+		expiry = a.Expiry
 	}
 	b.mu.Unlock()
 
@@ -111,7 +133,7 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.expiry) {
+			if now.After(a.Expiry) {
 				removed++
 				return true
 			}
@@ -120,7 +142,67 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		total = b.lru.size()
 		b.mu.Unlock()
 
-		b.metrics.entries.Set(int64(total))
 		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
+	}
+}
+
+func (b *memoryBackend) Size() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lru.size()
+}
+
+func (b *memoryBackend) Close() error {
+	if b.opt.Filename != "" {
+		return b.writeToFile(b.opt.Filename)
+	}
+	return nil
+}
+
+func (b *memoryBackend) writeToFile(filename string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	log := Log.WithField("filename", filename)
+	log.Info("writing cache file")
+	f, err := os.Create(filename)
+	if err != nil {
+		log.WithError(err).Warn("failed to create cache file")
+		return err
+	}
+	defer f.Close()
+
+	if err := b.lru.serialize(f); err != nil {
+		log.WithError(err).Warn("failed to persist cache to disk")
+		return err
+	}
+	return nil
+}
+
+func (b *memoryBackend) loadFromFile(filename string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	log := Log.WithField("filename", filename)
+	log.Info("reading cache file")
+	f, err := os.Open(filename)
+	if err != nil {
+		log.WithError(err).Warn("failed to open cache file")
+		return err
+	}
+	defer f.Close()
+
+	if err := b.lru.deserialize(f); err != nil {
+		log.WithError(err).Warn("failed to read cache from disk")
+		return err
+	}
+	return nil
+}
+
+func (b *memoryBackend) intervalSave() {
+	if b.opt.Filename == "" || b.opt.SaveInterval == 0 {
+		return
+	}
+	for {
+		time.Sleep(b.opt.SaveInterval)
+		b.writeToFile(b.opt.Filename)
 	}
 }

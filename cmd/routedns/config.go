@@ -58,11 +58,19 @@ type doh struct {
 	Method string
 }
 
+// Cache backend options
+type cacheBackend struct {
+	Type         string // Cache backend type.Defaults to "memory"
+	Size         int    // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
+	GCPeriod     int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
+	Filename     string // File to load/store cache content, optional, for "memory" type cache
+	SaveInterval int    `toml:"save-interval"` // Seconds to write the cache to file
+}
+
 type group struct {
 	Resolvers  []string
 	Type       string
 	Replace    []rdns.ReplaceOperation // only used by "replace" type
-	GCPeriod   int                     `toml:"gc-period"`   // Time-period (seconds) used to expire cached items in the "cache" type
 	ECSOp      string                  `toml:"ecs-op"`      // ECS modifier operation, "add", "delete", "privacy"
 	ECSAddress net.IP                  `toml:"ecs-address"` // ECS address. If empty for "add", uses the client IP. Ignored for "privacy" and "delete"
 	ECSPrefix4 uint8                   `toml:"ecs-prefix4"` // ECS IPv4 address prefix, 0-32. Used for "add" and "privacy"
@@ -79,7 +87,9 @@ type group struct {
 	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
 
 	// Cache options
-	CacheSize                int               `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited
+	Backend                  *cacheBackend
+	GCPeriod                 int               `toml:"gc-period"`                   // Time-period (seconds) used to expire cached items in the "cache" type. Deprecated, use backend
+	CacheSize                int               `toml:"cache-size"`                  // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
 	CacheNegativeTTL         uint32            `toml:"cache-negative-ttl"`          // TTL to apply to negative responses, default 60.
 	CacheAnswerShuffle       string            `toml:"cache-answer-shuffle"`        // Algorithm to use for modifying the response order of cached items
 	CacheHardenBelowNXDOMAIN bool              `toml:"cache-harden-below-nxdomain"` // Return NXDOMAIN if an NXDOMAIN is cached for a parent domain

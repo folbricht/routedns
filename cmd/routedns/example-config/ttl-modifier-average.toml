@@ -13,6 +13,7 @@ ttl-max = 86400
 [groups.cloudflare-cached]
 type = "cache"
 resolvers = ["cloudflare-updated-ttl"]
+backend = {type = "memory"}
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

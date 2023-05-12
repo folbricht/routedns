@@ -24,6 +24,7 @@ retry-resolver = "cloudflare-tcp"
 [groups.cache]
 type = "cache"
 resolvers = ["retry"]
+backend = {type = "memory"}
 
 [listeners.local-udp]
 address = "127.0.0.1:53"
