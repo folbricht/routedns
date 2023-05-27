@@ -606,6 +606,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 					RedisOptions: redis.Options{
 						Network:               g.Backend.RedisNetwork,
 						Addr:                  g.Backend.RedisAddress,
+						Username:              g.Backend.RedisUsername,
 						Password:              g.Backend.RedisPassword,
 						DB:                    g.Backend.RedisDB,
 						ContextTimeoutEnabled: true,

@@ -67,9 +67,9 @@ type cacheBackend struct {
 	SaveInterval  int    `toml:"save-interval"`  // Seconds to write the cache to file
 	RedisNetwork  string `toml:"redis-network"`  // The network type, either tcp or unix. Defaults to tcp.
 	RedisAddress  string `toml:"redis-address"`  // Address for redis cache
+	RedisUsername string `toml:"redis-username"` // Redis username
 	RedisPassword string `toml:"redis-password"` // Redis password
 	RedisDB       int    `toml:"redis-db"`       // Redis database to be selected after connecting to the server
-
 }
 
 type group struct {

@@ -328,6 +328,7 @@ The `redis` backend stores cached items in a Redis database. This allows multipl
 - `type="redis"`
 - `redis-network` - The network type, either `tcp` or `unix`. Defaults to `tcp`.
 - `redis-address` - Address of redis database, host:port
+- `redis-username` - Redis username
 - `redis-password` - Redis password
 - `redis-db` - Redis database to be selected
 
