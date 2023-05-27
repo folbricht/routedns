@@ -3,7 +3,7 @@ package rdns
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"time"
 
@@ -39,24 +39,72 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 		Log.WithError(err).Error("failed to marshal cache record")
 		return
 	}
-	fmt.Println(string(value))
 	if err := b.client.Set(ctx, key, value, time.Until(item.Expiry)).Err(); err != nil {
 		Log.WithError(err).Error("failed to write to redis")
 	}
 }
 
 func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
-	// TODO
-	return nil, false, false
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	key := redisKeyFromQuery(q)
+	value, err := b.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) { // Return a cache-miss if there's no such key
+			return nil, false, false
+		}
+		Log.WithError(err).Error("failed to read from redis")
+		return nil, false, false
+	}
+	var a *cacheAnswer
+	if err := json.Unmarshal([]byte(value), &a); err != nil {
+		Log.WithError(err).Error("failed to unmarshal cache record from redis")
+		return nil, false, false
+	}
+
+	answer := a.Msg
+	prefetchEligible := a.PrefetchEligible
+	answer.Id = q.Id
+
+	// Calculate the time the record spent in the cache. We need to
+	// subtract that from the TTL of each answer record.
+	age := uint32(time.Since(a.Timestamp).Seconds())
+
+	// Go through all the answers, NS, and Extra and adjust the TTL (subtract the time
+	// it's spent in the cache). If the record is too old, evict it from the cache
+	// and return a cache-miss. OPT records have a TTL of 0 and are ignored.
+	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
+		for _, a := range rr {
+			if _, ok := a.(*dns.OPT); ok {
+				continue
+			}
+			h := a.Header()
+			if age >= h.Ttl {
+				return nil, false, false
+			}
+			h.Ttl -= age
+		}
+	}
+
+	return answer, prefetchEligible, true
 }
 
 func (b *redisBackend) Flush() {
-	// TODO
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := b.client.Del(ctx, "*").Result(); err != nil {
+		Log.WithError(err).Error("failed to delete keys in redis")
+	}
 }
 
 func (b *redisBackend) Size() int {
-	// TODO
-	return 0
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	size, err := b.client.DBSize(ctx).Result()
+	if err != nil {
+		Log.WithError(err).Error("failed to run dbsize command on redis")
+	}
+	return int(size)
 }
 
 func (b *redisBackend) Close() error {
