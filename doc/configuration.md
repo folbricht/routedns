@@ -308,18 +308,28 @@ Options:
 - `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
 - `cache-prefetch-trigger`- If a query is received for a record with less that `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
 - `cache-prefetch-eligible` - Only records with at least `prefetch-eligible` seconds TTL are eligible to be prefetched.
-- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to memory backend if not configued.
+- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to `memory` backend if not configued.
 
 Backends:
 
 **Memory backend**
 
-The memory backend will keep all cache items in memory. It can be configured to write the content of the cache to disk on shutdown. Memmory backend config has the following options:
+The memory backend will keep all cache items in memory. It can be configured to write the content of the cache to disk on shutdown. Memory backend config has the following options:
 
 - `type="memory"`
 - `size` - Max number of responses to cache. Defaults to 0 which means no limit.
 - `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence
 - `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
+
+**Redis backend**
+
+The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. The following options are supported:
+
+- `type="redis"`
+- `redis-network` - The network type, either `tcp` or `unix`. Defaults to `tcp`.
+- `redis-address` - Address of redis database, host:port
+- `redis-password` - Redis password
+- `redis-db` - Redis database to be selected
 
 #### Examples
 
@@ -353,7 +363,17 @@ cache-flush-query = "flush.cache."
 backend = {type = "memory", filename = "/var/tmp/cache.json"}
 ```
 
-Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml)
+Cache that is uses Redis as backend.
+
+```toml
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+cache-flush-query = "flush.cache."
+backend = {type = "redis", redis-address = "127.0.0.1:6379" }
+```
+
+Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml), [cache-redis.toml](../cmd/routedns/example-config/cache-redis.toml)
 
 ### TTL modifier
 
