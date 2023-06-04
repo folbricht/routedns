@@ -60,16 +60,17 @@ type doh struct {
 
 // Cache backend options
 type cacheBackend struct {
-	Type          string // Cache backend type.Defaults to "memory"
-	Size          int    // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
-	GCPeriod      int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
-	Filename      string // File to load/store cache content, optional, for "memory" type cache
-	SaveInterval  int    `toml:"save-interval"`  // Seconds to write the cache to file
-	RedisNetwork  string `toml:"redis-network"`  // The network type, either tcp or unix. Defaults to tcp.
-	RedisAddress  string `toml:"redis-address"`  // Address for redis cache
-	RedisUsername string `toml:"redis-username"` // Redis username
-	RedisPassword string `toml:"redis-password"` // Redis password
-	RedisDB       int    `toml:"redis-db"`       // Redis database to be selected after connecting to the server
+	Type           string // Cache backend type.Defaults to "memory"
+	Size           int    // Max number of items to keep in the cache. Default 0 == unlimited. Deprecated, use backend
+	GCPeriod       int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
+	Filename       string // File to load/store cache content, optional, for "memory" type cache
+	SaveInterval   int    `toml:"save-interval"`    // Seconds to write the cache to file
+	RedisNetwork   string `toml:"redis-network"`    // The network type, either tcp or unix. Defaults to tcp.
+	RedisAddress   string `toml:"redis-address"`    // Address for redis cache
+	RedisUsername  string `toml:"redis-username"`   // Redis username
+	RedisPassword  string `toml:"redis-password"`   // Redis password
+	RedisKeyPrefix string `toml:"redis-key-prefix"` // Prefix any cache entry
+	RedisDB        int    `toml:"redis-db"`         // Redis database to be selected after connecting to the server
 }
 
 type group struct {

@@ -611,6 +611,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 						DB:                    g.Backend.RedisDB,
 						ContextTimeoutEnabled: true,
 					},
+					KeyPrefix: g.Backend.RedisKeyPrefix,
 				})
 			default:
 				return fmt.Errorf("unsupported cache backend %q", g.Backend.Type)

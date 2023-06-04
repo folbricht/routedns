@@ -331,6 +331,7 @@ The `redis` backend stores cached items in a Redis database. This allows multipl
 - `redis-username` - Redis username
 - `redis-password` - Redis password
 - `redis-db` - Redis database to be selected
+- `redis-key-prefix` - Prefixes the key of every record with this string. This can be used to share a database with other clients and avoid key conflicts.
 
 #### Examples
 
@@ -371,7 +372,7 @@ Cache that is uses Redis as backend.
 type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-flush-query = "flush.cache."
-backend = {type = "redis", redis-address = "127.0.0.1:6379" }
+backend = {type = "redis", redis-address = "127.0.0.1:6379", redis-key-prefix = "routedns-"}
 ```
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml), [cache-redis.toml](../cmd/routedns/example-config/cache-redis.toml)

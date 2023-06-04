@@ -18,6 +18,7 @@ type redisBackend struct {
 
 type RedisBackendOptions struct {
 	RedisOptions redis.Options
+	KeyPrefix    string
 }
 
 var _ CacheBackend = (*redisBackend)(nil)
@@ -33,7 +34,7 @@ func NewRedisBackend(opt RedisBackendOptions) *redisBackend {
 func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	key := redisKeyFromQuery(query)
+	key := b.keyFromQuery(query)
 	value, err := json.Marshal(item)
 	if err != nil {
 		Log.WithError(err).Error("failed to marshal cache record")
@@ -47,7 +48,7 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	key := redisKeyFromQuery(q)
+	key := b.keyFromQuery(q)
 	value, err := b.client.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) { // Return a cache-miss if there's no such key
@@ -92,7 +93,7 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 func (b *redisBackend) Flush() {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := b.client.Del(ctx, "*").Result(); err != nil {
+	if _, err := b.client.Del(ctx, b.opt.KeyPrefix+"*").Result(); err != nil {
 		Log.WithError(err).Error("failed to delete keys in redis")
 	}
 }
@@ -112,23 +113,24 @@ func (b *redisBackend) Close() error {
 }
 
 // Build a key string to be used in redis.
-func redisKeyFromQuery(q *dns.Msg) string {
-	var b strings.Builder
-	b.WriteString(q.Question[0].Name)
-	b.WriteByte(':')
-	b.WriteString(dns.Class(q.Question[0].Qclass).String())
-	b.WriteByte(':')
-	b.WriteString(dns.Type(q.Question[0].Qtype).String())
-	b.WriteByte(':')
+func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
+	var key strings.Builder
+	key.WriteString(b.opt.KeyPrefix)
+	key.WriteString(q.Question[0].Name)
+	key.WriteByte(':')
+	key.WriteString(dns.Class(q.Question[0].Qclass).String())
+	key.WriteByte(':')
+	key.WriteString(dns.Type(q.Question[0].Qtype).String())
+	key.WriteByte(':')
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
 		// See if we have a subnet option
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
-				b.WriteString(subnet.Address.String())
+				key.WriteString(subnet.Address.String())
 			}
 		}
 	}
-	return b.String()
+	return key.String()
 }
