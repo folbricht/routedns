@@ -332,6 +332,9 @@ The `redis` backend stores cached items in a Redis database. This allows multipl
 - `redis-password` - Redis password
 - `redis-db` - Redis database to be selected
 - `redis-key-prefix` - Prefixes the key of every record with this string. This can be used to share a database with other clients and avoid key conflicts.
+- `redis-max-retries` - Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
+- `redis-min-retry-backoff` - Minimum back-off between each retry in milliseconds. Default is 8 milliseconds; -1 disables back-off.
+- `redis-max-retry-backoff` - Maximum back-off between each retry in milliseconds. Default is 512 milliseconds; -1 disables back-off.
 
 #### Examples
 

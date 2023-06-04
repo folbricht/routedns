@@ -602,6 +602,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				})
 				onClose = append(onClose, func() { backend.Close() })
 			case "redis":
+				minRetryBackoff := time.Duration(g.Backend.RedisMinRetryBackoff) * time.Millisecond
+				if g.Backend.RedisMinRetryBackoff == -1 {
+					minRetryBackoff = -1
+				}
+				maxRetryBackoff := time.Duration(g.Backend.RedisMaxRetryBackoff) * time.Millisecond
+				if g.Backend.RedisMaxRetryBackoff == -1 {
+					maxRetryBackoff = -1
+				}
 				backend = rdns.NewRedisBackend(rdns.RedisBackendOptions{
 					RedisOptions: redis.Options{
 						Network:               g.Backend.RedisNetwork,
@@ -610,6 +618,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 						Password:              g.Backend.RedisPassword,
 						DB:                    g.Backend.RedisDB,
 						ContextTimeoutEnabled: true,
+						MaxRetries:            g.Backend.RedisMaxRetries,
+						MinRetryBackoff:       minRetryBackoff,
+						MaxRetryBackoff:       maxRetryBackoff,
 					},
 					KeyPrefix: g.Backend.RedisKeyPrefix,
 				})
