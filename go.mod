@@ -12,6 +12,7 @@ require (
 	github.com/pion/dtls/v2 v2.2.4
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.33.0
+	github.com/redis/go-redis/v9 v9.0.4
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
@@ -37,7 +38,6 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect
 	github.com/quic-go/qtls-go1-20 v0.1.1 // indirect
-	github.com/redis/go-redis/v9 v9.0.4 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/exp v0.0.0-20221227203929-1b447090c38c // indirect
