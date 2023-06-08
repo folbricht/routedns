@@ -1,4 +1,4 @@
-# Simple proxy using a cache.
+# Cache backed by Redis database
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
@@ -9,7 +9,7 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-negative-ttl = 10         # Optional, TTL to apply to responses without a SOA
 cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached responses
-backend = {type = "memory", size = 1000, filename = "/tmp/cache.json", save-interval = 60}
+backend = {type = "redis", redis-address = "127.0.0.1:6379" }
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

@@ -15,6 +15,7 @@ import (
 	syslog "github.com/RackSec/srslog"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -590,13 +591,42 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			PrefetchEligible:    g.PrefetchEligible,
 		}
 		if g.Backend != nil {
-			backend := rdns.NewMemoryBackend(rdns.MemoryBackendOptions{
-				Capacity:     g.Backend.Size,
-				GCPeriod:     time.Duration(g.Backend.GCPeriod) * time.Second,
-				Filename:     g.Backend.Filename,
-				SaveInterval: time.Duration(g.Backend.SaveInterval) * time.Second,
-			})
-			onClose = append(onClose, func() { backend.Close() })
+			var backend rdns.CacheBackend
+			switch g.Backend.Type {
+			case "memory":
+				backend = rdns.NewMemoryBackend(rdns.MemoryBackendOptions{
+					Capacity:     g.Backend.Size,
+					GCPeriod:     time.Duration(g.Backend.GCPeriod) * time.Second,
+					Filename:     g.Backend.Filename,
+					SaveInterval: time.Duration(g.Backend.SaveInterval) * time.Second,
+				})
+				onClose = append(onClose, func() { backend.Close() })
+			case "redis":
+				minRetryBackoff := time.Duration(g.Backend.RedisMinRetryBackoff) * time.Millisecond
+				if g.Backend.RedisMinRetryBackoff == -1 {
+					minRetryBackoff = -1
+				}
+				maxRetryBackoff := time.Duration(g.Backend.RedisMaxRetryBackoff) * time.Millisecond
+				if g.Backend.RedisMaxRetryBackoff == -1 {
+					maxRetryBackoff = -1
+				}
+				backend = rdns.NewRedisBackend(rdns.RedisBackendOptions{
+					RedisOptions: redis.Options{
+						Network:               g.Backend.RedisNetwork,
+						Addr:                  g.Backend.RedisAddress,
+						Username:              g.Backend.RedisUsername,
+						Password:              g.Backend.RedisPassword,
+						DB:                    g.Backend.RedisDB,
+						ContextTimeoutEnabled: true,
+						MaxRetries:            g.Backend.RedisMaxRetries,
+						MinRetryBackoff:       minRetryBackoff,
+						MaxRetryBackoff:       maxRetryBackoff,
+					},
+					KeyPrefix: g.Backend.RedisKeyPrefix,
+				})
+			default:
+				return fmt.Errorf("unsupported cache backend %q", g.Backend.Type)
+			}
 			opt.Backend = backend
 		}
 		resolvers[id] = rdns.NewCache(id, gr[0], opt)
