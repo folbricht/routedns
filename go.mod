@@ -7,7 +7,7 @@ require (
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/heimdalr/dag v1.2.1
 	github.com/jtacoma/uritemplates v1.0.0
-	github.com/miekg/dns v1.1.50
+	github.com/miekg/dns v1.1.51
 	github.com/oschwald/maxminddb-golang v1.10.0
 	github.com/pion/dtls/v2 v2.2.4
 	github.com/pkg/errors v0.9.1
@@ -17,6 +17,8 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.10.0
+	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
+	golang.org/x/net v0.7.0
 )
 
 require (
@@ -31,6 +33,8 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
+	github.com/onsi/ginkgo/v2 v2.6.1 // indirect
+	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.0.0 // indirect
 	github.com/pion/udp v0.1.4 // indirect
@@ -38,6 +42,7 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/txthinking/runnergroup v0.0.0-20210608031112-152c7c4432bf // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/exp v0.0.0-20221227203929-1b447090c38c // indirect
 	golang.org/x/mod v0.10.0 // indirect

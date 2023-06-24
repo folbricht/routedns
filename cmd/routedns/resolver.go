@@ -6,6 +6,7 @@ import (
 	"time"
 
 	rdns "github.com/folbricht/routedns"
+	"github.com/txthinking/socks5"
 )
 
 // Instantiates an rdns.Resolver from a resolver config
@@ -91,6 +92,12 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:    net.ParseIP(r.LocalAddr),
 			UDPSize:      r.EDNS0UDPSize,
 			QueryTimeout: time.Duration(r.QueryTimeout) * time.Second,
+		}
+		if r.Socks5Address != "" {
+			opt.Dialer, err = socks5.NewClient(r.Socks5Address, r.Socks5Username, r.Socks5Password, 0, 5)
+			if err != nil {
+				return err
+			}
 		}
 		resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		if err != nil {

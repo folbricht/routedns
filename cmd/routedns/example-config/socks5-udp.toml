@@ -1,0 +1,11 @@
+[resolvers.cloudflare-udp]
+address = "1.1.1.1:53"
+protocol = "udp"
+socks5-address = "127.0.0.1:1080"
+socks5-username = "test"
+socks5-password = "test"
+
+[listeners.local-udp]
+address = "127.0.0.1:1153"
+protocol = "udp"
+resolver = "cloudflare-udp"
