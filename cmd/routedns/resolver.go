@@ -43,6 +43,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			Dialer:        socks5DialerFromConfig(r),
 		}
 		resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
 		if err != nil {
@@ -92,12 +93,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:    net.ParseIP(r.LocalAddr),
 			UDPSize:      r.EDNS0UDPSize,
 			QueryTimeout: time.Duration(r.QueryTimeout) * time.Second,
-		}
-		if r.Socks5Address != "" {
-			opt.Dialer, err = socks5.NewClient(r.Socks5Address, r.Socks5Username, r.Socks5Password, 0, 5)
-			if err != nil {
-				return err
-			}
+			Dialer:       socks5DialerFromConfig(r),
 		}
 		resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		if err != nil {
@@ -107,4 +103,13 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		return fmt.Errorf("unsupported protocol '%s' for resolver '%s'", r.Protocol, id)
 	}
 	return nil
+}
+
+// Returns a dialer if a socks5 proxy is configured, nil otherwise
+func socks5DialerFromConfig(cfg resolver) *socks5.Client {
+	if cfg.Socks5Address == "" {
+		return nil
+	}
+	client, _ := socks5.NewClient(cfg.Socks5Address, cfg.Socks5Username, cfg.Socks5Password, 0, 5)
+	return client
 }

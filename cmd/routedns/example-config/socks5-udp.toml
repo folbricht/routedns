@@ -1,3 +1,5 @@
+# Simple DNS queries routed through a SOCKS5 proxy.
+
 [resolvers.cloudflare-udp]
 address = "1.1.1.1:53"
 protocol = "udp"
@@ -6,6 +8,6 @@ socks5-username = "test"
 socks5-password = "test"
 
 [listeners.local-udp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "cloudflare-udp"
