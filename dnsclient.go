@@ -42,17 +42,17 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 	if opt.LocalAddr != nil {
 		switch network {
 		case "tcp":
-			dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
+			dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}, Timeout: opt.QueryTimeout}
 		case "udp":
-			dialer = &net.Dialer{LocalAddr: &net.UDPAddr{IP: opt.LocalAddr}}
+			dialer = &net.Dialer{LocalAddr: &net.UDPAddr{IP: opt.LocalAddr}, Timeout: opt.QueryTimeout}
 		}
 	}
-
 	client := &dns.Client{
 		Net:       network,
 		Dialer:    dialer,
 		TLSConfig: &tls.Config{},
 		UDPSize:   4096,
+		Timeout:   opt.QueryTimeout,
 	}
 	return &DNSClient{
 		id:       id,
