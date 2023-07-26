@@ -107,7 +107,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 }
 
 // Returns a dialer if a socks5 proxy is configured, nil otherwise
-func socks5DialerFromConfig(cfg resolver) *socks5.Client {
+func socks5DialerFromConfig(cfg resolver) rdns.Dialer {
 	if cfg.Socks5Address == "" {
 		return nil
 	}
