@@ -69,7 +69,7 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+			ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
 			if err != nil {
 				Log.WithError(err).Errorf("failed to lookup %q locally", host)
 				return
