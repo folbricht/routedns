@@ -6,7 +6,6 @@ import (
 	"time"
 
 	rdns "github.com/folbricht/routedns"
-	"github.com/txthinking/socks5"
 )
 
 // Instantiates an rdns.Resolver from a resolver config
@@ -111,6 +110,14 @@ func socks5DialerFromConfig(cfg resolver) rdns.Dialer {
 	if cfg.Socks5Address == "" {
 		return nil
 	}
-	client, _ := socks5.NewClient(cfg.Socks5Address, cfg.Socks5Username, cfg.Socks5Password, 0, 5)
-	return client
+	r := rdns.NewSocks5Dialer(
+		cfg.Socks5Address,
+		rdns.Socks5DialerOptions{
+			Username:     cfg.Socks5Username,
+			Password:     cfg.Socks5Password,
+			TCPTimeout:   0,
+			UDPTimeout:   5 * time.Second,
+			ResolveLocal: cfg.Socks5ResolveLocal,
+		})
+	return r
 }

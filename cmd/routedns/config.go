@@ -53,9 +53,10 @@ type resolver struct {
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
 
 	// Proxy configuration
-	Socks5Address  string `toml:"socks5-address"`
-	Socks5Username string `toml:"socks5-username"`
-	Socks5Password string `toml:"socks5-password"`
+	Socks5Address      string `toml:"socks5-address"`
+	Socks5Username     string `toml:"socks5-username"`
+	Socks5Password     string `toml:"socks5-password"`
+	Socks5ResolveLocal bool   `toml:"socks5-resolve-local"` // Resolve DNS server address locally (i.e. bootstrap-resolver), not on the SOCK5 proxy
 }
 
 // DoH-specific resolver options
