@@ -309,7 +309,7 @@ type quicConnection struct {
 }
 
 func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
-	connection, udpConn, err := quicDial(hostname, rAddr, lAddr, tlsConfig, config)
+	connection, udpConn, err := quicDial(context.TODO(), hostname, rAddr, lAddr, tlsConfig, config)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func quicRestart(s *quicConnection) error {
 	}).Debug("attempt reconnect")
 	var err error
 	var earlyConn quic.EarlyConnection
-	earlyConn, s.udpConn, err = quicDial(s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 	if err != nil || s.udpConn == nil {
 		Log.WithFields(logrus.Fields{
 			"protocol": "quic",
@@ -404,7 +404,7 @@ func quicRestart(s *quicConnection) error {
 	return nil
 }
 
-func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
+func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		Log.WithError(err).Debug("couldn't resolve remote addr (" + rAddr + ") for UDP quic client")
@@ -416,7 +416,7 @@ func quicDial(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, confi
 		return nil, nil, err
 	}
 	// use DialEarly so that we attempt to use 0-RTT DNS queries, it's lower latency (if the server supports it)
-	earlyConn, err := quic.DialEarly(udpConn, udpAddr, hostname, tlsConfig, config)
+	earlyConn, err := quic.DialEarly(ctx, udpConn, udpAddr, tlsConfig, config)
 	if err != nil {
 		// don't leak filehandles / sockets; if we got here udpConn must exist
 		_ = udpConn.Close()

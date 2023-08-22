@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"io"
@@ -202,7 +203,7 @@ func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Str
 	// If we don't have a connection yet, make one
 	if s.EarlyConnection == nil {
 		var err error
-		s.EarlyConnection, s.udpConn, err = quicDial(s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			log.WithFields(logrus.Fields{
 				"hostname": s.hostname,

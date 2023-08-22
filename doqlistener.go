@@ -20,7 +20,7 @@ type DoQListener struct {
 	addr    string
 	r       Resolver
 	opt     DoQListenerOptions
-	ln      quic.Listener
+	ln      *quic.Listener
 	log     *logrus.Entry
 	metrics *DoQListenerMetrics
 }
