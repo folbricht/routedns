@@ -249,11 +249,6 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
-				if sourceDialer, ok := opt.Dialer.(interface {
-					DialWithLocalAddr(network, src, dst string, remoteAddr net.Addr) (net.Conn, error)
-				}); ok && d.LocalAddr != nil {
-					return sourceDialer.DialWithLocalAddr(network, d.LocalAddr.String(), addr, nil)
-				}
 				return opt.Dialer.Dial(network, addr)
 			}
 			return d.DialContext(ctx, network, addr)

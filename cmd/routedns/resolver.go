@@ -118,6 +118,7 @@ func socks5DialerFromConfig(cfg resolver) rdns.Dialer {
 			TCPTimeout:   0,
 			UDPTimeout:   5 * time.Second,
 			ResolveLocal: cfg.Socks5ResolveLocal,
+			LocalAddr:    net.ParseIP(cfg.LocalAddr),
 		})
 	return r
 }

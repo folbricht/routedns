@@ -121,15 +121,8 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		}
 		err error
 	)
-	// Open a raw connection, if we have a local address set and the dialer supports
-	// using it then dial with source address
-	if sourceDialer, ok := d.Dialer.(interface {
-		DialWithLocalAddr(network, src, dst string, remoteAddr net.Addr) (net.Conn, error)
-	}); ok && d.LocalAddr != nil {
-		conn.Conn, err = sourceDialer.DialWithLocalAddr(network, d.LocalAddr.String(), address, nil)
-	} else {
-		conn.Conn, err = dialer.Dial(network, address)
-	}
+	// Open a raw connection
+	conn.Conn, err = dialer.Dial(network, address)
 	if err != nil {
 		return nil, err
 	}
