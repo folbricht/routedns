@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -125,6 +126,8 @@ func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
+		key.WriteString(fmt.Sprintf("%t", edns0.Do()))
+		key.WriteByte(':')
 		// See if we have a subnet option
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {

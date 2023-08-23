@@ -23,6 +23,7 @@ type cacheItem struct {
 type lruKey struct {
 	Question dns.Question
 	Net      string
+	Do       bool
 }
 
 type cacheAnswer struct {
@@ -210,6 +211,7 @@ func lruKeyFromQuery(q *dns.Msg) lruKey {
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
+		key.Do = edns0.Do()
 		// See if we have a subnet option
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
