@@ -16,9 +16,8 @@ require (
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/net v0.10.0
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
-	golang.org/x/net v0.7.0
+	golang.org/x/net v0.10.0
 )
 
 require (
@@ -33,7 +32,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
-	github.com/onsi/ginkgo/v2 v2.6.1 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.0.0 // indirect
