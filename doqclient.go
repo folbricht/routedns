@@ -71,9 +71,12 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		return nil, errors.Wrapf(err, "failed to parse dot endpoint '%s'", endpoint)
 	}
 	if opt.BootstrapAddr != "" {
-		tlsConfig.ServerName = host
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)
 	}
+
+	// quic-go requires the ServerName be set explicitly
+	tlsConfig.ServerName = host
+
 	if opt.QueryTimeout == 0 {
 		opt.QueryTimeout = defaultQueryTimeout
 	}
