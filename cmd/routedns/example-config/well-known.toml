@@ -134,6 +134,11 @@ protocol = "udp"
 address = "dns-unfiltered.adguard.com:8853"
 protocol = "doq"
 
+# NextDNS QUIC
+[resolvers.nextdns]
+address = "dns.nextdns.io:853"
+protocol = "doq"
+
 # Listeners
 
 [listeners.local-udp]
