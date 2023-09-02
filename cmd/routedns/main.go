@@ -957,6 +957,8 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 		return rdns.NewCidrDB(name, loader)
 	case "location":
 		return rdns.NewGeoIPDB(name, loader, locationDB)
+	case "asn":
+		return rdns.NewASNDB(name, loader, locationDB)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
