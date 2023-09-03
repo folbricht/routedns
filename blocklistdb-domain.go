@@ -63,7 +63,7 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 	return NewDomainDB(m.name, m.loader)
 }
 
-func (m *DomainDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
+func (m *DomainDB) Match(q dns.Question) (net.IP, []string, *BlocklistMatch, bool) {
 	s := strings.TrimSuffix(q.Name, ".")
 	var matched []string
 	parts := strings.Split(s, ".")
@@ -72,12 +72,12 @@ func (m *DomainDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool)
 		part := parts[i]
 		subNode, ok := n[part]
 		if !ok {
-			return nil, "", nil, false
+			return nil, nil, nil, false
 		}
 		matched = append(matched, part)
 		if _, ok := subNode[""]; ok { // exact and sub-domain match
 			return nil,
-				"",
+				nil,
 				&BlocklistMatch{
 					List: m.name,
 					Rule: matchedDomainParts(".", matched),
@@ -86,7 +86,7 @@ func (m *DomainDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool)
 		}
 		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
 			return nil,
-				"",
+				nil,
 				&BlocklistMatch{
 					List: m.name,
 					Rule: matchedDomainParts("*.", matched),
@@ -96,7 +96,7 @@ func (m *DomainDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool)
 		n = subNode
 	}
 	return nil,
-		"",
+		nil,
 		&BlocklistMatch{
 			List: m.name,
 			Rule: matchedDomainParts("", matched),

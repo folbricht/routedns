@@ -105,7 +105,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	ip, name, match, ok := blocklistDB.Match(question)
+	ip, names, match, ok := blocklistDB.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Debug("forwarding unmodified query to resolver")
@@ -115,10 +115,10 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log = log.WithFields(logrus.Fields{"list": match.List, "rule": match.Rule})
 	r.metrics.blocked.Add(1)
 
-	// If we got a name for the PTR query, respond to it
-	if question.Qtype == dns.TypePTR && name != "" {
+	// If we got names for the PTR query, respond to it
+	if question.Qtype == dns.TypePTR && len(names) > 0 {
 		log.Debug("responding with ptr blocklist from blocklist")
-		return ptr(q, name), nil
+		return ptr(q, names), nil
 	}
 
 	// If an optional blocklist-resolver was given, send the query to that instead of returning NXDOMAIN.

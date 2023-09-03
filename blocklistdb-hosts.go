@@ -13,7 +13,7 @@ import (
 type HostsDB struct {
 	name    string
 	filters map[string]ipRecords
-	ptrMap  map[string]string // PTR lookup map
+	ptrMap  map[string][]string // PTR lookup map
 	loader  BlocklistLoader
 }
 
@@ -31,7 +31,7 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		return nil, err
 	}
 	filters := make(map[string]ipRecords)
-	ptrMap := make(map[string]string)
+	ptrMap := make(map[string][]string)
 	for _, r := range rules {
 		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
@@ -68,7 +68,7 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		if err != nil {
 			continue
 		}
-		ptrMap[reverseAddr] = names[0]
+		ptrMap[reverseAddr] = append(ptrMap[reverseAddr], names...)
 	}
 	return &HostsDB{name, filters, ptrMap, loader}, nil
 }
@@ -77,19 +77,19 @@ func (m *HostsDB) Reload() (BlocklistDB, error) {
 	return NewHostsDB(m.name, m.loader)
 }
 
-func (m *HostsDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) {
+func (m *HostsDB) Match(q dns.Question) (net.IP, []string, *BlocklistMatch, bool) {
 	if q.Qtype == dns.TypePTR {
-		name, ok := m.ptrMap[q.Name]
-		return nil, name, &BlocklistMatch{
+		names, ok := m.ptrMap[q.Name]
+		return nil, names, &BlocklistMatch{
 			List: m.name,
-			Rule: name,
+			Rule: names[0],
 		}, ok
 	}
 	name := strings.TrimSuffix(q.Name, ".")
 	ips, ok := m.filters[name]
 	if q.Qtype == dns.TypeA {
 		return ips.ip4,
-			"",
+			nil,
 			&BlocklistMatch{
 				List: m.name,
 				Rule: ips.ip4.String() + " " + name,
@@ -97,7 +97,7 @@ func (m *HostsDB) Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool) 
 			ok
 	}
 	return ips.ip6,
-		"",
+		nil,
 		&BlocklistMatch{
 			List: m.name,
 			Rule: ips.ip6.String() + " " + name,
