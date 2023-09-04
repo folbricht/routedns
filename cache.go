@@ -404,6 +404,9 @@ func AnswerShuffleRoundRobin(msg *dns.Msg) {
 			aRecords = append(aRecords, &msg.Answer[i])
 		}
 	}
+	if len(aRecords) < 2 {
+		return
+	}
 
 	// Rotate the A/AAAA record pointers
 	shiftBy %= uint64(len(aRecords))
