@@ -51,6 +51,11 @@ type BlocklistMetrics struct {
 	allowed *expvar.Int
 }
 
+const (
+	// Max number of name records to reply with for PTR lookups
+	maxPTRResponses = 10
+)
+
 func NewBlocklistMetrics(id string) *BlocklistMetrics {
 	return &BlocklistMetrics{
 		allowed: getVarInt("router", id, "allow"),
@@ -118,6 +123,9 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// If we got names for the PTR query, respond to it
 	if question.Qtype == dns.TypePTR && len(names) > 0 {
 		log.Debug("responding with ptr blocklist from blocklist")
+		if len(names) > maxPTRResponses {
+			names = names[:maxPTRResponses]
+		}
 		return ptr(q, names), nil
 	}
 
