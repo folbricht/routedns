@@ -133,9 +133,11 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.Expiry) {
-				removed++
-				return true
+			if a != nil {
+				if now.After(a.Expiry) {
+					removed++
+					return true
+				}
 			}
 			return false
 		})
