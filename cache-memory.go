@@ -24,9 +24,6 @@ type MemoryBackendOptions struct {
 
 	// Load the cache from file on startup and write it on close
 	Filename string
-
-	// Write the file in an interval. Only write on shutdown if not set
-	SaveInterval time.Duration
 }
 
 var _ CacheBackend = (*memoryBackend)(nil)
@@ -43,7 +40,6 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 		b.loadFromFile(opt.Filename)
 	}
 	go b.startGC(opt.GCPeriod)
-	go b.intervalSave()
 	return b
 }
 
@@ -57,24 +53,16 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var answer *dns.Msg
 	var timestamp time.Time
 	var prefetchEligible bool
-	var expiry time.Time
 	b.mu.Lock()
 	if a := b.lru.get(q); a != nil {
 		answer = a.Msg.Copy()
 		timestamp = a.Timestamp
 		prefetchEligible = a.PrefetchEligible
-		expiry = a.Expiry
 	}
 	b.mu.Unlock()
 
 	// Return a cache-miss if there's no answer record in the map
 	if answer == nil {
-		return nil, false, false
-	}
-
-	// Check if item has expired from the cache
-	if time.Now().After(expiry) {
-		b.Evict(q)
 		return nil, false, false
 	}
 
@@ -133,11 +121,13 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.Expiry) {
-				removed++
-				return true
+			if a != nil {
+				if now.After(a.expiry) {
+					removed++
+					return true
+				}
 			}
-			return false
+				return false
 		})
 		total = b.lru.size()
 		b.mu.Unlock()
@@ -160,16 +150,16 @@ func (b *memoryBackend) Close() error {
 }
 
 func (b *memoryBackend) writeToFile(filename string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	log := Log.WithField("filename", filename)
-	log.Info("writing cache file")
 	f, err := os.Create(filename)
 	if err != nil {
 		log.WithError(err).Warn("failed to create cache file")
 		return err
 	}
 	defer f.Close()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	if err := b.lru.serialize(f); err != nil {
 		log.WithError(err).Warn("failed to persist cache to disk")
@@ -179,10 +169,7 @@ func (b *memoryBackend) writeToFile(filename string) error {
 }
 
 func (b *memoryBackend) loadFromFile(filename string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	log := Log.WithField("filename", filename)
-	log.Info("reading cache file")
 	f, err := os.Open(filename)
 	if err != nil {
 		log.WithError(err).Warn("failed to open cache file")
@@ -195,14 +182,4 @@ func (b *memoryBackend) loadFromFile(filename string) error {
 		return err
 	}
 	return nil
-}
-
-func (b *memoryBackend) intervalSave() {
-	if b.opt.Filename == "" || b.opt.SaveInterval == 0 {
-		return
-	}
-	for {
-		time.Sleep(b.opt.SaveInterval)
-		b.writeToFile(b.opt.Filename)
-	}
 }
