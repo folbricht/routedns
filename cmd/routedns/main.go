@@ -662,6 +662,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
 			Filter:            g.Filter,
+			Inverted:          g.Inverted,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistIP(id, gr[0], opt)
 		if err != nil {
@@ -698,6 +699,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistResolver: resolvers[g.BlockListResolver],
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+			Inverted:          g.Inverted,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistName(id, gr[0], opt)
 		if err != nil {

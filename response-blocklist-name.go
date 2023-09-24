@@ -26,6 +26,9 @@ type ResponseBlocklistNameOptions struct {
 
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
+
+	// Inverted behavior, only allow responses that can be found on at least one list.
+	Inverted bool
 }
 
 // NewResponseBlocklistName returns a new instance of a response blocklist resolver.
@@ -87,7 +90,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 			default:
 				continue
 			}
-			if _, _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok {
+			if _, _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok != r.Inverted {
 				log := logger(r.id, query, ci).WithField("rule", rule.Rule)
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")

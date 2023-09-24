@@ -41,6 +41,9 @@ type ResponseBlocklistIPOptions struct {
 	// If true, removes matching records from the response rather than replying with NXDOMAIN. Can
 	// not be combined with alternative blockist-resolver
 	Filter bool
+
+	// Inverted behavior, only allow responses that can be found on at least one list.
+	Inverted bool
 }
 
 // NewResponseBlocklistIP returns a new instance of a response blocklist resolver.
@@ -103,7 +106,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 			default:
 				continue
 			}
-			if match, ok := r.BlocklistDB.Match(ip); ok {
+			if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
 				log := logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
@@ -147,7 +150,7 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			newRRs = append(newRRs, rr)
 			continue
 		}
-		if match, ok := r.BlocklistDB.Match(ip); ok {
+		if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
 			logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip}).Debug("filtering response")
 			continue
 		}
