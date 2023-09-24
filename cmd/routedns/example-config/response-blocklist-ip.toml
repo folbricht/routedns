@@ -15,3 +15,8 @@ blocklist           = [
 address = ":53"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"
