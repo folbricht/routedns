@@ -201,6 +201,10 @@ func (c *lruCache) deserialize(r io.Reader) error {
 		if err := dec.Decode(item); err != nil {
 			return err
 		}
+		// Skip bad (or incompatible) records
+		if item.Key.Question.Name == "" || item.Answer == nil {
+			continue
+		}
 		c.addKey(item.Key, item.Answer)
 	}
 	return nil
