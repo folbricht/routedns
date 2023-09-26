@@ -107,7 +107,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-				log := logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip})
+				log := logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.GetList(), "rule": match.GetRule(), "ip": ip})
 				if r.BlocklistResolver != nil {
 					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
@@ -151,7 +151,7 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			continue
 		}
 		if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-			logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.List, "rule": match.Rule, "ip": ip}).Debug("filtering response")
+			logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.GetList(), "rule": match.GetRule(), "ip": ip}).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)
