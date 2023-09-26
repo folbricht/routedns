@@ -26,3 +26,17 @@ type BlocklistMatch struct {
 	List string // Identifier or name of the blocklist
 	Rule string // Identifier for the rule that matched
 }
+
+func (m *BlocklistMatch) GetList() string {
+	if m == nil {
+		return "none"
+	}
+	return m.List
+}
+
+func (m *BlocklistMatch) GetRule() string {
+	if m == nil {
+		return "none"
+	}
+	return m.Rule
+}
