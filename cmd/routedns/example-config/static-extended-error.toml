@@ -1,0 +1,10 @@
+# Static responder returning an extended error code detailing why something was blocked
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "static"
+
+[groups.static]
+type  = "static-responder"
+edns0-ede = {code = 15, text = "Blocked because reasons"} # Valid codes defined in https://datatracker.ietf.org/doc/html/rfc8914
