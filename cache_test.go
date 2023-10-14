@@ -134,6 +134,9 @@ func TestCacheHardenBelowNXDOMAIN(t *testing.T) {
 
 func TestRoundRobinShuffle(t *testing.T) {
 	msg := &dns.Msg{
+		Question: []dns.Question{
+			{Name: "example.com."},
+		},
 		Answer: []dns.RR{
 			&dns.CNAME{
 				Hdr: dns.RR_Header{
@@ -161,17 +164,28 @@ func TestRoundRobinShuffle(t *testing.T) {
 			},
 		},
 	}
-	// Shift the A records
-	AnswerShuffleRoundRobin(msg)
+
+	// Shift the A records once
+	msg1 := msg.Copy()
+	AnswerShuffleRoundRobin(msg1)
 
 	require.Equal(t, dns.TypeCNAME, msg.Answer[0].Header().Rrtype)
 	require.Equal(t, dns.TypeA, msg.Answer[1].Header().Rrtype)
 	require.Equal(t, dns.TypeA, msg.Answer[2].Header().Rrtype)
 
-	a1 := msg.Answer[1].(*dns.A)
-	a2 := msg.Answer[2].(*dns.A)
+	a1 := msg1.Answer[1].(*dns.A)
+	a2 := msg1.Answer[2].(*dns.A)
 	require.Equal(t, net.IP{0, 0, 0, 2}, a1.A)
 	require.Equal(t, net.IP{0, 0, 0, 1}, a2.A)
+
+	// Shift the A records again
+	msg2 := msg.Copy()
+	AnswerShuffleRoundRobin(msg2)
+
+	a1 = msg2.Answer[1].(*dns.A)
+	a2 = msg2.Answer[2].(*dns.A)
+	require.Equal(t, net.IP{0, 0, 0, 1}, a1.A)
+	require.Equal(t, net.IP{0, 0, 0, 2}, a2.A)
 }
 
 // Truncated responses should not be cached

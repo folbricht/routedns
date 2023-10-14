@@ -112,8 +112,8 @@ func (r *FailBack) current() (Resolver, int) {
 // (no longer) the active store.
 func (r *FailBack) errorFrom(i int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if i != r.active {
+		r.mu.Unlock()
 		return
 	}
 	if r.failCh == nil { // lazy start the reset timer
@@ -124,10 +124,12 @@ func (r *FailBack) errorFrom(i int) {
 		"id":       r.id,
 		"resolver": r.resolvers[r.active].String(),
 	}).Debug("failing over to resolver")
+	r.mu.Unlock()
 	r.metrics.failover.Add(1)
 	r.metrics.available.Add(-1)
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
+
 
 // Set active=0 regularly after the reset timer has expired without further failures. Any failure,
 // as signalled by the channel resets the timer again.

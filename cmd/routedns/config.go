@@ -131,6 +131,7 @@ type group struct {
 	AllowlistSource   []list   `toml:"allowlist-source"`
 	AllowlistRefresh  int      `toml:"allowlist-refresh"`
 	LocationDB        string   `toml:"location-db"` // GeoIP database file for response blocklist. Default "/usr/share/GeoIP/GeoLite2-City.mmdb"
+	Inverted          bool     // Only allow IPs on the blocklist. Supported in response-blocklist-ip and response-blocklist-name
 
 	// Static responder options
 	Answer   []string
