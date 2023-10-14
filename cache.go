@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/rand"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -327,24 +329,94 @@ func AnswerShuffleRandom(msg *dns.Msg) {
 	})
 }
 
+// Round Robin shuffling requires keeping state as it's operating on copies
+// of DNS messages so the number of shift operations needs to be remembered.
+type rrShuffleRecord struct {
+	reads  uint64
+	expiry time.Time
+}
+
+var (
+	rrShuffleState map[lruKey]*rrShuffleRecord
+	rrShuffleOnce  sync.Once
+	rrShuffleMu    sync.RWMutex
+)
+
 // Shift the answer A/AAAA record order in an answer by one.
 func AnswerShuffleRoundRobin(msg *dns.Msg) {
 	if len(msg.Answer) < 2 {
 		return
 	}
-	var last dns.RR
-	var dst int
+	rrShuffleOnce.Do(func() {
+		rrShuffleState = make(map[lruKey]*rrShuffleRecord)
+
+		// Start a cleanup job
+		go func() {
+			for {
+				time.Sleep(30 * time.Second)
+				rrShuffleMu.RLock()
+
+				// Build a list of expired items
+				var toRemove []lruKey
+				for k, v := range rrShuffleState {
+					now := time.Now()
+					if now.After(v.expiry) {
+						toRemove = append(toRemove, k)
+					}
+				}
+				rrShuffleMu.RUnlock()
+
+				// Remove the expired items
+				rrShuffleMu.Lock()
+				for _, k := range toRemove {
+					delete(rrShuffleState, k)
+				}
+				rrShuffleMu.Unlock()
+			}
+		}()
+	})
+
+	// Lookup how often the results were shifted previously
+	key := lruKeyFromQuery(msg)
+	rrShuffleMu.RLock()
+	rec, ok := rrShuffleState[key]
+	rrShuffleMu.RUnlock()
+	var shiftBy uint64
+	if ok {
+		shiftBy = atomic.AddUint64(&rec.reads, 1)
+	} else {
+		ttl, ok := minTTL(msg)
+		if !ok {
+			return
+		}
+		rec = &rrShuffleRecord{
+			expiry: time.Now().Add(time.Duration(ttl) * time.Second),
+		}
+		rrShuffleMu.Lock()
+		rrShuffleState[key] = rec
+		rrShuffleMu.Unlock()
+	}
+
+	// Build a list of pointers to A/AAAA records in the message
+	var aRecords []*dns.RR
 	for i, rr := range msg.Answer {
 		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
-			if last == nil {
-				last = rr
-			} else {
-				msg.Answer[dst] = rr
-			}
-			dst = i
+			aRecords = append(aRecords, &msg.Answer[i])
 		}
 	}
-	if last != nil {
-		msg.Answer[dst] = last
+	if len(aRecords) < 2 {
+		return
+	}
+
+	// Rotate the A/AAAA record pointers
+	shiftBy %= uint64(len(aRecords))
+	shiftBy++
+
+	for i := uint64(0); i < shiftBy; i++ {
+		last := *aRecords[len(aRecords)-1]
+		for j := len(aRecords) - 1; j > 0; j-- {
+			*aRecords[j] = *aRecords[j-1]
+		}
+		*aRecords[0] = last
 	}
 }
