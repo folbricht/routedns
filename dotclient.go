@@ -30,6 +30,9 @@ type DoTClientOptions struct {
 	TLSConfig *tls.Config
 
 	QueryTimeout time.Duration
+
+	// Optional dialer, e.g. proxy
+	Dialer Dialer
 }
 
 var _ Resolver = &DoTClient{}
@@ -40,15 +43,11 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 		return nil, err
 	}
 
-	// Use a custom dialer if a local address was provided
-	var dialer *net.Dialer
-	if opt.LocalAddr != nil {
-		dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
-	}
-	client := &dns.Client{
+	client := GenericDNSClient{
 		Net:       "tcp-tls",
 		TLSConfig: opt.TLSConfig,
-		Dialer:    dialer,
+		Dialer:    opt.Dialer,
+		LocalAddr: opt.LocalAddr,
 	}
 	// If a bootstrap address was provided, we need to use the IP for the connection but the
 	// hostname in the TLS handshake. The DNS library doesn't support custom dialers, so

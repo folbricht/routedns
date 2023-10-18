@@ -44,6 +44,7 @@
   - [DNS-over-DTLS](#DNS-over-DTLS-Resolver)
   - [DNS-over-QUIC](#DNS-over-QUIC-Resolver)
   - [Bootstrap Resolver](#Bootstrap-Resolver)
+  - [SOCKS5 Proxy Support](#SOCKS5-Proxy-Support)
 
 ## Overview
 
@@ -1578,3 +1579,29 @@ protocol = "dot"
 ```
 
 Example config files: [bootstrap-resolver.toml](../cmd/routedns/example-config/bootstrap-resolver.toml), [use-case-6.toml](../cmd/routedns/example-config/use-case-6.toml)
+
+### SOCKS5 Proxy Support
+
+Several resolver types support connecting to upstream servers through a SOCKS5 proxy. This includes:
+
+- [Plain DNS](#Plain-DNS-Resolver)
+- [DNS-over-TLS](#DNS-over-TLS-Resolver)
+- [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver)
+
+If SOCKS5 is available, the following options can be used to configure it:
+
+- `socks5-address` - SOCKS5 server address, including port.
+- `socks5-username` - SOCKS5 server username.
+- `socks5-password` - SOCKS5 server password.
+- `socks5-resolve-local` - Experimental: Resolve the upstream DNS server name locally before connecting through the proxy.
+
+Examples:
+
+```toml
+[resolvers.cloudflare-doh]
+address = "https://cloudflare-dns.com/dns-query"
+protocol = "doh"
+socks5-address = "1.2.3.4:1080"
+socks5-username = "test"
+socks5-password = "test"
+```
