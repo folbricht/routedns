@@ -763,6 +763,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistResolver: resolvers[g.BlockListResolver],
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+			UseECS:            g.UseECS,
 		}
 		resolvers[id], err = rdns.NewClientBlocklist(id, gr[0], opt)
 		if err != nil {
