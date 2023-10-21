@@ -13,8 +13,9 @@ type BlocklistDB interface {
 	Reload() (BlocklistDB, error)
 
 	// Returns true if the question matches a rule. If the IP is not nil,
-	// respond with the given IP. NXDOMAIN otherwise.
-	Match(q dns.Question) (net.IP, string, *BlocklistMatch, bool)
+	// respond with the given IP. NXDOMAIN otherwise. The returned names,
+	// if set, are used to answer PTR queries
+	Match(q dns.Question) (ip net.IP, names []string, m *BlocklistMatch, matched bool)
 
 	fmt.Stringer
 }

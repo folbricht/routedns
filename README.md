@@ -20,6 +20,7 @@ Features:
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
 - Support for 0-RTT Quic queries if the upstream server supports it
+- SOCKS5 proxy support
 - Optional metrics export (expvar) to support monitoring and graphing
 - Written in Go - Platform independent
 

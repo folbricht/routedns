@@ -41,6 +41,9 @@ type DoHClientOptions struct {
 	TLSConfig *tls.Config
 
 	QueryTimeout time.Duration
+
+	// Optional dialer, e.g. proxy
+	Dialer Dialer
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
@@ -235,7 +238,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	}
 
 	// Use a custom dialer if a bootstrap address or local address was provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil {
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil {
 		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
@@ -244,6 +247,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 					return nil, err
 				}
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
+			}
+			if opt.Dialer != nil {
+				return opt.Dialer.Dial(network, addr)
 			}
 			return d.DialContext(ctx, network, addr)
 		}
