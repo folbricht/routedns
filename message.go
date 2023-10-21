@@ -53,11 +53,12 @@ func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 }
 
 // Answers a PTR query with a name
-func ptr(q *dns.Msg, name string) *dns.Msg {
+func ptr(q *dns.Msg, names []string) *dns.Msg {
 	a := new(dns.Msg)
 	a.SetReply(q)
-	a.Answer = []dns.RR{
-		&dns.PTR{
+	answer := make([]dns.RR, 0, len(names))
+	for _, name := range names {
+		rr := &dns.PTR{
 			Hdr: dns.RR_Header{
 				Name:   q.Question[0].Name,
 				Rrtype: dns.TypePTR,
@@ -65,8 +66,10 @@ func ptr(q *dns.Msg, name string) *dns.Msg {
 				Ttl:    3600,
 			},
 			Ptr: dns.Fqdn(name),
-		},
+		}
+		answer = append(answer, rr)
 	}
+	a.Answer = answer
 	return a
 }
 
