@@ -110,7 +110,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	ip, names, match, ok := blocklistDB.Match(question)
+	ips, names, match, ok := blocklistDB.Match(question)
 	if !ok {
 		// Didn't match anything, pass it on to the next resolver
 		log.WithField("resolver", r.resolver.String()).Debug("forwarding unmodified query to resolver")
@@ -139,9 +139,10 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.SetReply(q)
 
 	// We have an IP address to return, make sure it's of the right type. If not return NXDOMAIN.
-	if ip4 := ip.To4(); len(ip4) == net.IPv4len && question.Qtype == dns.TypeA {
-		answer.Answer = []dns.RR{
-			&dns.A{
+	var spoof []dns.RR
+	for _, ip := range ips {
+		if ip4 := ip.To4(); len(ip4) == net.IPv4len && question.Qtype == dns.TypeA {
+			spoof = append(spoof, &dns.A{
 				Hdr: dns.RR_Header{
 					Name:   question.Name,
 					Rrtype: dns.TypeA,
@@ -149,13 +150,9 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 					Ttl:    3600,
 				},
 				A: ip,
-			},
-		}
-		log.Debug("spoofing response")
-		return answer, nil
-	} else if len(ip) == net.IPv6len && question.Qtype == dns.TypeAAAA {
-		answer.Answer = []dns.RR{
-			&dns.AAAA{
+			})
+		} else if len(ip) == net.IPv6len && question.Qtype == dns.TypeAAAA {
+			spoof = append(spoof, &dns.AAAA{
 				Hdr: dns.RR_Header{
 					Name:   question.Name,
 					Rrtype: dns.TypeAAAA,
@@ -163,9 +160,13 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 					Ttl:    3600,
 				},
 				AAAA: ip,
-			},
+			})
 		}
+	}
+
+	if len(spoof) > 0 {
 		log.Debug("spoofing response")
+		answer.Answer = spoof
 		return answer, nil
 	}
 
