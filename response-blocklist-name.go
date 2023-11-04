@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -87,6 +88,12 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				name = r.Ptr
 			case *dns.SRV:
 				name = r.Target
+			case *dns.HTTPS:
+				name = svcbString(&r.SVCB)
+			case *dns.TXT:
+				name = strings.Join(r.Txt, " ")
+			case *dns.SVCB:
+				name = svcbString(r)
 			default:
 				continue
 			}
@@ -102,4 +109,18 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 		}
 	}
 	return answer, nil
+}
+
+// Format an SVCB (and HTTPS) record as string like so "TARGET key1=value1 key2=value2"
+// For example: ". alpn=h2,h3"
+func svcbString(rr *dns.SVCB) string {
+	var s strings.Builder
+	s.WriteString(rr.Target)
+	for _, v := range rr.Value {
+		s.WriteString(" ")
+		s.WriteString(v.Key().String())
+		s.WriteString("=")
+		s.WriteString(v.String())
+	}
+	return s.String()
 }
