@@ -22,6 +22,7 @@ type config struct {
 type listener struct {
 	Address    string
 	Protocol   string
+	IPVersion  int `toml:"ip-version"` // 4 = IPv4, 6 = IPv6
 	Transport  string
 	Resolver   string
 	CA         string

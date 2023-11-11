@@ -196,15 +196,21 @@ func start(opt options, args []string) error {
 			return err
 		}
 
+		if l.IPVersion != 4 && l.IPVersion != 6 {
+			return errors.New("ip-version must be 4 or 6")
+		}
+
 		opt := rdns.ListenOptions{AllowedNet: allowedNet}
 
 		switch l.Protocol {
 		case "tcp":
+			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "tcp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
 		case "udp":
+			network := networkForIPVersion("udp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "udp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
 		case "admin":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
@@ -221,12 +227,13 @@ func start(opt options, args []string) error {
 			}
 			listeners = append(listeners, ln)
 		case "dot":
+			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoTPort)
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(id, l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDoTListener(id, l.Address, network, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "dtls":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
@@ -248,7 +255,6 @@ func start(opt options, args []string) error {
 					return errors.New("no-tls is not supported for doh servers with quic transport")
 				}
 			} else {
-				fmt.Println("p4")
 				tlsConfig, err = rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 				if err != nil {
 					return err
@@ -890,6 +896,13 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+}
+
+func networkForIPVersion(base string, ipVersion int) string {
+	if ipVersion == 0 {
+		return base
+	}
+	return base + strconv.Itoa(ipVersion)
 }
 
 func printVersion() {
