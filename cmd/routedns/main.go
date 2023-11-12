@@ -196,7 +196,7 @@ func start(opt options, args []string) error {
 			return err
 		}
 
-		if l.IPVersion != 4 && l.IPVersion != 6 {
+		if l.IPVersion != 4 && l.IPVersion != 6 && l.IPVersion != 0 {
 			return errors.New("ip-version must be 4 or 6")
 		}
 
