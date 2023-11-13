@@ -17,9 +17,12 @@ type HostsDB struct {
 	loader  BlocklistLoader
 }
 
+// Max number of A/AAAA records created for hosts blocklist
+const maxHostsResponses = 10
+
 type ipRecords struct {
-	ip4 net.IP
-	ip6 net.IP
+	ip4 []net.IP
+	ip6 []net.IP
 }
 
 var _ BlocklistDB = &HostsDB{}
@@ -58,9 +61,15 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 			name = strings.TrimSuffix(name, ".")
 			ips := filters[name]
 			if isIP4 {
-				ips.ip4 = ip
+				if len(ips.ip4) > maxHostsResponses {
+					continue
+				}
+				ips.ip4 = append(ips.ip4, ip)
 			} else {
-				ips.ip6 = ip
+				if len(ips.ip6) > maxHostsResponses {
+					continue
+				}
+				ips.ip6 = append(ips.ip6, ip)
 			}
 			filters[name] = ips
 		}
@@ -77,7 +86,7 @@ func (m *HostsDB) Reload() (BlocklistDB, error) {
 	return NewHostsDB(m.name, m.loader)
 }
 
-func (m *HostsDB) Match(q dns.Question) (net.IP, []string, *BlocklistMatch, bool) {
+func (m *HostsDB) Match(q dns.Question) ([]net.IP, []string, *BlocklistMatch, bool) {
 	if q.Qtype == dns.TypePTR {
 		names, ok := m.ptrMap[q.Name]
 		var rule string
@@ -96,7 +105,7 @@ func (m *HostsDB) Match(q dns.Question) (net.IP, []string, *BlocklistMatch, bool
 			nil,
 			&BlocklistMatch{
 				List: m.name,
-				Rule: ips.ip4.String() + " " + name,
+				Rule: name,
 			},
 			ok
 	}
@@ -104,7 +113,7 @@ func (m *HostsDB) Match(q dns.Question) (net.IP, []string, *BlocklistMatch, bool
 		nil,
 		&BlocklistMatch{
 			List: m.name,
-			Rule: ips.ip6.String() + " " + name,
+			Rule: name,
 		},
 		ok
 }
