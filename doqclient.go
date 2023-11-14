@@ -93,6 +93,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 			tlsConfig: tlsConfig,
 			config: &quic.Config{
 				TokenStore: quic.NewLRUTokenStore(10, 10),
+				HandshakeIdleTimeout: opt.QueryTimeout,
 			},
 		},
 		metrics: NewListenerMetrics("client", id),
@@ -128,6 +129,8 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		edns0.Option = newOpt
 	}
 
+	deadlineTime := time.Now().Add(d.DoQClientOptions.QueryTimeout)
+
 	// Encode the query
 	p, err := qc.Pack()
 	if err != nil {
@@ -148,7 +151,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	// Write the query into the stream and close it. Only one stream per query/response
-	_ = stream.SetWriteDeadline(time.Now().Add(d.DoQClientOptions.QueryTimeout))
+	_ = stream.SetWriteDeadline(deadlineTime)
 	if _, err = stream.Write(b); err != nil {
 		d.metrics.err.Add("write", 1)
 		return nil, err
@@ -158,7 +161,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	_ = stream.SetReadDeadline(time.Now().Add(d.DoQClientOptions.QueryTimeout))
+	_ = stream.SetReadDeadline(deadlineTime)
 
 	// DoQ requires a length prefix, like TCP
 	var length uint16
