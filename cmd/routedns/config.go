@@ -138,6 +138,10 @@ type group struct {
 	NS       []string
 	Extra    []string
 	RCode    int
+	EDNS0EDE *struct {
+		Code uint16 `toml:"code"` // Code defined in https://datatracker.ietf.org/doc/html/rfc8914
+		Text string `toml:"text"` // Extra text containing additional information
+	} `toml:"edns0-ede"` // Extended DNS Errors
 	Truncate bool `toml:"truncate"` // When true, TC-Bit is set
 
 	// Rate-limiting options

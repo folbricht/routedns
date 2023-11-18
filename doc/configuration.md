@@ -947,6 +947,7 @@ Options:
 - `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response. The name in all answer records is replaced with the name in the query to create a match.
 - `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
 - `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
+- `edns0-ede` - Include an extended error code in the response. It's a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example.
 - `truncate` - when true, TC Bit is set in response. Default is false.
 
 Note:
@@ -995,15 +996,24 @@ routes = [
 ]
 ```
 
-Return an emtpy answer with TC (Truncate) bit set so the DNS client is instructed to retry the query using TCP instead of UDP.
+Return an empty answer with TC (Truncate) bit set so the DNS client is instructed to retry the query using TCP instead of UDP.
+
 ```toml
 [groups.static-truncate]
 type     = "static-responder"
 rcode    = 0 # NOERROR
 truncate = True
+```
 
+Return an extended error code explaining why a query was blocked.
 
-Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml)
+```toml
+[groups.static]
+type  = "static-responder"
+edns0-ede = {code = 15, text = "Blocked because reasons"}
+```
+
+Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml), [static-extended-error.toml](../cmd/routedns/example-config/static-extended-error.toml)
 
 ### Drop
 

@@ -8,23 +8,25 @@ import (
 // Typically used in combination with a blocklist to define fixed block responses or
 // with a router when building a walled garden.
 type StaticResolver struct {
-	id     string
-	answer []dns.RR
-	ns     []dns.RR
-	extra  []dns.RR
-	rcode  int
-	truncate	bool
+	id           string
+	answer       []dns.RR
+	ns           []dns.RR
+	extra        []dns.RR
+	edns0Options []dns.EDNS0
+	rcode        int
+	truncate     bool
 }
 
 var _ Resolver = &StaticResolver{}
 
 type StaticResolverOptions struct {
 	// Records in zone-file format
-	Answer []string
-	NS     []string
-	Extra  []string
-	RCode  int
-	Truncate	bool
+	Answer       []string
+	NS           []string
+	Extra        []string
+	EDNS0Options []dns.EDNS0
+	RCode        int
+	Truncate     bool
 }
 
 // NewStaticResolver returns a new instance of a StaticResolver resolver.
@@ -53,9 +55,9 @@ func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, e
 		r.extra = append(r.extra, rr)
 	}
 	r.rcode = opt.RCode
-	
+	r.edns0Options = opt.EDNS0Options
 	r.truncate = opt.Truncate
-	
+
 	return r, nil
 }
 
@@ -75,6 +77,12 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Extra = r.extra
 	answer.Rcode = r.rcode
 	answer.Truncated = r.truncate
+
+	if len(r.edns0Options) > 0 {
+		answer.SetEdns0(4096, false)
+		opt := answer.IsEdns0()
+		opt.Option = append(opt.Option, r.edns0Options...)
+	}
 
 	logger(r.id, q, ci).WithField("truncated", r.truncate).Debug("responding")
 
