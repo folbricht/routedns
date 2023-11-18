@@ -221,7 +221,7 @@ func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Str
 
 	// If we can't get a stream then restart the connection and try again once
 	stream, err := s.EarlyConnection.OpenStream()
-	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
+	if err != nil {
 		log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
 		if err = quicRestart(s); err != nil {
 			log.WithFields(logrus.Fields{
