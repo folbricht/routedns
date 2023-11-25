@@ -94,6 +94,8 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				name = strings.Join(r.Txt, " ")
 			case *dns.SVCB:
 				name = svcbString(r)
+			case *dns.SOA:
+				name = r.Ns
 			default:
 				continue
 			}
