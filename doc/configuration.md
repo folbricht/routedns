@@ -815,6 +815,7 @@ Options:
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
 - `blocklist-source` - An array of blocklists, each with `format` and `source` and optionally `name`.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
+- `use-ecs` - If set to true, will use the IP address in the client's ECS record instead of the real IP. Can be used to simulate queries from other source IPs. The address should be set to the IP, not a subnet for this to work. Uses the client's real IP if no ECS record is found in the query.
 
 Examples:
 
