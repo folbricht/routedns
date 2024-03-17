@@ -75,6 +75,7 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.SetReply(q)
 	answer.Rcode = r.opt.RCode
 	answer.Truncated = r.opt.Truncate
+	answer.RecursionAvailable = q.RecursionDesired
 
 	// Apply any templates if we have a query regex
 	if r.question != nil {
