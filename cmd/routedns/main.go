@@ -413,6 +413,10 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				return err
 			}
 		}
+		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
+		if err != nil {
+			return fmt.Errorf("failed to parse edn0 template in %q: %w", id, err)
+		}
 		opt := rdns.BlocklistOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
 			BlocklistDB:       blocklistDB,
@@ -420,6 +424,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			AllowListResolver: resolvers[g.AllowListResolver],
 			AllowlistDB:       allowlistDB,
 			AllowlistRefresh:  time.Duration(g.AllowlistRefresh) * time.Second,
+			EDNS0EDETemplate:  edeTpl,
 		}
 		resolvers[id], err = rdns.NewBlocklist(id, gr[0], opt)
 		if err != nil {
