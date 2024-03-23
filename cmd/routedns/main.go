@@ -744,20 +744,21 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 
 	case "static-responder":
-		var edns0Options []dns.EDNS0
+		var ede *dns.EDNS0_EDE
 		if g.EDNS0EDE != nil {
-			edns0Options = append(edns0Options, &dns.EDNS0_EDE{
+			ede = &dns.EDNS0_EDE{
 				InfoCode:  g.EDNS0EDE.Code,
 				ExtraText: g.EDNS0EDE.Text,
-			})
+			}
 		}
 		opt := rdns.StaticResolverOptions{
-			Answer:       g.Answer,
-			NS:           g.NS,
-			Extra:        g.Extra,
-			RCode:        g.RCode,
-			Truncate:     g.Truncate,
-			EDNS0Options: edns0Options,
+			Answer:   g.Answer,
+			NS:       g.NS,
+			Extra:    g.Extra,
+			RCode:    g.RCode,
+			Truncate: g.Truncate,
+			EDNS0EDE: ede,
+			Query:    g.Question,
 		}
 		resolvers[id], err = rdns.NewStaticResolver(id, opt)
 		if err != nil {

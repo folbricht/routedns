@@ -142,7 +142,8 @@ type group struct {
 		Code uint16 `toml:"code"` // Code defined in https://datatracker.ietf.org/doc/html/rfc8914
 		Text string `toml:"text"` // Extra text containing additional information
 	} `toml:"edns0-ede"` // Extended DNS Errors
-	Truncate bool `toml:"truncate"` // When true, TC-Bit is set
+	Truncate bool   `toml:"truncate"` // When true, TC-Bit is set
+	Question string // Regex applied to the question used to expand placeholders in the response
 
 	// Rate-limiting options
 	Requests      uint   // Number of requests allowed
