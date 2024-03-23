@@ -96,7 +96,7 @@ func (c *Pipeline) start() {
 		}
 		wg.Add(2)
 
-		go func() { c.requests <- req }() // re-queue the request that triggered the upstream connection
+		go func(r *request) { c.requests <- r }(req) // re-queue the request that triggered the upstream connection
 
 		go func() { // writer
 			for {
