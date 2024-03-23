@@ -27,21 +27,22 @@ func TestHostsDB(t *testing.T) {
 		q     string
 		typ   uint16
 		match bool
-		ip    net.IP
+		ip    []net.IP
 	}{
-		{"domain1.com.", dns.TypeA, true, net.ParseIP("127.0.0.1")},
-		{"domain2.com.", dns.TypeA, true, nil},
-		{"domain4.com.", dns.TypeA, true, nil},
-		{"domain5.com.", dns.TypeA, true, nil},
-		{"domain6.com.", dns.TypeA, true, net.ParseIP("192.168.1.1")},
-		{"domain6.com.", dns.TypeAAAA, true, net.ParseIP("::1")},
+		{"domain1.com.", dns.TypeA, true, []net.IP{net.ParseIP("127.0.0.1")}},
+		{"domain2.com.", dns.TypeA, true, []net.IP{nil}},
+		{"domain4.com.", dns.TypeA, true, []net.IP{nil}},
+		{"domain5.com.", dns.TypeA, true, []net.IP(nil)},
+		{"domain6.com.", dns.TypeA, true, []net.IP{net.ParseIP("192.168.1.1")}},
+		{"domain6.com.", dns.TypeAAAA, true, []net.IP{net.ParseIP("::1")}},
 		{"domainX.com.", dns.TypeA, false, nil},
 	}
 	for _, test := range tests {
 		q := dns.Question{Name: test.q, Qtype: test.typ, Qclass: dns.ClassINET}
 		ip, _, match, ok := m.Match(q)
+
 		require.Equal(t, test.match, ok, "query: %s", test.q)
-		require.Equal(t, test.ip, ip, "query: %s", test.q)
+		require.EqualValues(t, test.ip, ip, "query: %s", test.q)
 		require.Equal(t, "testlist", match.List)
 	}
 }
