@@ -47,7 +47,6 @@ func (t *EDNS0EDETemplate) Apply(msg, q *dns.Msg) error {
 		InfoCode:  t.infoCode,
 		ExtraText: text.String(),
 	}
-	// q.Id
 	msg.SetEdns0(4096, false)
 	opt := msg.IsEdns0()
 	opt.Option = append(opt.Option, ede)

@@ -30,6 +30,10 @@ type ResponseBlocklistNameOptions struct {
 
 	// Inverted behavior, only allow responses that can be found on at least one list.
 	Inverted bool
+
+	// Optional, allows specifying extended errors to be used in the
+	// response when blocking.
+	EDNS0EDETemplate *EDNS0EDETemplate
 }
 
 // NewResponseBlocklistName returns a new instance of a response blocklist resolver.
@@ -106,7 +110,11 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
-				return nxdomain(query), nil
+				answer = nxdomain(query)
+				if err := r.EDNS0EDETemplate.Apply(answer, query); err != nil {
+					log.WithError(err).Error("failed to apply edns0ede template")
+				}
+				return answer, nil
 			}
 		}
 	}

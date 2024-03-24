@@ -15,7 +15,6 @@ import (
 	syslog "github.com/RackSec/srslog"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
-	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -663,12 +662,17 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				return err
 			}
 		}
+		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
+		if err != nil {
+			return fmt.Errorf("failed to parse edn0 template in %q: %w", id, err)
+		}
 		opt := rdns.ResponseBlocklistIPOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
 			Filter:            g.Filter,
 			Inverted:          g.Inverted,
+			EDNS0EDETemplate:  edeTpl,
 		}
 		resolvers[id], err = rdns.NewResponseBlocklistIP(id, gr[0], opt)
 		if err != nil {
@@ -749,20 +753,17 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 
 	case "static-responder":
-		var edns0Options []dns.EDNS0
-		if g.EDNS0EDE != nil {
-			edns0Options = append(edns0Options, &dns.EDNS0_EDE{
-				InfoCode:  g.EDNS0EDE.Code,
-				ExtraText: g.EDNS0EDE.Text,
-			})
+		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
+		if err != nil {
+			return fmt.Errorf("failed to parse edn0 template in %q: %w", id, err)
 		}
 		opt := rdns.StaticResolverOptions{
-			Answer:       g.Answer,
-			NS:           g.NS,
-			Extra:        g.Extra,
-			RCode:        g.RCode,
-			Truncate:     g.Truncate,
-			EDNS0Options: edns0Options,
+			Answer:           g.Answer,
+			NS:               g.NS,
+			Extra:            g.Extra,
+			RCode:            g.RCode,
+			Truncate:         g.Truncate,
+			EDNS0EDETemplate: edeTpl,
 		}
 		resolvers[id], err = rdns.NewStaticResolver(id, opt)
 		if err != nil {
