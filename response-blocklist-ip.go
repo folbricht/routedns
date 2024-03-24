@@ -39,11 +39,15 @@ type ResponseBlocklistIPOptions struct {
 	BlocklistRefresh time.Duration
 
 	// If true, removes matching records from the response rather than replying with NXDOMAIN. Can
-	// not be combined with alternative blockist-resolver
+	// not be combined with alternative blocklist-resolver
 	Filter bool
 
 	// Inverted behavior, only allow responses that can be found on at least one list.
 	Inverted bool
+
+	// Optional, allows specifying extended errors to be used in the
+	// response when blocking.
+	EDNS0EDETemplate *EDNS0EDETemplate
 }
 
 // NewResponseBlocklistIP returns a new instance of a response blocklist resolver.
@@ -113,7 +117,11 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
-				return nxdomain(query), nil
+				answer = nxdomain(query)
+				if err := r.EDNS0EDETemplate.Apply(answer, query); err != nil {
+					log.WithError(err).Error("failed to apply edns0ede template")
+				}
+				return answer, nil
 			}
 		}
 	}

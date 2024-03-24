@@ -42,6 +42,10 @@ type BlocklistOptions struct {
 
 	// Refresh period for the allowlist. Disabled if 0.
 	AllowlistRefresh time.Duration
+
+	// Optional, allows specifying extended errors to be used in the
+	// response when blocking.
+	EDNS0EDETemplate *EDNS0EDETemplate
 }
 
 type BlocklistMetrics struct {
@@ -172,6 +176,9 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Block the request with NXDOMAIN if there was a match but no valid spoofed IP is given
 	log.Debug("blocking request")
+	if err := r.EDNS0EDETemplate.Apply(answer, q); err != nil {
+		log.WithError(err).Error("failed to apply edns0ede template")
+	}
 	answer.SetRcode(q, dns.RcodeNameError)
 	return answer, nil
 }
