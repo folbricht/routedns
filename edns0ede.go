@@ -31,6 +31,12 @@ func NewEDNS0EDETemplate(infoCode uint16, extraText string) (*EDNS0EDETemplate, 
 	}, nil
 }
 
+// Data that is passed to any templates.
+type templateInput struct {
+	ID       uint16
+	Question string
+}
+
 // Apply executes the template for the EDNS0-EDE record text, e.g. replacing
 // placeholders in the Text with Query names, then adding the EDE record to
 // the given msg.
@@ -38,8 +44,16 @@ func (t *EDNS0EDETemplate) Apply(msg, q *dns.Msg) error {
 	if t == nil {
 		return nil
 	}
+	var question string
+	if len(q.Question) > 0 {
+		question = q.Question[0].Name
+	}
+	input := templateInput{
+		ID:       q.Id,
+		Question: question,
+	}
 	text := new(bytes.Buffer)
-	if err := t.textTemplate.Execute(text, q); err != nil {
+	if err := t.textTemplate.Execute(text, input); err != nil {
 		return err
 	}
 

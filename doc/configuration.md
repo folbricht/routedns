@@ -45,6 +45,7 @@
   - [DNS-over-QUIC](#DNS-over-QUIC-Resolver)
   - [Bootstrap Resolver](#Bootstrap-Resolver)
   - [SOCKS5 Proxy Support](#SOCKS5-Proxy-Support)
+- [Templates](#templates)
 
 ## Overview
 
@@ -601,7 +602,7 @@ Options:
 - `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
 - `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is treated as a template that has access to the whole query to allow customizing the response based on data in the query. The documentation on the exact syntax can be found [here](https://pkg.go.dev/text/template) and the data available in the template is defined in [dns.Msg](https://pkg.go.dev/github.com/miekg/dns#Msg). Simple placeholders in `text` would be `{{ (index .Question 0).Name }}` for the question in the query or `{{ .Id }}` to be replaced with the query ID.
+- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
 When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup).
 
@@ -629,7 +630,7 @@ Simple blocklist with static `domain`-format rule in the configuration. This wil
 type             = "blocklist-v2"
 resolvers        = ["upstream-resolver"]
 blocklist-format = "domain"
-edns0-ede        = {code = 15, text = "Blocked {{ (index .Question 0).Name }}"}
+edns0-ede        = {code = 15, text = "Blocked {{ .Question }}"}
 blocklist = [
   'domain1.com',               # Exact match
   '.domain2.com',              # Exact match and all sub-domains
@@ -720,7 +721,7 @@ Options:
 - `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned unless an alternative `blocklist-resolver` is defined.
 - `inverted` - Inverts the behavior of the blocklist. If set to `true`, only IPs that are on the blocklist are allowed and responses containing an IP not on the blocklist are blocked. Can be combined with `filter` to remove any IPs not on the blocklist from the response.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is treated as a template that has access to the whole query to allow customizing the response based on data in the query. The documentation on the exact syntax can be found [here](https://pkg.go.dev/text/template) and the data available in the template is defined in [dns.Msg](https://pkg.go.dev/github.com/miekg/dns#Msg). Simple placeholders in `text` would be `{{ (index .Question 0).Name }}` for the question in the query or `{{ .Id }}` to be replaced with the query ID.
+- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
 Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option.
 
@@ -951,7 +952,7 @@ Options:
 - `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
 - `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
 - `truncate` - when true, TC Bit is set in response. Default is false.
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is treated as a template that has access to the whole query to allow customizing the response based on data in the query. The documentation on the exact syntax can be found [here](https://pkg.go.dev/text/template) and the data available in the template is defined in [dns.Msg](https://pkg.go.dev/github.com/miekg/dns#Msg). Simple placeholders in `text` would be `{{ (index .Question 0).Name }}` for the question in the query or `{{ .Id }}` to be replaced with the query ID.
+- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
 Note:
 
@@ -1618,3 +1619,14 @@ socks5-address = "1.2.3.4:1080"
 socks5-username = "test"
 socks5-password = "test"
 ```
+
+## Templates
+
+Some groups support templates, i.e. allow placeholder in text fields that will be populated at runtime with data from a query. This can for example be used in the extended error text returned from a blocklist. In that case, the configuration would set a text with placeholders like this `"Blocked {{ .Question }} with ID {{ .ID }} because reasons"`. The placeholders in between `{{` and `}}` would then be replaced with data from the query when a query is blocked and the response returned. The template syntax is explained in more detail [here](https://pkg.go.dev/text/template).
+
+**Data available to templates**
+
+The following pieces of information from the query are available in the template:
+
+- `ID` - The query ID.
+- `Question` - The question string.
