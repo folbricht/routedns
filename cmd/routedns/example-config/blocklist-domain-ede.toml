@@ -1,0 +1,19 @@
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type             = "blocklist-v2"
+resolvers        = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
+blocklist-format = "domain"           # "domain", "hosts" or "regexp", defaults to "regexp"
+edns0-ede = {code = 15, text = "Blocked {{ .Question }} with ID {{ .ID }} because reasons "} # Extended error code
+blocklist        = [                  # Define the names to be blocked
+  'evil.com',
+  '.facebook.com',
+  '*.twitter.com',
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
