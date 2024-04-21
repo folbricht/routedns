@@ -769,6 +769,23 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "static-template":
+		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
+		if err != nil {
+			return fmt.Errorf("failed to parse edn0 template in %q: %w", id, err)
+		}
+		opt := rdns.StaticResolverOptions{
+			Answer:           g.Answer,
+			NS:               g.NS,
+			Extra:            g.Extra,
+			RCode:            g.RCode,
+			Truncate:         g.Truncate,
+			EDNS0EDETemplate: edeTpl,
+		}
+		resolvers[id], err = rdns.NewStaticTemplateResolver(id, opt)
+		if err != nil {
+			return err
+		}
 	case "response-minimize":
 		if len(gr) != 1 {
 			return fmt.Errorf("type response-minimize only supports one resolver in '%s'", id)

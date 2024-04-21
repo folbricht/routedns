@@ -2,49 +2,49 @@
 
 ## Table of contents
 
-- [Overview](#Overview)
-  - [Split Configuration](#Split-Configuration)
+- [Overview](#overview)
+  - [Split Configuration](#split-configuration)
   - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
-- [Listeners](#Listeners)
-  - [Plain DNS](#Plain-DNS)
-  - [DNS-over-TLS](#DNS-over-TLS)
-  - [DNS-over-HTTPS](#DNS-over-HTTPS)
-  - [DNS-over-DTLS](#DNS-over-DTLS)
-  - [DNS-over-QUIC](#DNS-over-QUIC)
-  - [Admin](#Admin)
-- [Modifiers, Groups and Routers](#Modifiers-Groups-and-Routers)
-  - [Cache](#Cache)
-  - [TTL Modifier](#TTL-modifier)
-  - [Round-Robin group](#Round-Robin-group)
-  - [Fail-Rotate group](#Fail-Rotate-group)
-  - [Fail-Back group](#Fail-Back-group)
-  - [Random group](#Random-group)
-  - [Fastest group](#Fastest-group)
-  - [Replace](#Replace)
+- [Listeners](#listeners)
+  - [Plain DNS](#plain-dns)
+  - [DNS-over-TLS](#dns-over-tls)
+  - [DNS-over-HTTPS](#dns-over-https)
+  - [DNS-over-DTLS](#dns-over-dtls)
+  - [DNS-over-QUIC](#dns-over-quic)
+  - [Admin](#admin)
+- [Modifiers, Groups and Routers](#modifiers-groups-and-routers)
+  - [Cache](#cache)
+  - [TTL Modifier](#ttl-modifier)
+  - [Round-Robin group](#round-robin-group)
+  - [Fail-Rotate group](#fail-rotate-group)
+  - [Fail-Back group](#fail-back-group)
+  - [Random group](#random-group)
+  - [Fastest group](#fastest-group)
+  - [Replace](#replace)
   - [Query Blocklist](#query-blocklist)
-  - [Response Blocklist](#Response-Blocklist)
-  - [Client Blocklist](#Client-Blocklist)
-  - [EDNS0 Client Subnet modifier](#EDNS0-Client-Subnet-Modifier)
-  - [EDNS0 modifier](#EDNS0-Modifier)
-  - [Static responder](#Static-responder)
-  - [Drop](#Drop)
-  - [Response Minimizer](#Response-Minimizer)
-  - [Response Collapse](#Response-Collapse)
-  - [Router](#Router)
-  - [Rate Limiter](#Rate-Limiter)
-  - [Rate Limiter](#Rate-Limiter)
-  - [Fastest TCP Probe](#Fastest-TCP-Probe)
-  - [Retrying Truncated Responses](#Retrying-Truncated-Responses)
-  - [Request Deduplication](#Request-Deduplication)
-  - [Syslog](#Syslog)
-- [Resolvers](#Resolvers)
-  - [Plain DNS](#Plain-DNS-Resolver)
-  - [DNS-over-TLS](#DNS-over-TLS-Resolver)
-  - [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver)
-  - [DNS-over-DTLS](#DNS-over-DTLS-Resolver)
-  - [DNS-over-QUIC](#DNS-over-QUIC-Resolver)
-  - [Bootstrap Resolver](#Bootstrap-Resolver)
-  - [SOCKS5 Proxy Support](#SOCKS5-Proxy-Support)
+  - [Response Blocklist](#response-blocklist)
+  - [Client Blocklist](#client-blocklist)
+  - [EDNS0 Client Subnet modifier](#edns0-client-subnet-modifier)
+  - [EDNS0 modifier](#edns0-modifier)
+  - [Static Responder](#static-responder)
+  - [Static Template Responder](#static-template-responder)
+  - [Drop](#drop)
+  - [Response Minimizer](#response-minimizer)
+  - [Response Collapse](#response-collapse)
+  - [Router](#router)
+  - [Rate Limiter](#rate-limiter)
+  - [Fastest TCP Probe](#fastest-tcp-probe)
+  - [Retrying Truncated Responses](#retrying-truncated-responses)
+  - [Request Deduplication](#request-deduplication)
+  - [Syslog](#syslog)
+- [Resolvers](#resolvers)
+  - [Plain DNS](#plain-dns-resolver)
+  - [DNS-over-TLS](#dns-over-tls-resolver)
+  - [DNS-over-HTTPS](#dns-over-https-resolver)
+  - [DNS-over-DTLS](#dns-over-dtls-resolver)
+  - [DNS-over-QUIC](#dns-over-quic-resolver)
+  - [Bootstrap Resolver](#bootstrap-resolver)
+  - [SOCKS5 Proxy Support](#socks5-proxy-support)
 - [Templates](#templates)
 
 ## Overview
@@ -1019,6 +1019,28 @@ edns0-ede = {code = 15, text = "Blocked because reasons"}
 
 Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml), [static-extended-error.toml](../cmd/routedns/example-config/static-extended-error.toml)
 
+### Static Template Responder
+
+A static template responder operates similarly to a [Static Responder](#static-responder) with the main difference being that the records configured are templates, meaning they can contain placeholders which can refer to data in the query, such as the question. Based on the values in the question, the template can manipulate the response. Templates can contain more complex operations such as string splitting, replacing etc.
+
+#### Configuration
+
+See [Static Responder](#static-responder) for a list of options. The values are the same except that the string values are treated as [templates](#templates).
+
+Examples:
+
+A fixed responder that can respond to queries like `192.168.1.12.rebind.` by striping the `.rebind.` suffix and treating the remaining string as IP. Note that the template in this case has to produce a valid IP or it will fail. To ensure the queries reaching this responder are always valid it may be best to combine with a router or blocklist in front of it.
+
+```toml
+[groups.static]
+type   = "static-template"
+answer = [
+    '{{ .Question }} IN A {{ trimSuffix .Question ".rebind."}}'
+]
+```
+
+Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml)
+
 ### Drop
 
 Terminates a pipeline by dropping the request. Typically used with blocklists to abort queries that match block rules. UDP and TCP listeners close the connection without replying, while HTTP listeners will reply with an HTTP error.
@@ -1630,3 +1652,21 @@ The following pieces of information from the query are available in the template
 
 - `ID` - The query ID.
 - `Question` - The question string.
+- `QuestionType` - The question type, `A`, `AAAA`, `CNAME` etc.
+- `QuestionClass` - The query class, `IN`, `ANY`, etc.
+
+In addition to the [built-in template functions](https://pkg.go.dev/text/template#hdr-Functions), the following functions are available.
+
+- `replaceAll` - Replace all instances of a substring with another. Equivalent to [strings.ReplaceAll](https://pkg.go.dev/strings#ReplaceAll)
+- `trimPrefix` - Removes a prefix from string. Equivalent to [strings.TrimPrefix](https://pkg.go.dev/strings#TrimPrefix).
+- `trimSuffix` - Removes a suffix from a string. Equivalent to [strings.TrimSuffix](https://pkg.go.dev/strings#TrimPrefix).
+- `split` - Split strings into substrings using the given separator. Equivalent to [strings.Split](https://pkg.go.dev/strings#Split).
+- `join` - Concatenates strings with a given separator. Equivalent to [strings.Join](https://pkg.go.dev/strings#Join).
+
+Functions can be combined with conditionals to make more complex template such as this example.
+
+```template
+'{{ .Question }} 18000 IN NS {{ if (eq .QuestionType "AAAA") }}ns6{{ else }}ns4{{ end }}.example.com.'
+```
+
+Support for additional string-manipulation functions can be added as needed.
