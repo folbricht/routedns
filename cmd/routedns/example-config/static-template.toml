@@ -1,0 +1,18 @@
+# Static template responder that builds a response based on data in the query
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "static"
+
+[groups.static]
+type   = "static-template"
+answer = [
+    '{{ .Question }} IN {{ .QuestionType }} {{ trimSuffix .Question ".rebind."}}'
+]
+ns = [
+    '{{ .Question }} 18000 IN NS ns1.{{ .Question }}',
+]
+extra = [
+    'ns1.{{ .Question }} 1800 IN A 127.0.0.1',
+]
