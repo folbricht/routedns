@@ -133,7 +133,7 @@ func (s *DoHListener) startQUIC() error {
 		Addr:       s.addr,
 		TLSConfig:  s.opt.TLSConfig,
 		Handler:    s.handler,
-		QuicConfig: &quic.Config{},
+		QUICConfig: &quic.Config{},
 	}
 	return s.quicServer.ListenAndServe()
 }
