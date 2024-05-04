@@ -290,7 +290,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 
 	tr := &http3.RoundTripper{
 		TLSClientConfig: tlsConfig,
-		QuicConfig: &quic.Config{
+		QUICConfig: &quic.Config{
 			TokenStore: quic.NewLRUTokenStore(10, 10),
 		},
 		Dial: dialer,

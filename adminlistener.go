@@ -96,7 +96,7 @@ func (s *AdminListener) startQUIC() error {
 		Addr:       s.addr,
 		TLSConfig:  s.opt.TLSConfig,
 		Handler:    s.mux,
-		QuicConfig: &quic.Config{},
+		QUICConfig: &quic.Config{},
 	}
 	return s.quicServer.ListenAndServe()
 }
