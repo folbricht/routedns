@@ -1,0 +1,94 @@
+# Address to listen on. Prometheus should be told to scrape this.
+listen_addr = ":8000"
+
+# Expvar target
+[server]
+url = "127.0.0.1:443/routedns/vars"
+insecure = true
+
+## Notes
+# Everythingwith a "#" gets automatically converted. 
+# You must specify the expvar metrics that are a map.
+#
+# For expvar lines like this:
+# "routedns.listener.local-udp.response": {"NOERROR": 776, "NXDOMAIN": 19}
+#
+# The result will look like this:
+# HELP routedns_listener_local_udp_response Various DNS response codes
+# TYPE routedns_listener_local_udp_response untyped
+# routedns_listener_local_udp_response{RCODE="NOERROR"} 776
+# routedns_listener_local_udp_response{RCODE="NXDOMAIN"} 19
+
+## Metrics mappings
+
+m.routedns_client_bootstrap_resolver_error.expvar = "routedns.client.bootstrap-resolver.error"
+m.routedns_client_bootstrap_resolver_error.help = "Amount of dropped requests"
+m.routedns_client_bootstrap_resolver_error.label_name = "REASON"
+m.routedns_client_bootstrap_resolver_response.expvar = "routedns.client.bootstrap-resolver.response"
+m.routedns_client_bootstrap_resolver_response.label_name = "RCODE"
+
+m.routedns_client_1001_doh_quic_error.expvar = "routedns.client.1001-doh-quic.error"
+m.routedns_client_1001_doh_quic_error.label_name = "REASON"
+m.routedns_client_1001_doh_quic_response.expvar = "routedns.client.1001-doh-quic.response"
+m.routedns_client_1001_doh_quic_response.label_name = "RCODE"
+
+m.routedns_client_1111_doh_quic_error.expvar = "routedns.client.1111-doh-quic.error"
+m.routedns_client_1111_doh_quic_error.label_name = "REASON"
+m.routedns_client_1111_doh_quic_response.expvar = "routedns.client.1111-doh-quic.response"
+m.routedns_client_1111_doh_quic_response.label_name = "RCODE"
+
+m.routedns_client_adguard_doh_quic_error.expvar = "routedns.client.adguard-doh-quic.error"
+m.routedns_client_adguard_doh_quic_error.label_name = "REASON"
+m.routedns_client_adguard_doh_quic_response.expvar = "routedns.client.adguard-doh-quic.response"
+m.routedns_client_adguard_doh_quic_response.label_name = "RCODE"
+
+m.routedns_client_adguard_doq_quic_error.expvar = "routedns.client.adguard-doq-quic.error"
+m.routedns_client_adguard_doq_quic_error.label_name = "REASON"
+m.routedns_client_adguard_doq_quic_response.expvar = "routedns.client.adguard-doq-quic.response"
+m.routedns_client_adguard_doq_quic_response.label_name = "RCODE"
+
+m.routedns_client_cloudflare_1001_doh_error.expvar = "routedns.client.cloudflare-1001-doh.error"
+m.routedns_client_cloudflare_1001_doh_error.label_name = "REASON"
+m.routedns_client_cloudflare_1001_doh_response.expvar = "routedns.client.cloudflare-1001-doh.response"
+m.routedns_client_cloudflare_1001_doh_response.label_name = "RCODE"
+
+m.routedns_client_cloudflare_1111_doh_error.expvar = "routedns.client.cloudflare_1111_doh.error"
+m.routedns_client_cloudflare_1111_doh_error.label_name = "REASON"
+m.routedns_client_cloudflare_1111_doh_response.expvar = "routedns.client.cloudflare_1111_doh.response"
+m.routedns_client_cloudflare_1111_doh_response.label_name = "RCODE"
+
+m.routedns_client_cloudflare_doh_quic_error.expvar = "routedns.client.cloudflare_doh-quic.error"
+m.routedns_client_cloudflare_doh_quic_error.label_name = "REASON"
+m.routedns_client_cloudflare_doh_quic_response.expvar = "routedns.client.cloudflare_doh-quic.response"
+m.routedns_client_cloudflare_doh_quic_response.label_name = "RCODE"
+
+m.routedns_client_cloudflare_dot_1_error.expvar = "routedns.client.cloudflare_dot-1.error"
+m.routedns_client_cloudflare_dot_1_error.label_name = "REASON"
+m.routedns_client_cloudflare_dot_1_response.expvar = "routedns.client.cloudflare_dot-1.response"
+m.routedns_client_cloudflare_dot_1_response.label_name = "RCODE"
+
+m.routedns_client_cloudflare_dot_2_error.expvar = "routedns.client.cloudflare_dot-2.error"
+m.routedns_client_cloudflare_dot_2_error.label_name = "REASON"
+m.routedns_client_cloudflare_dot_2_response.expvar = "routedns.client.cloudflare_dot-2.response"
+m.routedns_client_cloudflare_dot_2_response.label_name = "RCODE"
+
+m.routedns_client_controld_doh_quic_error.expvar = "routedns.client.controld-doh-quic.error"
+m.routedns_client_controld_doh_quic_error.label_name = "REASON"
+m.routedns_client_controld_doh_quic_response.expvar = "routedns.client.controld-doh-quic.response"
+m.routedns_client_controld_doh_quic_response.label_name = "RCODE"
+
+m.routedns_client_controld_doq_error.expvar = "routedns.client.controld-doq.error"
+m.routedns_client_controld_doq_error.label_name = "REASON"
+m.routedns_client_controld_doq_response.expvar = "routedns.client.controld-doq.response"
+m.routedns_client_controld_doq_response.label_name = "RCODE"
+
+m.routedns_listener_local_tcp_error.expvar = "routedns.listener.local-tcp.error"
+m.routedns_listener_local_tcp_error.label_name = "REASON"
+m.routedns_listener_local_tcp_response.expvar = "routedns.listener.local-tcp.response"
+m.routedns_listener_local_tcp_response.label_name = "RCODE"
+
+m.routedns_listener_local_udp_error.expvar = "routedns.listener.local-udp.error"
+m.routedns_listener_local_udp_error.label_name = "REASON"
+m.routedns_listener_local_udp_response.expvar = "routedns.listener.local-udp.response"
+m.routedns_listener_local_udp_response.help = "Various DNS response codes"
+m.routedns_listener_local_udp_response.label_name = "RCODE"
