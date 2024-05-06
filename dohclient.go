@@ -181,7 +181,12 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	method := http.MethodGet
+	if d.opt.Transport == "quic" {
+		method = http3.MethodGet0RTT
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err
@@ -268,6 +273,9 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	if err != nil {
 		return nil, err
 	}
+
+	// enable TLS session caching for session resumption and 0-RTT
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(100)
 	tlsConfig.ServerName = u.Hostname()
 	lAddr := net.IPv4zero
 	if opt.LocalAddr != nil {

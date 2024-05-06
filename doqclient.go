@@ -77,6 +77,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	// quic-go requires the ServerName be set explicitly
 	tlsConfig.ServerName = host
 
+	// enable TLS session caching for session resumption and 0-RTT
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(100)
+
 	if opt.QueryTimeout == 0 {
 		opt.QueryTimeout = defaultQueryTimeout
 	}
