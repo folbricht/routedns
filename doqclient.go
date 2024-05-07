@@ -212,7 +212,21 @@ func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Str
 	// If we don't have a connection yet, make one
 	if s.EarlyConnection == nil {
 		var err error
-		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.udpConn, err = net.ListenUDP("udp", nil)
+		if err != nil {
+			log.WithError(err).Debug("couldn't create UDP connection")
+			return nil, err
+		}
+
+		// Resolve the UDP address for the endpoint
+		udpAddr, err := net.ResolveUDPAddr("udp", endpoint)
+		if err != nil {
+			log.WithError(err).Debug("couldn't resolve UDP address for endpoint [" + endpoint + "]")
+			return nil, err
+		}
+
+		// Use quic.DialEarly to attempt to use 0-RTT DNS queries for lower latency
+		s.EarlyConnection, err = quic.DialEarly(context.TODO(), s.udpConn, udpAddr, s.tlsConfig, s.config)
 		if err != nil {
 			log.WithFields(logrus.Fields{
 				"hostname": s.hostname,
