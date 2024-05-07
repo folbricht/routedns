@@ -25,6 +25,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			Use0RTT:       r.Use0RTT,
 		}
 		resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
 		if err != nil {
@@ -81,6 +82,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
+			Use0RTT:       r.Use0RTT,
 		}
 		resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 		if err != nil {

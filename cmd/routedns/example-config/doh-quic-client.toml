@@ -1,9 +1,12 @@
 # DNS-over-HTTPS using the QUIC protocol.
+# New connections get initiated with 0-RTT if possible.
+# Use0RTT will overwrite the method to GET. 
 
 [resolvers.cloudflare-doh-quic]
 address = "https://cloudflare-dns.com/dns-query"
 protocol = "doh"
 transport = "quic"
+Use0RTT = true
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

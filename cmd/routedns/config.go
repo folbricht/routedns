@@ -57,6 +57,9 @@ type resolver struct {
 	Socks5Username     string `toml:"socks5-username"`
 	Socks5Password     string `toml:"socks5-password"`
 	Socks5ResolveLocal bool   `toml:"socks5-resolve-local"` // Resolve DNS server address locally (i.e. bootstrap-resolver), not on the SOCK5 proxy
+
+	//QUIC and DoH/3 configuration
+	Use0RTT       bool
 }
 
 // DoH-specific resolver options

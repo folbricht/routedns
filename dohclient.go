@@ -44,6 +44,8 @@ type DoHClientOptions struct {
 
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
+
+	Use0RTT bool
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
@@ -84,6 +86,9 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 
 	if opt.Method == "" {
 		opt.Method = "POST"
+	}
+	if opt.Use0RTT && opt.Transport == "quic" {
+		opt.Method = "GET"
 	}
 	if opt.Method != "POST" && opt.Method != "GET" {
 		return nil, fmt.Errorf("unsupported method '%s'", opt.Method)
@@ -182,7 +187,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	defer cancel()
 
 	method := http.MethodGet
-	if d.opt.Transport == "quic" {
+	if d.opt.Use0RTT {
 		method = http3.MethodGet0RTT
 	}
 
