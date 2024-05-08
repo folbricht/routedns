@@ -1508,6 +1508,7 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 ### DNS-over-HTTPS Resolver
 
 DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
+DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. When 0-RTT is enabled, the resolver will disregard the configured method and always use GET instead.
 
 Examples:
 
@@ -1535,6 +1536,7 @@ DoH resolver using QUIC transport.
 address = "https://cloudflare-dns.com/dns-query"
 protocol = "doh"
 transport = "quic"
+enable-0rtt = true
 ```
 
 Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [simple-doh.toml](../cmd/routedns/example-config/simple-doh.toml), [mutual-tls-doh-client.toml](../cmd/routedns/example-config/mutual-tls-doh-client.toml)
@@ -1560,6 +1562,7 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 ### DNS-over-QUIC Resolver
 
 Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
+The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured.
 
 Examples:
 
@@ -1569,6 +1572,7 @@ address = "server.acme.test:8853"
 protocol = "doq"
 ca = "example-config/server.crt"
 bootstrap-address = "127.0.0.1"
+enable-0rtt = true
 ```
 
 Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-client.toml)

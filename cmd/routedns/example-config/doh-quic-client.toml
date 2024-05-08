@@ -6,7 +6,7 @@
 address = "https://cloudflare-dns.com/dns-query"
 protocol = "doh"
 transport = "quic"
-Use0RTT = true
+enable-0rtt = true
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

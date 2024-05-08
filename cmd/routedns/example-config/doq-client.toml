@@ -7,7 +7,7 @@ address = "server.acme.test:8853"
 protocol = "doq"
 ca = "example-config/server.crt"
 bootstrap-address = "127.0.0.1"
-Use0RTT = true
+enable-0rtt = true
 
 [listeners.local-udp]
 address = "127.0.0.1:53"
