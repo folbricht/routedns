@@ -187,7 +187,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	defer cancel()
 
 	method := http.MethodGet
-	if d.opt.Use0RTT {
+	if d.opt.Use0RTT && d.opt.Transport == "quic" {
 		method = http3.MethodGet0RTT
 	}
 
