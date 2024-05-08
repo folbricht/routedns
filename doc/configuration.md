@@ -855,6 +855,7 @@ Example config files: [client-blocklist.toml](../cmd/routedns/example-config/cli
 A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address. The following operation are supported by the subnet modifier:
 
 - `add` - Add an ECS option to a query. If there is one already it is replaced. If no `ecs-address` is provided, the address of the client is used (with `ecs-prefix4` or `ecs-prefix6` applied).
+- `add-if-missing` - Add an ECS option to a query if none was provided by the client. If no `ecs-address` is provided, the address of the client is used (with `ecs-prefix4` or `ecs-prefix6` applied).
 - `delete` - Remove the ECS option completely from the EDNS0 record.
 - `privacy` - Restrict the number of bits in the address to the number in `ecs-prefix4`/`ecs-prefix6`.
 
@@ -865,7 +866,7 @@ Client Subnet modifiers are instantiated with `type = "ecs-modifier"` in the gro
 Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
-- `ecs-op` - Operation to be performed on query options. Either `add`, `delete`, or `privacy`. Does nothing if not specified.
+- `ecs-op` - Operation to be performed on query options. Either `add`, `add-if-missing`, `delete`, or `privacy`. Does nothing if not specified.
 - `ecs-address` - The address to use in the option. Only used for add operations. If given, will set the address to a fixed value. If missing, the address of the client is used (with the appropriate `ecs-prefix` applied).
 - `ecs-prefix4` and `ecs-prefix6` - Source prefix length. Mask for the address. Only used for add and privacy operations.
 

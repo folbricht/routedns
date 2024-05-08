@@ -119,6 +119,31 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 	}
 }
 
+func ECSModifierAddIfMissing(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
+	addFunc := ECSModifierAdd(addr, prefix4, prefix6)
+
+	return func(id string, q *dns.Msg, ci ClientInfo) {
+		// See if we have an ECS option already
+		edns0 := q.IsEdns0()
+		if edns0 != nil {
+			// Find the ECS option
+			for _, opt := range edns0.Option {
+				ecs, ok := opt.(*dns.EDNS0_SUBNET)
+				if ok {
+					logger(id, q, ci).WithFields(logrus.Fields{
+						"addr": ecs.Address,
+						"mask": ecs.SourceNetmask,
+					}).Debug("ecs option already present")
+					return // There's an ECS option already, don't touch it
+				}
+			}
+		}
+
+		// No ECS option found, add it
+		addFunc(id, q, ci)
+	}
+}
+
 func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 	return func(id string, q *dns.Msg, ci ClientInfo) {
 		edns0 := q.IsEdns0()
