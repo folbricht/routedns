@@ -44,6 +44,8 @@ type DoHClientOptions struct {
 
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
+
+	Use0RTT bool
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
@@ -84,6 +86,9 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 
 	if opt.Method == "" {
 		opt.Method = "POST"
+	}
+	if opt.Use0RTT && opt.Transport == "quic" {
+		opt.Method = "GET"
 	}
 	if opt.Method != "POST" && opt.Method != "GET" {
 		return nil, fmt.Errorf("unsupported method '%s'", opt.Method)
@@ -181,7 +186,12 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	method := http.MethodGet
+	if d.opt.Use0RTT && d.opt.Transport == "quic" {
+		method = http3.MethodGet0RTT
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err
@@ -268,6 +278,9 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	if err != nil {
 		return nil, err
 	}
+
+	// enable TLS session caching for session resumption and 0-RTT
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(100)
 	tlsConfig.ServerName = u.Hostname()
 	lAddr := net.IPv4zero
 	if opt.LocalAddr != nil {
