@@ -66,4 +66,4 @@ jobs:
           git tag -a $CHANGE_BUILD_VERSION -m "Automatic release version number: $CHANGE_BUILD_NUMBER. Automatic build number: $CHANGE_BUILD_VERSION. Build date: $CURRENT_BUILD_TIME"
           # PUSH
           git push origin HEAD:master
-          git push origin HEAD:$CHANGE_BUILD_VERSION
+          git push origin --follow-tags
