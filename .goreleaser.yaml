@@ -1,0 +1,72 @@
+# goreleaser config for routedns
+# mostly uses defaults
+# Make sure to check the documentation at https://goreleaser.com
+
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 1
+
+project_name: routedns
+builds:
+  - binary: routedns
+    main: ./cmd/routedns/
+    env:
+      - CGO_ENABLED=0
+
+    goos:
+      - windows
+      - darwin
+      - linux
+
+    goarch:
+      - amd64
+      - 386
+
+nfpms:
+  - package_name: routedns
+    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    vendor: Frank Olbricht
+    homepage: https://github.com/folbricht/routedns
+    maintainer: Frank Olbricht <frank.olbricht@gmail.com>
+    description: RouteDNS acts as a stub resolver and proxy that offers flexible configuration options
+    license: BSD-3-Clause license
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/sbin
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  github:
+    owner: folbricht
+    name: routedns
+
+  # If set to true, will not auto-publish the release.
+  # Default is false.
+  draft: true
+
+  # If set to true, will mark the release as not ready for production.
+  # Default is false.
+  prerelease: true
+
+  # You can change the name of the GitHub release.
+  # This is parsed with the Go template engine and the following variables
+  # are available:
+  # - ProjectName
+  # - Tag
+  # - Version (Git tag without `v` prefix)
+  # Default is ``
+  name_template: "{{ .ProjectName }}-{{ .Tag }}"
+
+snapshot:
+  name_template: "{{ .Version }}~dev1"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
