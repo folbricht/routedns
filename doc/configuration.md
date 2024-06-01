@@ -269,7 +269,7 @@ Example config files: [doq-listener.toml](../cmd/routedns/example-config/doq-lis
 
 ### Admin
 
-The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/.
+The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format. These metrics can be exported to be usable by Prometheus using [prometheus-expvar-exporter](https://github.com/albertito/prometheus-expvar-exporter). An example configuration is provided below.
 
 Examples:
 
@@ -281,7 +281,7 @@ server-crt = "example-config/server.crt"
 server-key = "example-config/server.key"
 ```
 
-Example config files: [admin.toml](../cmd/routedns/example-config/admin.toml)
+Example config files: [admin.toml](../cmd/routedns/example-config/admin.toml), [prometheus-exporter](../cmd/routedns/example-config/prometheus-exporter/)
 
 ## Modifiers, Groups and Routers
 

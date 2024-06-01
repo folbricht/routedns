@@ -1,0 +1,114 @@
+#### BOOTSTRAP ####
+
+[bootstrap-resolver]
+protocol = "doh"
+address = "https://dns9.quad9.net:443/dns-query"
+bootstrap-address = "9.9.9.9"
+
+#### LISTENERS ####
+
+[listeners.local_udp]
+address = ":53"
+protocol = "udp"
+resolver = "ecs"
+
+[listeners.local_tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "ecs"
+
+[listeners.local_admin]
+address = ":443"
+protocol = "admin"
+server-crt = "/app/server.crt"
+server-key = "/app/server.key"
+
+#### GROUPS ####
+
+# ECS
+[groups.ecs]
+type = "ecs-modifier"
+resolvers = ["edns0"]
+ecs-op = "delete"
+
+# EDNS0
+[groups.edns0]
+type = "edns0-modifier"
+resolvers = ["cache"]
+edns0-op = "delete"
+
+# Cache
+[groups.cache]
+type = "cache"
+resolvers = ["fastest"]
+cache-negative-ttl = 120
+cache-prefetch-trigger = 10
+cache-prefetch-eligible = 20
+cache-answer-shuffle = "round-robin"
+cache-harden-below-nxdomain = true
+backend = {type = "memory"}
+
+[groups.fastest]
+type   = "fastest"
+resolvers = ["cloudflare-1111-doh", "cloudflare-1001-doh", "cloudflare-doh-quic", "1111-doh-quic", "1001-doh-quic", "controld-doh-quic", "adguard-doh-quic", "controld-doq", "adguard-doq", "cloudflare-dot-1", "cloudflare-dot-2",]
+
+#### RESOLVERS ####
+
+## DoH ##
+
+[resolvers.cloudflare_1111_doh]
+address = "https://1.1.1.1/dns-query"
+protocol = "doh"
+
+[resolvers.cloudflare-1001-doh]
+address = "https://1.0.0.1/dns-query"
+protocol = "doh"
+
+# ## DoH3 ##
+
+[resolvers.cloudflare-doh-quic]
+address = "https://cloudflare-dns.com/dns-query"
+protocol = "doh"
+transport = "quic"
+
+[resolvers.1111-doh-quic]
+address = "https://1.1.1.1/dns-query"
+protocol = "doh"
+transport = "quic"
+
+[resolvers.1001-doh-quic]
+address = "https://1.0.0.1/dns-query"
+protocol = "doh"
+transport = "quic"
+
+[resolvers.controld-doh-quic]
+address = "https://freedns.controld.com/p0"
+protocol = "doh"
+transport = "quic"
+
+[resolvers.adguard-doh-quic]
+address = "https://unfiltered.adguard-dns.com/dns-query"
+protocol = "doh"
+transport = "quic"
+
+# ## DoQ ##
+
+[resolvers.controld-doq]
+address = "p0.freedns.controld.com:853"
+protocol = "doq"
+
+[resolvers.adguard-doq]
+address = "dns-unfiltered.adguard.com:853"
+protocol = "doq"
+
+# ## DoT ##
+
+[resolvers.cloudflare-dot-1]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-2]
+address = "1.0.0.1:853"
+protocol = "dot"
+
+
