@@ -498,6 +498,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		switch g.ECSOp {
 		case "add":
 			f = rdns.ECSModifierAdd(g.ECSAddress, g.ECSPrefix4, g.ECSPrefix6)
+		case "add-if-missing":
+			f = rdns.ECSModifierAddIfMissing(g.ECSAddress, g.ECSPrefix4, g.ECSPrefix6)
 		case "delete":
 			f = rdns.ECSModifierDelete
 		case "privacy":
