@@ -29,7 +29,6 @@ require (
 	github.com/google/pprof v0.0.0-20240507183855-6f11f98ebb1c // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/onsi/ginkgo/v2 v2.17.3 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pion/logging v0.2.2 // indirect
