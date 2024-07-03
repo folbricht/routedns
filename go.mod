@@ -11,7 +11,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/pion/dtls/v2 v2.2.11
 	github.com/pkg/errors v0.9.1
-	github.com/quic-go/quic-go v0.43.1
+	github.com/quic-go/quic-go v0.45.1
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
