@@ -1,6 +1,6 @@
 # DNS-over-HTTPS using the QUIC protocol.
 # New connections get initiated with 0-RTT if possible.
-# Use0RTT will overwrite the method to GET. 
+# enable-0rtt will overwrite the method to GET. 
 
 [resolvers.cloudflare-doh-quic]
 address = "https://cloudflare-dns.com/dns-query"
