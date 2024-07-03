@@ -380,7 +380,7 @@ func (s *quicConnection) OpenStream() (quic.Stream, error) {
 }
 
 func (s *quicConnection) NextConnection(context.Context) (quic.Connection, error) {
-	return nil, nil
+	return nil, errors.New("not implemented")
 }
 
 func quicRestart(s *quicConnection) error {
