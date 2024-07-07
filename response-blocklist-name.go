@@ -103,7 +103,9 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 			default:
 				continue
 			}
-			if _, _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok != r.Inverted {
+			msg := new(dns.Msg)
+			msg.SetQuestion(name, 0)
+			if _, _, rule, ok := r.BlocklistDB.Match(msg); ok != r.Inverted {
 				log := logger(r.id, query, ci).With("rule", rule.GetRule())
 				if r.BlocklistResolver != nil {
 					log.With("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")

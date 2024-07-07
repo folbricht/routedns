@@ -30,7 +30,7 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 	return NewMultiDB(newDBs...)
 }
 
-func (m MultiDB) Match(q dns.Question) ([]net.IP, []string, *BlocklistMatch, bool) {
+func (m MultiDB) Match(q *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
 	for _, db := range m.dbs {
 		if ip, name, match, ok := db.Match(q); ok {
 			return ip, name, match, ok

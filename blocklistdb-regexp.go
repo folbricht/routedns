@@ -43,7 +43,8 @@ func (m *RegexpDB) Reload() (BlocklistDB, error) {
 	return NewRegexpDB(m.name, m.loader)
 }
 
-func (m *RegexpDB) Match(q dns.Question) ([]net.IP, []string, *BlocklistMatch, bool) {
+func (m *RegexpDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
+	q := msg.Question[0]
 	for _, rule := range m.rules {
 		if rule.MatchString(q.Name) {
 			return nil, nil, &BlocklistMatch{List: m.name, Rule: rule.String()}, true

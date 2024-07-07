@@ -102,7 +102,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
 	if allowlistDB != nil {
-		if _, _, match, ok := allowlistDB.Match(question); ok {
+		if _, _, match, ok := allowlistDB.Match(q); ok {
 			log = log.With(
 				slog.String("list", match.List),
 				slog.String("rule", match.Rule),
@@ -119,7 +119,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	ips, names, match, ok := blocklistDB.Match(question)
+	ips, names, match, ok := blocklistDB.Match(q)
 	if !ok {
 		log.Debug("forwarding unmodified query to resolver",
 			"resolver", r.resolver.String())

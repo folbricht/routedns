@@ -908,6 +908,8 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 		return rdns.NewDomainDB(name, loader)
 	case "hosts":
 		return rdns.NewHostsDB(name, loader)
+	case "mac":
+		return rdns.NewMACDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
