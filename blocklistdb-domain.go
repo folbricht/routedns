@@ -63,7 +63,8 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 	return NewDomainDB(m.name, m.loader)
 }
 
-func (m *DomainDB) Match(q dns.Question) ([]net.IP, []string, *BlocklistMatch, bool) {
+func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
+	q := msg.Question[0]
 	s := strings.TrimSuffix(q.Name, ".")
 	var matched []string
 	parts := strings.Split(s, ".")
