@@ -1,7 +1,7 @@
 # Static template responder that builds a response based on data in the query
 
 [listeners.local-udp]
-address = "127.0.0.1:1153"
+address = "127.0.0.1:53"
 protocol = "udp"
 resolver = "static"
 

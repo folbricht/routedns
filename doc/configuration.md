@@ -1040,6 +1040,16 @@ answer = [
 ]
 ```
 
+Same as above but converts `192-168-1-12.rebind` into an IP.
+
+```toml
+[groups.static]
+type   = "static-template"
+answer = [
+  '{{ .Question }} {{ .QuestionClass }} {{ .QuestionType }} {{ replaceAll ( index ( split .Question "." ) 0 ) "-" "." }}'
+]
+```
+
 Return an extended error code explaining why a query was blocked.
 
 ```toml
