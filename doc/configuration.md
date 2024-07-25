@@ -1040,7 +1040,25 @@ answer = [
 ]
 ```
 
-Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml)
+Same as above but converts `192-168-1-12.rebind` into an IP.
+
+```toml
+[groups.static]
+type   = "static-template"
+answer = [
+  '{{ .Question }} {{ .QuestionClass }} {{ .QuestionType }} {{ replaceAll ( index ( split .Question "." ) 0 ) "-" "." }}'
+]
+```
+
+Return an extended error code explaining why a query was blocked.
+
+```toml
+[groups.static]
+type   = "static-template"
+edns0-ede = {code = 15, text = '{{ .Question }} is banned!'}
+```
+
+Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml), [static-template-error.toml](../cmd/routedns/example-config/static-template-error.toml)
 
 ### Drop
 
