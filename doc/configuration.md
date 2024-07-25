@@ -1040,7 +1040,15 @@ answer = [
 ]
 ```
 
-Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml)
+Return an extended error code explaining why a query was blocked.
+
+```toml
+[groups.static]
+type   = "static-template"
+edns0-ede = {code = 15, text = '{{ .Question }} is banned!'}
+```
+
+Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml), [static-template-error.toml](../cmd/routedns/example-config/static-template-error.toml)
 
 ### Drop
 
