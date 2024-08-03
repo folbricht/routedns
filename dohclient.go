@@ -379,8 +379,8 @@ func (s *quicConnection) OpenStream() (quic.Stream, error) {
 	return stream, err
 }
 
-func (s *quicConnection) NextConnection() quic.Connection {
-	return nil
+func (s *quicConnection) NextConnection(context.Context) (quic.Connection, error) {
+	return nil, errors.New("not implemented")
 }
 
 func quicRestart(s *quicConnection) error {
