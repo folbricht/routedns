@@ -14,6 +14,6 @@ blocklist        = [                  # Define the names to be blocked
 ]
 
 [listeners.local-udp]
-address = ":1153"
+address = ":53"
 protocol = "udp"
 resolver = "cloudflare-blocklist"
