@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"text/template"
-
-	"github.com/miekg/dns"
 )
 
 type Template struct {
@@ -37,23 +35,15 @@ type templateInput struct {
 	Question      string
 	QuestionClass string
 	QuestionType  string
+	Blocklist     string // Only populated if this was blocked
+	BlocklistRule string // Only populated if this was blocked
 }
 
 // Apply executes the template, e.g. replacing placeholders in the text
 // with values from the Query.
-func (t *Template) Apply(q *dns.Msg) (string, error) {
+func (t *Template) Apply(input templateInput) (string, error) {
 	if t == nil {
 		return "", nil
-	}
-	var question dns.Question
-	if len(q.Question) > 0 {
-		question = q.Question[0]
-	}
-	input := templateInput{
-		ID:            q.Id,
-		Question:      question.Name,
-		QuestionClass: dns.ClassToString[question.Qclass],
-		QuestionType:  dns.TypeToString[question.Qtype],
 	}
 	text := new(bytes.Buffer)
 	err := t.textTemplate.Execute(text, input)

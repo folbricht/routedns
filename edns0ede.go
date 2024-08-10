@@ -9,6 +9,11 @@ type EDNS0EDETemplate struct {
 	textTemplate *Template
 }
 
+type EDNS0EDEInput struct {
+	*dns.Msg
+	*BlocklistMatch
+}
+
 func NewEDNS0EDETemplate(infoCode uint16, extraText string) (*EDNS0EDETemplate, error) {
 	if infoCode == 0 && extraText == "" {
 		return nil, nil
@@ -28,11 +33,25 @@ func NewEDNS0EDETemplate(infoCode uint16, extraText string) (*EDNS0EDETemplate, 
 // Apply executes the template for the EDNS0-EDE record text, e.g. replacing
 // placeholders in the Text with Query names, then adding the EDE record to
 // the given msg.
-func (t *EDNS0EDETemplate) Apply(msg, q *dns.Msg) error {
+func (t *EDNS0EDETemplate) Apply(msg *dns.Msg, in EDNS0EDEInput) error {
 	if t == nil {
 		return nil
 	}
-	extraText, err := t.textTemplate.Apply(q)
+	var question dns.Question
+	if len(in.Question) > 0 {
+		question = in.Question[0]
+	}
+	input := templateInput{
+		ID:            in.Id,
+		Question:      question.Name,
+		QuestionClass: dns.ClassToString[question.Qclass],
+		QuestionType:  dns.TypeToString[question.Qtype],
+	}
+	if in.BlocklistMatch != nil {
+		input.BlocklistRule = in.Rule
+		input.Blocklist = in.List
+	}
+	extraText, err := t.textTemplate.Apply(input)
 	if err != nil {
 		return err
 	}
