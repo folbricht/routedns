@@ -111,7 +111,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				}
 				log.Debug("blocking response")
 				answer = nxdomain(query)
-				if err := r.EDNS0EDETemplate.Apply(answer, query); err != nil {
+				if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{query, rule}); err != nil {
 					log.WithError(err).Error("failed to apply edns0ede template")
 				}
 				return answer, nil

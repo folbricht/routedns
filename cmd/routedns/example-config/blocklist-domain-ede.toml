@@ -6,7 +6,7 @@ protocol = "dot"
 type             = "blocklist-v2"
 resolvers        = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
 blocklist-format = "domain"           # "domain", "hosts" or "regexp", defaults to "regexp"
-edns0-ede = {code = 15, text = "Blocked {{ .Question }} with ID {{ .ID }} because reasons "} # Extended error code
+edns0-ede = {code = 15, text = "Blocked {{ .Question }} with ID {{ .ID }} because rule {{ .BlocklistRule }} on {{ .Blocklist}}"} # Extended error code
 blocklist        = [                  # Define the names to be blocked
   'evil.com',
   '.facebook.com',

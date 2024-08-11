@@ -176,7 +176,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Block the request with NXDOMAIN if there was a match but no valid spoofed IP is given
 	log.Debug("blocking request")
-	if err := r.EDNS0EDETemplate.Apply(answer, q); err != nil {
+	if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{q, match}); err != nil {
 		log.WithError(err).Error("failed to apply edns0ede template")
 	}
 	answer.SetRcode(q, dns.RcodeNameError)

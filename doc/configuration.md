@@ -630,7 +630,7 @@ Simple blocklist with static `domain`-format rule in the configuration. This wil
 type             = "blocklist-v2"
 resolvers        = ["upstream-resolver"]
 blocklist-format = "domain"
-edns0-ede        = {code = 15, text = "Blocked {{ .Question }}"}
+edns0-ede        = {code = 15, text = "Blocked {{ .Question }} because rule {{ .BlocklistRule }} on {{ .Blocklist}}"}
 blocklist = [
   'domain1.com',               # Exact match
   '.domain2.com',              # Exact match and all sub-domains
@@ -1677,6 +1677,8 @@ The following pieces of information from the query are available in the template
 - `Question` - The question string.
 - `QuestionType` - The question type, `A`, `AAAA`, `CNAME` etc.
 - `QuestionClass` - The query class, `IN`, `ANY`, etc.
+- `Blocklist` - The name of the blocklist (only present if this request was blocked).
+- `BlocklistRule` - The rule on the blocklist that matched (only present if this was blocked).
 
 In addition to the [built-in template functions](https://pkg.go.dev/text/template#hdr-Functions), the following functions are available.
 

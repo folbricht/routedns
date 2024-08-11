@@ -62,7 +62,7 @@ func (r *StaticTemplateResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, e
 	answer.Rcode = r.rcode
 	answer.Truncated = r.truncate
 
-	if err := r.opt.EDNS0EDETemplate.Apply(answer, q); err != nil {
+	if err := r.opt.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{q, nil}); err != nil {
 		log.WithError(err).Error("failed to apply edns0ede template")
 	}
 
@@ -79,8 +79,18 @@ func (r *StaticTemplateResolver) processRRTemplates(q *dns.Msg, ci ClientInfo, t
 	log := logger(r.id, q, ci)
 
 	resp := make([]dns.RR, 0, len(templates))
+	var question dns.Question
+	if len(q.Question) > 0 {
+		question = q.Question[0]
+	}
+	input := templateInput{
+		ID:            q.Id,
+		Question:      question.Name,
+		QuestionClass: dns.ClassToString[question.Qclass],
+		QuestionType:  dns.TypeToString[question.Qtype],
+	}
 	for _, tpl := range templates {
-		text, err := tpl.Apply(q)
+		text, err := tpl.Apply(input)
 		if err != nil {
 			log.WithError(err).Error("failed to apply template")
 			continue
