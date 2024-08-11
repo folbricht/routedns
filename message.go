@@ -56,6 +56,7 @@ func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 func ptr(q *dns.Msg, names []string) *dns.Msg {
 	a := new(dns.Msg)
 	a.SetReply(q)
+	a.RecursionAvailable = q.RecursionDesired
 	answer := make([]dns.RR, 0, len(names))
 	for _, name := range names {
 		rr := &dns.PTR{

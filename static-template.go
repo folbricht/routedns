@@ -54,6 +54,7 @@ func NewStaticTemplateResolver(id string, opt StaticResolverOptions) (*StaticTem
 func (r *StaticTemplateResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
+	answer.RecursionAvailable = q.RecursionDesired
 	log := logger(r.id, q, ci)
 
 	answer.Answer = r.processRRTemplates(q, ci, r.answer...)
