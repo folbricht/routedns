@@ -59,7 +59,7 @@ type resolver struct {
 	Socks5ResolveLocal bool   `toml:"socks5-resolve-local"` // Resolve DNS server address locally (i.e. bootstrap-resolver), not on the SOCK5 proxy
 
 	//QUIC and DoH/3 configuration
-	Use0RTT       bool   `toml:"enable-0rtt"`
+	Use0RTT bool `toml:"enable-0rtt"`
 }
 
 // DoH-specific resolver options
@@ -118,7 +118,7 @@ type group struct {
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
-	Format    string   // Blocklist input format: "regex", "domain", or "hosts"
+	Format    string   // Blocklist input format: "regex", "domain", "hosts", or "mac"
 	Source    string   // Location of external blocklist, can be a local path or remote URL
 	Refresh   int      // Blocklist refresh when using an external source, in seconds
 
