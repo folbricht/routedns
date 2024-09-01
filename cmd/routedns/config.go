@@ -59,7 +59,7 @@ type resolver struct {
 	Socks5ResolveLocal bool   `toml:"socks5-resolve-local"` // Resolve DNS server address locally (i.e. bootstrap-resolver), not on the SOCK5 proxy
 
 	//QUIC and DoH/3 configuration
-	Use0RTT       bool   `toml:"enable-0rtt"`
+	Use0RTT bool `toml:"enable-0rtt"`
 }
 
 // DoH-specific resolver options
@@ -173,6 +173,9 @@ type group struct {
 	LogRequest  bool   `toml:"log-request"`  // Logs request records to syslog
 	LogResponse bool   `toml:"log-response"` // Logs response records to syslog
 	Verbose     bool   `toml:"verbose"`      // When logging responses, include types that don't match the query type
+
+	// Query logging options
+	OutputFile string `toml:"output-file"` // Log filename or blank for STDOUT
 }
 
 // Block/Allowlist items for blocklist-v2
