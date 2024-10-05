@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -19,8 +20,16 @@ type QueryLogResolver struct {
 var _ Resolver = &QueryLogResolver{}
 
 type QueryLogResolverOptions struct {
-	OutputFile string // Output filename, leave blank for STDOUT
+	OutputFile   string // Output filename, leave blank for STDOUT
+	OutputFormat LogFormat
 }
+
+type LogFormat string
+
+const (
+	LogFormatText LogFormat = "text"
+	LogFormatJSON LogFormat = "json"
+)
 
 // NewQueryLogResolver returns a new instance of a QueryLogResolver.
 func NewQueryLogResolver(id string, resolver Resolver, opt QueryLogResolverOptions) (*QueryLogResolver, error) {
@@ -32,14 +41,18 @@ func NewQueryLogResolver(id string, resolver Resolver, opt QueryLogResolverOptio
 		}
 		w = f
 	}
-	logger := slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == "msg" || a.Key == "level" {
-				return slog.Attr{}
-			}
-			return a
-		},
-	}))
+	handlerOpts := &slog.HandlerOptions{
+		ReplaceAttr: logReplaceAttr,
+	}
+	var logger *slog.Logger
+	switch opt.OutputFormat {
+	case "", LogFormatText:
+		logger = slog.New(slog.NewTextHandler(w, handlerOpts))
+	case LogFormatJSON:
+		logger = slog.New(slog.NewJSONHandler(w, handlerOpts))
+	default:
+		return nil, fmt.Errorf("invalid output format %q", opt.OutputFormat)
+	}
 	return &QueryLogResolver{
 		resolver: resolver,
 		logger:   logger,
@@ -74,4 +87,11 @@ func (r *QueryLogResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 
 func (r *QueryLogResolver) String() string {
 	return r.id
+}
+
+func logReplaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "msg" || a.Key == "level" {
+		return slog.Attr{}
+	}
+	return a
 }

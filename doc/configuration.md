@@ -1443,6 +1443,7 @@ To enable query-logging, add an element with `type = "query-log"` in the groups 
 Options:
 
 - `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation.
+- `output-format` - Output format. Defaults to "text".
 
 Examples:
 
@@ -1451,6 +1452,7 @@ Examples:
 type   = "query-log"
 resolvers = ["cloudflare-dot"]
 output-file = "/tmp/query.log"
+output-format = "text"
 ```
 
 Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.toml)

@@ -175,7 +175,8 @@ type group struct {
 	Verbose     bool   `toml:"verbose"`      // When logging responses, include types that don't match the query type
 
 	// Query logging options
-	OutputFile string `toml:"output-file"` // Log filename or blank for STDOUT
+	OutputFile   string `toml:"output-file"`   // Log filename or blank for STDOUT
+	OutputFormat string `toml:"output-format"` // "text" or "json"
 }
 
 // Block/Allowlist items for blocklist-v2

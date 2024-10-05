@@ -820,11 +820,12 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("type query-log only supports one resolver in '%s'", id)
 		}
 		opt := rdns.QueryLogResolverOptions{
-			OutputFile: g.OutputFile,
+			OutputFile:   g.OutputFile,
+			OutputFormat: rdns.LogFormat(g.OutputFormat),
 		}
 		resolvers[id], err = rdns.NewQueryLogResolver(id, gr[0], opt)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to initialize 'query-log': %w", err)
 		}
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
