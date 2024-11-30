@@ -248,7 +248,6 @@ func start(opt options, args []string) error {
 					return errors.New("no-tls is not supported for doh servers with quic transport")
 				}
 			} else {
-				fmt.Println("p4")
 				tlsConfig, err = rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 				if err != nil {
 					return err
