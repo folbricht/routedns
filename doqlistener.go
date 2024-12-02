@@ -20,7 +20,7 @@ type DoQListener struct {
 	addr    string
 	r       Resolver
 	opt     DoQListenerOptions
-	ln      *quic.Listener
+	ln      *quic.EarlyListener
 	log     *logrus.Entry
 	metrics *DoQListenerMetrics
 }
@@ -76,7 +76,10 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 // Start the QUIC server.
 func (s DoQListener) Start() error {
 	var err error
-	s.ln, err = quic.ListenAddr(s.addr, s.opt.TLSConfig, &quic.Config{})
+	s.ln, err = quic.ListenAddrEarly(s.addr, s.opt.TLSConfig, &quic.Config{
+		Allow0RTT:      true,
+		MaxIdleTimeout: 5 * time.Minute,
+	})
 	if err != nil {
 		return err
 	}
@@ -89,12 +92,7 @@ func (s DoQListener) Start() error {
 			continue
 		}
 		s.log.Trace("started connection")
-
-		go func() {
-			s.handleConnection(connection)
-			_ = connection.CloseWithError(DOQNoError, "")
-			s.log.Trace("closing connection")
-		}()
+		go func() { s.handleConnection(connection) }()
 	}
 }
 
@@ -128,16 +126,13 @@ func (s DoQListener) handleConnection(connection quic.Connection) {
 	s.metrics.connection.Add(1)
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // TODO: configurable
-		stream, err := connection.AcceptStream(ctx)
+		stream, err := connection.AcceptStream(context.Background())
 		if err != nil {
-			cancel()
 			break
 		}
 		log.WithField("stream", stream.StreamID()).Trace("opening stream")
 		go func() {
 			s.handleStream(stream, log, ci)
-			cancel()
 			log.WithField("stream", stream.StreamID()).Trace("closing stream")
 		}()
 	}
