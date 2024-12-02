@@ -128,7 +128,6 @@ func (s DoQListener) handleConnection(connection quic.Connection) {
 	for {
 		stream, err := connection.AcceptStream(context.Background())
 		if err != nil {
-			log.Trace("Failed to create quic stream, closing connection")
 			break
 		}
 		log.WithField("stream", stream.StreamID()).Trace("opening stream")
