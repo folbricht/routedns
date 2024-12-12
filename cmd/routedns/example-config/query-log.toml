@@ -1,0 +1,14 @@
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "query-log"
+
+[groups.query-log]
+type   = "query-log"
+resolvers = ["cloudflare-dot"]
+# output-file = "/tmp/query.log" # Logs are written to STDOUT if blank, uncomment to write to file
+output-format = "text" # or "json"
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
