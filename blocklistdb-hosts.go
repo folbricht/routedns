@@ -86,7 +86,8 @@ func (m *HostsDB) Reload() (BlocklistDB, error) {
 	return NewHostsDB(m.name, m.loader)
 }
 
-func (m *HostsDB) Match(q dns.Question) ([]net.IP, []string, *BlocklistMatch, bool) {
+func (m *HostsDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
+	q := msg.Question[0]
 	if q.Qtype == dns.TypePTR {
 		names, ok := m.ptrMap[q.Name]
 		var rule string
