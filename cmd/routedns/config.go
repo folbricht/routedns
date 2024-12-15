@@ -51,7 +51,6 @@ type resolver struct {
 	LocalAddr     string `toml:"local-address"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
-	Target        string // URL for Oblivious DNS target
 
 	// Proxy configuration
 	Socks5Address      string `toml:"socks5-address"`
@@ -61,6 +60,9 @@ type resolver struct {
 
 	//QUIC and DoH/3 configuration
 	Use0RTT bool `toml:"enable-0rtt"`
+	// URL for Oblivious DNS target
+	Target       string `toml:"target"`
+	TargetConfig string `toml:"target-config"`
 }
 
 // DoH-specific resolver options

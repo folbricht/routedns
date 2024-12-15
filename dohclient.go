@@ -140,8 +140,11 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	d.metrics.query.Add(1)
 
+	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
+	defer cancel()
+
 	// Build a DoH request and execute it
-	req, err := d.buildRequest(msg)
+	req, err := d.buildRequest(msg, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +158,12 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	return d.responseFromHTTP(resp)
 }
 
-func (d *DoHClient) buildRequest(msg []byte) (*http.Request, error) {
+func (d *DoHClient) buildRequest(msg []byte, ctx context.Context) (*http.Request, error) {
 	switch d.opt.Method {
 	case "POST":
-		return d.buildPostRequest(msg)
+		return d.buildPostRequest(msg, ctx)
 	case "GET":
-		return d.buildGetRequest(msg)
+		return d.buildGetRequest(msg, ctx)
 	default:
 		return nil, errors.New("unsupported method")
 	}
@@ -175,15 +178,13 @@ func (d *DoHClient) do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-func (d *DoHClient) buildPostRequest(msg []byte) (*http.Request, error) {
+func (d *DoHClient) buildPostRequest(msg []byte, ctx context.Context) (*http.Request, error) {
 	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
 	u, err := d.template.Expand(map[string]interface{}{})
 	if err != nil {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
-	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(msg))
 	if err != nil {
@@ -195,7 +196,7 @@ func (d *DoHClient) buildPostRequest(msg []byte) (*http.Request, error) {
 	return req, nil
 }
 
-func (d *DoHClient) buildGetRequest(msg []byte) (*http.Request, error) {
+func (d *DoHClient) buildGetRequest(msg []byte, ctx context.Context) (*http.Request, error) {
 	// Encode the query as base64url
 	b64 := base64.RawURLEncoding.EncodeToString(msg)
 
@@ -205,9 +206,6 @@ func (d *DoHClient) buildGetRequest(msg []byte) (*http.Request, error) {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
-	defer cancel()
 
 	method := http.MethodGet
 	if d.opt.Use0RTT && d.opt.Transport == "quic" {
