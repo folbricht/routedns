@@ -36,6 +36,11 @@ type ODoHClient struct {
 var _ Resolver = &DoHClient{}
 
 func NewODoHClient(id, proxy string, target string, targetConfig string, opt DoHClientOptions) (*ODoHClient, error) {
+	if proxy == "" {
+		Log.Info("Attention! no ODoH proxy defined")
+		proxy = target
+	}
+
 	dohProxy, err := NewDoHClient(id, proxy, opt)
 	if err != nil {
 		return nil, err
