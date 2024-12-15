@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,12 @@ import (
 	"github.com/miekg/dns"
 )
 
+const (
+	ODOH_CONFIG_PATH  = "/.well-known/odohconfigs"
+	DOH_CONTENT_TYPE  = "application/dns-message"
+	ODOH_CONTENT_TYPE = "application/oblivious-dns-message"
+)
+
 // ODoHClient is a Oblivious DNS client.
 type ODoHClient struct {
 	id         string
@@ -21,14 +28,15 @@ type ODoHClient struct {
 	proxy      *DoHClient
 
 	odohConfig       *odoh.ObliviousDoHConfig
+	odohConfigString string
 	odohConfigExpiry time.Time
 	mu               sync.Mutex
 }
 
 var _ Resolver = &DoHClient{}
 
-func NewODoHClient(id, endpoint, target string, opt DoHClientOptions) (*ODoHClient, error) {
-	proxy, err := NewDoHClient(id, endpoint, opt)
+func NewODoHClient(id, proxy string, target string, targetConfig string, opt DoHClientOptions) (*ODoHClient, error) {
+	dohProxy, err := NewDoHClient(id, proxy, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -39,10 +47,11 @@ func NewODoHClient(id, endpoint, target string, opt DoHClientOptions) (*ODoHClie
 	}
 
 	return &ODoHClient{
-		id:         id,
-		proxy:      proxy,
-		targetName: u.Hostname(),
-		targetPath: u.Path,
+		id:               id,
+		proxy:            dohProxy,
+		targetName:       u.Hostname(),
+		targetPath:       u.Path,
+		odohConfigString: targetConfig,
 	}, nil
 }
 
@@ -54,8 +63,11 @@ func (d *ODoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), d.proxy.opt.QueryTimeout)
+	defer cancel()
+
 	// Build a regular DoH request. It needs to be modified for a proxy.
-	req, err := d.proxy.buildRequest(msg.Marshal())
+	req, err := d.proxy.buildRequest(msg.Marshal(), ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +126,8 @@ func (d *ODoHClient) decodeProxyResponse(resp *http.Response, queryContext odoh.
 
 // Modify a DoH request for proxy-use. The URL and headers need to be updated.
 func (d *ODoHClient) customizeRequest(req *http.Request) {
-	req.Header.Set("content-type", "application/oblivious-dns-message")
-	req.Header.Add("accept", "application/oblivious-dns-message")
+	req.Header.Set("content-type", ODOH_CONTENT_TYPE)
+	req.Header.Add("accept", ODOH_CONTENT_TYPE)
 	query := req.URL.Query()
 	query.Add("targethost", d.targetName)
 	query.Add("targetpath", d.targetPath)
@@ -148,37 +160,24 @@ func (d *ODoHClient) getTargetConfig() (*odoh.ObliviousDoHConfig, error) {
 	return d.odohConfig, err
 }
 
-// Load the key by making a DoH query to the proxy, then cache it.
 func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, error) {
-	query := new(dns.Msg)
-	query.SetQuestion(dns.Fqdn(d.targetName), dns.TypeHTTPS)
-	response, err := d.proxy.Resolve(query, ClientInfo{})
+	var url string = "https://" + d.targetName + ODOH_CONFIG_PATH
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
 
-	for _, answer := range response.Answer {
-		https, ok := answer.(*dns.HTTPS)
-		if !ok {
-			continue
-		}
-		for _, value := range https.Value {
-			if value.Key() != 32769 {
-				continue
-			}
-			if svcblocal, ok := value.(*dns.SVCBLocal); ok {
-				odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(svcblocal.Data)
-				if err != nil {
-					return nil, time.Time{}, err
-				}
-				if len(odohConfigs.Configs) < 1 {
-					return nil, time.Time{}, fmt.Errorf("no odoh config found for target %q", d.targetName)
-				}
-				config := &odohConfigs.Configs[0]
-				expiry := time.Now().Add(time.Duration(answer.Header().Ttl) * time.Second)
-				return config, expiry, nil
-			}
-		}
+	resp, err := d.proxy.do(req)
+	if err != nil {
+		return nil, time.Time{}, err
 	}
-	return nil, time.Time{}, fmt.Errorf("no key found for target %q", d.targetName)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(bodyBytes)
+	expiry := time.Now().Add(24 * time.Hour)
+
+	Log.Printf("got config: %x", odohConfigs.Marshal())
+	return &odohConfigs.Configs[0], expiry, err
 }

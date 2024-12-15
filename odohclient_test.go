@@ -8,7 +8,7 @@ import (
 )
 
 func TestODOHClientSimple(t *testing.T) {
-	d, err := NewODoHClient("test-odoh", "https://1.1.1.1/dns-query", "https://odoh.cloudflare-dns.com/dns-query", DoHClientOptions{})
+	d, err := NewODoHClient("test-odoh", "https://odoh-noads-nl.alekberg.net/proxy", "https://odoh.cloudflare-dns.com/dns-query", "", DoHClientOptions{})
 	require.NoError(t, err)
 	q := new(dns.Msg)
 	q.SetQuestion("cloudflare.com.", dns.TypeA)
