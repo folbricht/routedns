@@ -345,7 +345,7 @@ type quicConnection struct {
 }
 
 func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
-	connection, udpConn, err := quicDial(context.TODO(), hostname, rAddr, lAddr, tlsConfig, config)
+	connection, udpConn, err := quicDial(context.TODO(), rAddr, lAddr, tlsConfig, config)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +419,7 @@ func quicRestart(s *quicConnection) error {
 	)
 	var err error
 	var earlyConn quic.EarlyConnection
-	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.rAddr, s.lAddr, s.tlsConfig, s.config)
 	if err != nil || s.udpConn == nil {
 		Log.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
 		return err
@@ -430,7 +430,7 @@ func quicRestart(s *quicConnection) error {
 	return nil
 }
 
-func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
+func quicDial(ctx context.Context, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		Log.Error("couldn't resolve remote addr for UDP quic client", "error", err, "rAddr", rAddr)

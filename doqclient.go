@@ -217,7 +217,7 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stre
 	// If we don't have a connection yet, make one
 	if s.EarlyConnection == nil {
 		var err error
-		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
 			log.Error("failed to open connection",
 				"hostname", s.hostname,
