@@ -287,6 +287,11 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		lAddr = opt.LocalAddr
 	}
 
+	qConf := &quic.Config{}
+	if opt.Use0RTT && opt.Method == http.MethodGet {
+		qConf.TokenStore = quic.NewLRUTokenStore(10, 10)
+	}
+
 	dialer := func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
 		return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config)
 	}
@@ -301,12 +306,10 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		}
 	}
 
-	tr := &http3.RoundTripper{
+	tr := &http3.Transport{
 		TLSClientConfig: tlsConfig,
-		QUICConfig: &quic.Config{
-			TokenStore: quic.NewLRUTokenStore(10, 10),
-		},
-		Dial: dialer,
+		QUICConfig:      qConf,
+		Dial:            dialer,
 	}
 	return tr, nil
 }
