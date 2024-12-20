@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,7 @@ type ODoHClient struct {
 
 var _ Resolver = &DoHClient{}
 
-func NewODoHClient(id, proxy string, target string, targetConfig string, opt DoHClientOptions) (*ODoHClient, error) {
+func NewODoHClient(id, proxy, target, targetConfig string, opt DoHClientOptions) (*ODoHClient, error) {
 	if proxy == "" {
 		Log.Info("Attention! no ODoH proxy defined")
 		proxy = target
@@ -159,7 +160,19 @@ func (d *ODoHClient) getTargetConfig() (*odoh.ObliviousDoHConfig, error) {
 	var err error
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.odohConfig == nil || time.Now().After(d.odohConfigExpiry) {
+
+	if len(d.odohConfigString) != 0 {
+		Log.Debug("loading preset ODoH config")
+		configBytes, err := hex.DecodeString(d.odohConfigString)
+		if err != nil {
+			return nil, err
+		}
+		odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(configBytes)
+		if err != nil {
+			return nil, errors.New("failed to unmarshal odohConfig")
+		}
+		d.odohConfig = &odohConfigs.Configs[0]
+	} else if d.odohConfig == nil || time.Now().After(d.odohConfigExpiry) {
 		d.odohConfig, d.odohConfigExpiry, err = d.refreshTargetKey()
 	}
 	return d.odohConfig, err
