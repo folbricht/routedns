@@ -26,6 +26,7 @@ type ODoHClient struct {
 	id         string
 	targetName string
 	targetPath string
+	targetPort string
 	proxy      *DoHClient
 
 	odohConfig       *odoh.ObliviousDoHConfig
@@ -56,6 +57,7 @@ func NewODoHClient(id, proxy, target, targetConfig string, opt DoHClientOptions)
 		id:               id,
 		proxy:            dohProxy,
 		targetName:       u.Hostname(),
+		targetPort:       u.Port(),
 		targetPath:       u.Path,
 		odohConfigString: targetConfig,
 	}, nil
@@ -179,7 +181,7 @@ func (d *ODoHClient) getTargetConfig() (*odoh.ObliviousDoHConfig, error) {
 }
 
 func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, error) {
-	var url string = "https://" + d.targetName + ODOH_CONFIG_PATH
+	var url string = "https://" + d.targetName + ":" + d.targetPort + ODOH_CONFIG_PATH
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, time.Time{}, err
