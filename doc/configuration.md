@@ -1619,7 +1619,7 @@ ODoH ([draft](https://tools.ietf.org/html/draft-pauly-dprive-oblivious-doh-03)) 
 
 - The client first queries the public key of the target resolver. This is a plain query that can be resolved by any resolver, but for privacy it's best to *not* use the target for this. RouteDNS always uses the proxy for this. The response is validated with DNSSEC.
 - The client then encrypts the actual query with the public key of the target. A public key of the client is embedded in the encrypted message.
-- The encrypted query message is sent to the proxy, with information about which target it should be forwarded.
+- The encrypted query message is sent to the proxy, with information about which target it should be forwarded to.
 - The target then encrypts the response with the client key and responds to the proxy, which then forwards the response to the client.
 - The client decrypts the response it received from the proxy using its private key.
 

@@ -39,7 +39,7 @@ var _ Resolver = &DoHClient{}
 
 func NewODoHClient(id, proxy, target, targetConfig string, opt DoHClientOptions) (*ODoHClient, error) {
 	if proxy == "" {
-		Log.Info("Attention! no ODoH proxy defined")
+		Log.Warn("Attention! no ODoH proxy defined, using the target as proxy")
 		proxy = target
 	}
 
@@ -75,7 +75,7 @@ func (d *ODoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer cancel()
 
 	// Build a regular DoH request. It needs to be modified for a proxy.
-	req, err := d.proxy.buildRequest(msg.Marshal(), ctx)
+	req, err := d.proxy.buildRequest(ctx, msg.Marshal())
 	if err != nil {
 		return nil, err
 	}
@@ -167,11 +167,11 @@ func (d *ODoHClient) getTargetConfig() (*odoh.ObliviousDoHConfig, error) {
 		Log.Debug("loading preset ODoH config")
 		configBytes, err := hex.DecodeString(d.odohConfigString)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to decode odohConfig: %w", err)
 		}
 		odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(configBytes)
 		if err != nil {
-			return nil, errors.New("failed to unmarshal odohConfig")
+			return nil, fmt.Errorf("failed to unmarshal odohConfig: %w", err)
 		}
 		d.odohConfig = &odohConfigs.Configs[0]
 	} else if d.odohConfig == nil || time.Now().After(d.odohConfigExpiry) {
