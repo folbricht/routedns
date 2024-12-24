@@ -89,7 +89,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			return err
 		}
 	case "odoh":
-		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		tlsConfig, err := rdns.TLSClientConfig(r.CA, r.ClientCrt, r.ClientKey, r.ServerName)
 		if err != nil {
 			return err
 		}
@@ -99,8 +99,9 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 		}
-		resolvers[id], err = rdns.NewODoHClient(id, r.Address, r.Target, opt)
+		resolvers[id], err = rdns.NewODoHClient(id, r.Address, r.Target, r.TargetConfig, opt)
 		if err != nil {
 			return err
 		}
