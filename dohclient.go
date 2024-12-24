@@ -302,6 +302,11 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		lAddr = opt.LocalAddr
 	}
 
+	qConf := &quic.Config{}
+	if opt.Use0RTT && opt.Method == http.MethodGet {
+		qConf.TokenStore = quic.NewLRUTokenStore(10, 10)
+	}
+
 	dialer := func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
 		return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config)
 	}
@@ -318,10 +323,8 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 
 	tr := &http3.Transport{
 		TLSClientConfig: tlsConfig,
-		QUICConfig: &quic.Config{
-			TokenStore: quic.NewLRUTokenStore(10, 10),
-		},
-		Dial: dialer,
+		QUICConfig:      qConf,
+		Dial:            dialer,
 	}
 	return tr, nil
 }
@@ -343,7 +346,7 @@ type quicConnection struct {
 }
 
 func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
-	connection, udpConn, err := quicDial(context.TODO(), hostname, rAddr, lAddr, tlsConfig, config)
+	connection, udpConn, err := quicDial(context.TODO(), rAddr, lAddr, tlsConfig, config)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +421,7 @@ func quicRestart(s *quicConnection) error {
 	}).Debug("attempt reconnect")
 	var err error
 	var earlyConn quic.EarlyConnection
-	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.rAddr, s.lAddr, s.tlsConfig, s.config)
 	if err != nil || s.udpConn == nil {
 		Log.WithFields(logrus.Fields{
 			"protocol": "quic",
@@ -438,7 +441,7 @@ func quicRestart(s *quicConnection) error {
 	return nil
 }
 
-func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
+func quicDial(ctx context.Context, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		Log.WithError(err).Debug("couldn't resolve remote addr (" + rAddr + ") for UDP quic client")

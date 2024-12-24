@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"expvar"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -155,6 +155,11 @@ func (s *DoHListener) String() string {
 }
 
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/dns-query" {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
 	switch r.Method {
 	case "GET":
 		s.metrics.get.Add(1)
@@ -187,7 +192,12 @@ func (s *DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
-	b, err := ioutil.ReadAll(r.Body)
+	if r.Header.Get("content-type") != "application/dns-message" {
+		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
