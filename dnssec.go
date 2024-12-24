@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/miekg/dns"
 )
@@ -17,32 +16,6 @@ var _ Resolver = &DNSSECenforcer{}
 
 func NewDNSSECenforcer(id string, resolver Resolver) *DNSSECenforcer {
 	return &DNSSECenforcer{id: id, resolver: resolver}
-}
-
-func setDoFlag(q *dns.Msg) {
-	var edns *dns.OPT
-
-	// Check if there's already an EDNS record in the Extra section
-	for _, extra := range q.Extra {
-		if opt, ok := extra.(*dns.OPT); ok {
-			edns = opt
-			break
-		}
-	}
-
-	if edns == nil {
-		edns = &dns.OPT{
-			Hdr: dns.RR_Header{
-				Name:   ".",
-				Rrtype: dns.TypeOPT,
-			},
-		}
-		q.Extra = append(q.Extra, edns)
-	}
-
-	// Set the DO flag and the UDP size on the EDNS record
-	edns.SetDo()
-	edns.SetUDPSize(1024)
 }
 
 // Validate DNSSEC using DNSKEY and RRSIG
@@ -109,62 +82,49 @@ func removeRRSIGs(response *dns.Msg) *dns.Msg {
 
 // Resolve a DNS query with DNSSEC verification. This requires sending a second DNS request for the DNSKEY. Also for the initial DNS query, the DO flag is set.
 func (d *DNSSECenforcer) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	setDoFlag(q)
-
-	k := dns.Msg{}
-	k.SetQuestion(qName(q), 48) // 48=TypeDNSKEY
-
-	var wg sync.WaitGroup
-	results := make(chan *dns.Msg, 2) // Buffer size of 2 for A and DNSKEY responses
-	errors := make(chan error, 2)
-
-	// A record query
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		response, err := d.resolver.Resolve(q, ci)
-		if err != nil {
-			errors <- fmt.Errorf("a query error: %v", err)
-			return
-		}
-		results <- response
-	}()
-
-	// DNSKEY query
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		response, err := d.resolver.Resolve(&k, ci)
-		if err != nil {
-			errors <- fmt.Errorf("DNSKEY query error: %v", err)
-			return
-		}
-		results <- response
-	}()
-
-	wg.Wait()
-	close(results)
-	close(errors)
-
-	var aResponse, dnskeyResponse *dns.Msg
-	for res := range results {
-		switch res.Question[0].Qtype {
-		case dns.TypeA, dns.TypeAAAA:
-			aResponse = res
-		case dns.TypeDNSKEY:
-			dnskeyResponse = res
-		}
+	// Set DNSSEC Do flag
+	if q.IsEdns0() == nil {
+		q.SetEdns0(1024, true)
+	} else {
+		q.IsEdns0().SetDo()
 	}
 
-	for err := range errors {
-		return nil, err
+	// Prepare DNSKEY query
+	k := new(dns.Msg)
+	k.SetQuestion(qName(q), dns.TypeDNSKEY)
+
+	results := make(chan *dns.Msg, 2)
+	errors := make(chan error, 2)
+	for _, m := range []*dns.Msg{q, k} {
+		go func(query *dns.Msg) {
+			res, err := d.resolver.Resolve(query, ci)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- res
+		}(m)
+	}
+
+	var aResponse, dnskeyResponse *dns.Msg
+	for i := 0; i < 2; i++ {
+		select {
+		case res := <-results:
+			switch res.Question[0].Qtype {
+			case dns.TypeA, dns.TypeAAAA:
+				aResponse = res
+			case dns.TypeDNSKEY:
+				dnskeyResponse = res
+			}
+		case err := <-errors:
+			return nil, fmt.Errorf("query error: %v", err)
+		}
 	}
 
 	if err := validateDNSSEC(aResponse, dnskeyResponse); err != nil {
 		Log.Error("DNSSEC validation failed:", err)
 		return nil, err
 	}
-
 	return removeRRSIGs(aResponse), nil
 }
 
