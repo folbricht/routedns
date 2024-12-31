@@ -122,8 +122,13 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Packing a message is not always a read-only operation, make a copy
 	q = q.Copy()
+	log := logger(d.id, q, ci)
 
-	slog.Debug("querying upstream resolver", slog.Group("details", slog.String("id", d.id), slog.String("resolver", d.endpoint), slog.String("protocol", "doh"), slog.String("method", d.opt.Method), slog.String("qname", qName(q)), slog.String("qtype", qType(q))))
+	log.Debug("querying upstream resolver",
+		slog.String("resolver", d.endpoint),
+		slog.String("protocol", "doh"),
+		slog.String("method", d.opt.Method),
+	)
 
 	// Add padding before sending the query over HTTPS
 	padQuery(q)
@@ -345,7 +350,12 @@ func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Conf
 		return nil, err
 	}
 
-	slog.Debug("new quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("hostname", hostname), slog.String("remote", rAddr), slog.String("local", lAddr.String())))
+	Log.Debug("new quic connection",
+		slog.String("protocol", "quic"),
+		slog.String("hostname", hostname),
+		slog.String("remote", rAddr),
+		slog.String("local", lAddr.String()),
+	)
 
 	return &quicConnection{
 		hostname:        hostname,
@@ -363,7 +373,7 @@ func (s *quicConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error
 	defer s.mu.Unlock()
 	stream, err := s.EarlyConnection.OpenStreamSync(ctx)
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		slog.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
+		Log.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
 		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
@@ -377,7 +387,7 @@ func (s *quicConnection) OpenStream() (quic.Stream, error) {
 	defer s.mu.Unlock()
 	stream, err := s.EarlyConnection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		slog.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
+		Log.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
 		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
@@ -402,15 +412,19 @@ func quicRestart(s *quicConnection) error {
 		_ = s.udpConn.Close()
 		s.udpConn = nil
 	}
-	slog.Debug("attempt reconnect", slog.Group("details", slog.String("protocol", "quic"), slog.String("hostname", s.hostname), slog.String("local", s.lAddr.String()), slog.String("remote", s.rAddr)))
+	Log.Debug("attempt reconnect", slog.String("protocol", "quic"),
+		slog.String("hostname", s.hostname),
+		slog.String("local", s.lAddr.String()),
+		slog.String("remote", s.rAddr),
+	)
 	var err error
 	var earlyConn quic.EarlyConnection
 	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 	if err != nil || s.udpConn == nil {
-		slog.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
+		Log.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
 		return err
 	}
-	slog.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String()), slog.String("rAddr", s.rAddr)))
+	Log.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String()), slog.String("rAddr", s.rAddr)))
 
 	s.EarlyConnection = earlyConn
 	return nil
@@ -419,12 +433,12 @@ func quicRestart(s *quicConnection) error {
 func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
-		slog.Error("couldn't resolve remote addr for UDP quic client", "error", err, "rAddr", rAddr)
+		Log.Error("couldn't resolve remote addr for UDP quic client", "error", err, "rAddr", rAddr)
 		return nil, nil, err
 	}
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
-		slog.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
+		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
 		return nil, nil, err
 	}
 	// use DialEarly so that we attempt to use 0-RTT DNS queries, it's lower latency (if the server supports it)
@@ -432,7 +446,7 @@ func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConf
 	if err != nil {
 		// don't leak filehandles / sockets; if we got here udpConn must exist
 		_ = udpConn.Close()
-		slog.Error("couldn't dial quic early connection", "error", err)
+		Log.Error("couldn't dial quic early connection", "error", err)
 		return nil, nil, err
 	}
 	return earlyConn, udpConn, nil

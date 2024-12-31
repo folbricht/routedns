@@ -11,7 +11,7 @@ import (
 var Log = slog.Default()
 
 func logger(id string, q *dns.Msg, ci ClientInfo) *slog.Logger {
-	return slog.With(
+	return Log.With(
 		slog.String("id", id),
 		slog.Any("client", ci.SourceIP),
 		slog.String("qtype", dns.Type(q.Question[0].Qtype).String()),

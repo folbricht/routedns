@@ -4,8 +4,6 @@ import (
 	"crypto/tls"
 	"net"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -36,7 +34,7 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
-	slog.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
+	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
 	return s.ListenAndServe()
 }
 
@@ -68,7 +66,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			ci.SourceIP = addr.IP
 		}
 
-		log := slog.With(
+		log := Log.With(
 			"id", id,
 			"client", ci.SourceIP,
 			"qname", qName(req),

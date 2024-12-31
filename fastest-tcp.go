@@ -88,7 +88,6 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Send TCP probes to all, if anything returns an error, just return
 	// the original response rather than trying to be clever and pick one.
-	// log = log.With("port", r.port)
 	log = log.With("port", r.port)
 	var sorted []dns.RR
 	if r.opt.WaitAll {

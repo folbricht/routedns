@@ -89,7 +89,7 @@ func (r *FailRotate) errorFrom(i int) {
 	}
 	r.metrics.failover.Add(1)
 	r.active = (r.active + 1) % len(r.resolvers)
-	slog.Debug("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
+	Log.Debug("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 }
 
 // Returns true is the response is considered successful given the options.

@@ -103,7 +103,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
 	if allowlistDB != nil {
 		if _, _, match, ok := allowlistDB.Match(question); ok {
-			log = slog.With(
+			log = log.With(
 				slog.String("list", match.List),
 				slog.String("rule", match.Rule),
 			)
@@ -126,7 +126,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		r.metrics.allowed.Add(1)
 		return r.resolver.Resolve(q, ci)
 	}
-	log = slog.With(
+	log = log.With(
 		slog.String("list", match.List),
 		slog.String("rule", match.Rule),
 	)
@@ -200,7 +200,7 @@ func (r *Blocklist) String() string {
 func (r *Blocklist) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := slog.With(slog.String("id", r.id))
+		log := Log.With(slog.String("id", r.id))
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
@@ -215,7 +215,7 @@ func (r *Blocklist) refreshLoopBlocklist(refresh time.Duration) {
 func (r *Blocklist) refreshLoopAllowlist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := slog.With(slog.String("id", r.id))
+		log := Log.With(slog.String("id", r.id))
 		log.Debug("reloading allowlist")
 		db, err := r.AllowlistDB.Reload()
 		if err != nil {

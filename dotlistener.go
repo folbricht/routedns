@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"crypto/tls"
-	"log/slog"
 
 	"github.com/miekg/dns"
 )
@@ -37,7 +36,7 @@ func NewDoTListener(id, addr string, opt DoTListenerOptions, resolver Resolver) 
 
 // Start the Dot server.
 func (s DoTListener) Start() error {
-	slog.Info("starting listener",
+	Log.Info("starting listener",
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)
@@ -46,7 +45,7 @@ func (s DoTListener) Start() error {
 
 // Stop the server.
 func (s DoTListener) Stop() error {
-	slog.Info("stopping listener",
+	Log.Info("stopping listener",
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)

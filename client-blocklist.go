@@ -51,7 +51,7 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 // resolver if one is configured.
 func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if match, ok := r.BlocklistDB.Match(ci.SourceIP); ok {
-		log := slog.With(
+		log := Log.With(
 			slog.String("id", r.id),
 			slog.String("qname", qName(q)),
 			slog.String("list", match.List),
@@ -80,17 +80,14 @@ func (r *ClientBlocklist) String() string {
 func (r *ClientBlocklist) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := slog.With(
+		log := Log.With(
 			slog.String("id", r.id),
 		)
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
-			slog.With(
-				slog.String("id", r.id),
-			).With(
-				slog.String("error", err.Error()),
-			).Error("failed to load rules")
+			log.Error("failed to load rules",
+				"error", err)
 			continue
 		}
 		r.mu.Lock()

@@ -85,11 +85,12 @@ func (r *ResponseBlocklistIP) String() string {
 func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := slog.With("id", r.id)
+		log := Log.With("id", r.id)
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
-			slog.With("id", r.id).With("error", err.Error()).Error("failed to load rules")
+			log.Error("failed to load rules",
+				"error", err)
 			continue
 		}
 		r.mu.Lock()
@@ -112,9 +113,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-				log := slog.With(
-					slog.String("id", r.id),
-					slog.String("qname", qName(query)),
+				log := logger(r.id, query, ci).With(
 					slog.String("list", match.GetList()),
 					slog.String("rule", match.GetRule()),
 					slog.String("ip", ip.String()),
@@ -139,7 +138,7 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 	answer.Answer = r.filterRR(query, ci, answer.Answer)
 	// If there's nothing left after applying the filter, return NXDOMAIN or send to the alternative resolver
 	if len(answer.Answer) == 0 {
-		log := slog.With("qname", qName(query))
+		log := Log.With("qname", qName(query))
 		if r.BlocklistResolver != nil {
 			log.With(slog.String("resolver", r.BlocklistResolver.String())).Debug("no answers after filtering, forwarding to blocklist-resolver")
 			return r.BlocklistResolver.Resolve(query, ci)
@@ -166,13 +165,12 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			continue
 		}
 		if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-			slog.With(
-				slog.String("id", r.id),
-				slog.String("qname", qName(query)),
+			log := logger(r.id, query, ci).With(
 				slog.String("list", match.GetList()),
 				slog.String("rule", match.GetRule()),
 				slog.String("ip", ip.String()),
-			).Debug("filtering response")
+			)
+			log.Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)

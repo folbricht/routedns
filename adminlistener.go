@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"log/slog"
-
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
@@ -66,7 +64,10 @@ func NewAdminListener(id, addr string, opt AdminListenerOptions) (*AdminListener
 
 // Start the admin server.
 func (s *AdminListener) Start() error {
-	slog.Info("starting listener", "id", s.id, "protocol", s.opt.Transport, "addr", s.addr)
+	Log.Info("starting listener",
+		"id", s.id,
+		"protocol", s.opt.Transport,
+		"addr", s.addr)
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -104,7 +105,10 @@ func (s *AdminListener) startQUIC() error {
 
 // Stop the server.
 func (s *AdminListener) Stop() error {
-	slog.Info("stopping listener", "id", s.id, "protocol", s.opt.Transport, "addr", s.addr)
+	Log.Info("stopping listener",
+		"id", s.id,
+		"protocol", s.opt.Transport,
+		"addr", s.addr)
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}

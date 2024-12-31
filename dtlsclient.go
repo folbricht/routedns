@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 	"github.com/pion/dtls/v2"
 )
@@ -97,7 +95,11 @@ func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Packing a message is not always a read-only operation, make a copy
 	q = q.Copy()
 
-	slog.Debug("querying upstream resolver", slog.Group("details", slog.String("id", d.id), slog.String("resolver", d.endpoint), slog.String("protocol", "dtls"), slog.String("qname", qName(q)), slog.String("qtype", qType(q))))
+	log := logger(d.id, q, ci)
+	log.Debug("querying upstream resolver",
+		"resolver", d.endpoint,
+		"protocol", "dtls",
+	)
 
 	q = setUDPSize(q, d.opt.UDPSize)
 

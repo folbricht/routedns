@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -96,7 +94,10 @@ func (r *Random) deactivate(bad Resolver) {
 	filtered := make([]Resolver, 0, len(r.resolvers))
 	for _, resolver := range r.resolvers {
 		if resolver == bad {
-			slog.Debug("de-activating resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", bad.String())))
+			Log.Debug("de-activating resolver",
+				"id", r.id,
+				"resolver", bad.String(),
+			)
 			go r.reactivateLater(bad)
 			continue
 		}
@@ -110,7 +111,10 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	time.Sleep(r.opt.ResetAfter)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	slog.Debug("re-activating resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", resolver.String())))
+	Log.Debug("re-activating resolver",
+		"id", r.id,
+		"resolver", resolver.String(),
+	)
 	r.resolvers = append(r.resolvers, resolver)
 	r.metrics.available.Set(int64(len(r.resolvers)))
 }

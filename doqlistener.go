@@ -7,7 +7,6 @@ import (
 	"expvar"
 	"io"
 	"net"
-	"os"
 	"time"
 
 	"log/slog"
@@ -69,7 +68,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 		addr:    addr,
 		r:       resolver,
 		opt:     opt,
-		log:     slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		log:     Log.With("id", id, "protocol", "doq", "addr", addr),
 		metrics: NewDoQListenerMetrics(id),
 	}
 	return l
@@ -85,7 +84,7 @@ func (s DoQListener) Start() error {
 	if err != nil {
 		return err
 	}
-	s.log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doq"), slog.String("addr", s.addr)))
+	s.log.Info("starting listener")
 
 	for {
 		connection, err := s.ln.Accept(context.Background())

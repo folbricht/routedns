@@ -143,7 +143,12 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		total = b.lru.size()
 		b.mu.Unlock()
 
-		slog.Debug("cache garbage collection", slog.Group("details", slog.Int("total", total), slog.Int("removed", removed)))
+		Log.Debug("cache garbage collection",
+			slog.Group("details",
+				slog.Int("total", total),
+				slog.Int("removed", removed),
+			),
+		)
 	}
 }
 
@@ -163,16 +168,17 @@ func (b *memoryBackend) Close() error {
 func (b *memoryBackend) writeToFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	slog.Info("writing cache file", "filename", filename)
+	log := Log.With("filename", filename)
+	log.Info("writing cache file")
 	f, err := os.Create(filename)
 	if err != nil {
-		slog.Warn("failed to create cache file", "filename", filename, "error", err)
+		log.Warn("failed to create cache file", "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.serialize(f); err != nil {
-		slog.Warn("failed to persist cache to disk", "filename", filename, "error", err)
+		log.Warn("failed to persist cache to disk", "error", err)
 		return err
 	}
 	return nil
@@ -181,16 +187,17 @@ func (b *memoryBackend) writeToFile(filename string) error {
 func (b *memoryBackend) loadFromFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	slog.Info("reading cache file", "filename", filename)
+	log := Log.With("filename", filename)
+	log.Info("reading cache file")
 	f, err := os.Open(filename)
 	if err != nil {
-		slog.Warn("failed to open cache file", "filename", filename, "error", err)
+		log.Warn("failed to open cache file", "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.deserialize(f); err != nil {
-		slog.Warn("failed to read cache from disk", "filename", filename, "error", err)
+		log.Warn("failed to read cache from disk", "error", err)
 		return err
 	}
 	return nil

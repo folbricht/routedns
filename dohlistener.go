@@ -100,7 +100,7 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
-	slog.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
+	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -144,7 +144,7 @@ func (s *DoHListener) startQUIC() error {
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
-	slog.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
+	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}
@@ -254,7 +254,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		TLSServerName: tlsServerName,
 		Listener:      s.id,
 	}
-	log := slog.With(
+	log := Log.With(
 		"id", s.id,
 		"client", ci.SourceIP,
 		"qtype", qType(q),
