@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // DoTListener is a DNS listener/server for DNS-over-TLS.
@@ -37,13 +36,19 @@ func NewDoTListener(id, addr string, opt DoTListenerOptions, resolver Resolver) 
 
 // Start the Dot server.
 func (s DoTListener) Start() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dot", "addr": s.Addr}).Info("starting listener")
+	Log.Info("starting listener",
+		"id", s.id,
+		"protocol", "dot",
+		"addr", s.Addr)
 	return s.ListenAndServe()
 }
 
 // Stop the server.
 func (s DoTListener) Stop() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dot", "addr": s.Addr}).Info("stopping listener")
+	Log.Info("stopping listener",
+		"id", s.id,
+		"protocol", "dot",
+		"addr", s.Addr)
 	return s.Shutdown()
 }
 

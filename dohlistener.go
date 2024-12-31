@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/sirupsen/logrus"
 )
 
 // Read/Write timeout in the DoH server
@@ -99,7 +100,7 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "doh", "addr": s.addr}).Info("starting listener")
+	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -130,9 +131,9 @@ func (s *DoHListener) startTCP() error {
 // Start the DoH server with QUIC transport.
 func (s *DoHListener) startQUIC() error {
 	s.quicServer = &http3.Server{
-		Addr:       s.addr,
-		TLSConfig:  s.opt.TLSConfig,
-		Handler:    s.handler,
+		Addr:      s.addr,
+		TLSConfig: s.opt.TLSConfig,
+		Handler:   s.handler,
 		QUICConfig: &quic.Config{
 			Allow0RTT:      true,
 			MaxIdleTimeout: 5 * time.Minute,
@@ -143,7 +144,7 @@ func (s *DoHListener) startQUIC() error {
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "doh", "addr": s.addr}).Info("stopping listener")
+	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}
@@ -253,24 +254,24 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		TLSServerName: tlsServerName,
 		Listener:      s.id,
 	}
-	log := Log.WithFields(logrus.Fields{
-		"id":       s.id,
-		"client":   ci.SourceIP,
-		"qtype":    qType(q),
-		"qname":    qName(q),
-		"protocol": "doh",
-		"addr":     s.addr,
-		"path":     r.URL.Path,
-	})
+	log := Log.With(
+		"id", s.id,
+		"client", ci.SourceIP,
+		"qtype", qType(q),
+		"qname", qName(q),
+		"protocol", "doh",
+		"addr", s.addr,
+		"path", r.URL.Path,
+	)
 	log.Debug("received query")
 
 	var err error
 	a := new(dns.Msg)
 	if isAllowed(s.opt.AllowedNet, ci.SourceIP) {
-		log.WithField("resolver", s.r.String()).Debug("forwarding query to resolver")
+		log.With("resolver", s.r.String()).Debug("forwarding query to resolver")
 		a, err = s.r.Resolve(q, ci)
 		if err != nil {
-			log.WithError(err).Error("failed to resolve")
+			log.Error("failed to resolve", "error", err)
 			a = new(dns.Msg)
 			a.SetRcode(q, dns.RcodeServerFailure)
 		}

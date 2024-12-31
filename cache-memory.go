@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 type memoryBackend struct {
@@ -142,7 +143,12 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		total = b.lru.size()
 		b.mu.Unlock()
 
-		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
+		Log.Debug("cache garbage collection",
+			slog.Group("details",
+				slog.Int("total", total),
+				slog.Int("removed", removed),
+			),
+		)
 	}
 }
 
@@ -162,17 +168,17 @@ func (b *memoryBackend) Close() error {
 func (b *memoryBackend) writeToFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	log := Log.WithField("filename", filename)
+	log := Log.With("filename", filename)
 	log.Info("writing cache file")
 	f, err := os.Create(filename)
 	if err != nil {
-		log.WithError(err).Warn("failed to create cache file")
+		log.Warn("failed to create cache file", "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.serialize(f); err != nil {
-		log.WithError(err).Warn("failed to persist cache to disk")
+		log.Warn("failed to persist cache to disk", "error", err)
 		return err
 	}
 	return nil
@@ -181,17 +187,17 @@ func (b *memoryBackend) writeToFile(filename string) error {
 func (b *memoryBackend) loadFromFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	log := Log.WithField("filename", filename)
+	log := Log.With("filename", filename)
 	log.Info("reading cache file")
 	f, err := os.Open(filename)
 	if err != nil {
-		log.WithError(err).Warn("failed to open cache file")
+		log.Warn("failed to open cache file", "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.deserialize(f); err != nil {
-		log.WithError(err).Warn("failed to read cache from disk")
+		log.Warn("failed to read cache from disk", "error", err)
 		return err
 	}
 	return nil
