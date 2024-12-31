@@ -5,7 +5,6 @@ go 1.22.0
 require (
 	github.com/BurntSushi/toml v1.3.2
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
-	github.com/cloudflare/odoh-go v1.0.0
 	github.com/heimdalr/dag v1.4.0
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.59
@@ -16,6 +15,7 @@ require (
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
+	github.com/sthorne/odoh-go v1.0.4
 	github.com/stretchr/testify v1.9.0
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
 	golang.org/x/net v0.28.0
