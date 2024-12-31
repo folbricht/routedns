@@ -11,7 +11,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	quic "github.com/quic-go/quic-go"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -24,7 +24,7 @@ type DoQClient struct {
 	id       string
 	endpoint string
 	requests chan *request
-	log      *logrus.Entry
+	log      *slog.Logger
 	metrics  *ListenerMetrics
 
 	connection quicConnection
@@ -87,7 +87,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	if opt.QueryTimeout == 0 {
 		opt.QueryTimeout = defaultQueryTimeout
 	}
-	log := Log.WithFields(logrus.Fields{"protocol": "doq", "endpoint": endpoint})
+	log := slog.New(slog.NewTextHandler(os.Stdout))
 	return &DoQClient{
 		id:               id,
 		endpoint:         endpoint,
@@ -109,10 +109,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 
 // Resolve a DNS query.
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	logger(d.id, q, ci).WithFields(logrus.Fields{
-		"resolver": d.endpoint,
-		"protocol": "doq",
-	}).Debug("querying upstream resolver")
+	slog.Debug("querying upstream resolver", slog.Group("details", slog.String("id", d.id), slog.String("resolver", d.endpoint), slog.String("protocol", "doq"), slog.String("qname", qName(q)), slog.String("qtype", qType(q))))
 
 	d.metrics.query.Add(1)
 
@@ -209,7 +206,7 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
-func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Stream, error) {
+func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -218,9 +215,7 @@ func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Str
 		var err error
 		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
 		if err != nil {
-			log.WithFields(logrus.Fields{
-				"hostname": s.hostname,
-			}).WithError(err).Error("failed to open connection")
+			log.Error("failed to open connection", slog.Group("details", slog.String("hostname", s.hostname), slog.String("error", err.Error())))
 			return nil, err
 		}
 		s.rAddr = endpoint
@@ -229,16 +224,14 @@ func (s *quicConnection) getStream(endpoint string, log *logrus.Entry) (quic.Str
 	// If we can't get a stream then restart the connection and try again once
 	stream, err := s.EarlyConnection.OpenStream()
 	if err != nil {
-		log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		log.Debug("temporary fail when trying to open stream, attempting new connection", slog.String("error", err.Error()))
 		if err = quicRestart(s); err != nil {
-			log.WithFields(logrus.Fields{
-				"hostname": s.hostname,
-			}).WithError(err).Error("failed to open connection")
+			log.Error("failed to open connection", slog.Group("details", slog.String("hostname", s.hostname), slog.String("error", err.Error())))
 			return nil, err
 		}
 		stream, err = s.EarlyConnection.OpenStream()
 		if err != nil {
-			log.WithError(err).Error("failed to open stream")
+			log.Error("failed to open stream", slog.String("error", err.Error()))
 		}
 	}
 	return stream, err

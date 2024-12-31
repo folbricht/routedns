@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 type memoryBackend struct {
@@ -142,7 +142,7 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		total = b.lru.size()
 		b.mu.Unlock()
 
-		Log.WithFields(logrus.Fields{"total": total, "removed": removed}).Trace("cache garbage collection")
+		slog.Debug("cache garbage collection", slog.Group("details", slog.Int("total", total), slog.Int("removed", removed)))
 	}
 }
 
@@ -162,17 +162,16 @@ func (b *memoryBackend) Close() error {
 func (b *memoryBackend) writeToFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	log := Log.WithField("filename", filename)
-	log.Info("writing cache file")
+	slog.Info("writing cache file", "filename", filename)
 	f, err := os.Create(filename)
 	if err != nil {
-		log.WithError(err).Warn("failed to create cache file")
+		slog.Warn("failed to create cache file", "filename", filename, "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.serialize(f); err != nil {
-		log.WithError(err).Warn("failed to persist cache to disk")
+		slog.Warn("failed to persist cache to disk", "filename", filename, "error", err)
 		return err
 	}
 	return nil
@@ -181,17 +180,16 @@ func (b *memoryBackend) writeToFile(filename string) error {
 func (b *memoryBackend) loadFromFile(filename string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	log := Log.WithField("filename", filename)
-	log.Info("reading cache file")
+	slog.Info("reading cache file", "filename", filename)
 	f, err := os.Open(filename)
 	if err != nil {
-		log.WithError(err).Warn("failed to open cache file")
+		slog.Warn("failed to open cache file", "filename", filename, "error", err)
 		return err
 	}
 	defer f.Close()
 
 	if err := b.lru.deserialize(f); err != nil {
-		log.WithError(err).Warn("failed to read cache from disk")
+		slog.Warn("failed to read cache from disk", "filename", filename, "error", err)
 		return err
 	}
 	return nil

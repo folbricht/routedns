@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // FailBack is a resolver group that queries the same resolver unless that
@@ -120,10 +120,7 @@ func (r *FailBack) errorFrom(i int) {
 		r.failCh = r.startResetTimer()
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.WithFields(logrus.Fields{
-		"id":       r.id,
-		"resolver": r.resolvers[r.active].String(),
-	}).Debug("failing over to resolver")
+	slog.Debug("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 	r.mu.Unlock()
 	r.metrics.failover.Add(1)
 	r.metrics.available.Add(-1)
@@ -146,7 +143,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 			case <-timer.C:
 				r.mu.Lock()
 				r.active = 0
-				Log.WithField("resolver", r.resolvers[r.active].String()).Debug("failing back to resolver")
+				slog.Debug("failing back to resolver", slog.Group("details", slog.String("resolver", r.resolvers[r.active].String())))
 				r.mu.Unlock()
 				r.metrics.available.Add(1)
 				// we just reset to the first resolver, let's wait for another failure before running again

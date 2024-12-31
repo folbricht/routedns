@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // Random is a resolver group that randomly picks a resolver from it's list
@@ -94,7 +94,7 @@ func (r *Random) deactivate(bad Resolver) {
 	filtered := make([]Resolver, 0, len(r.resolvers))
 	for _, resolver := range r.resolvers {
 		if resolver == bad {
-			Log.WithFields(logrus.Fields{"id": r.id, "resolver": bad}).Trace("de-activating resolver")
+			slog.Debug("de-activating resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", bad.String())))
 			go r.reactivateLater(bad)
 			continue
 		}
@@ -108,7 +108,7 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	time.Sleep(r.opt.ResetAfter)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	Log.WithFields(logrus.Fields{"id": r.id, "resolver": resolver}).Trace("re-activating resolver")
+	slog.Debug("re-activating resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", resolver.String())))
 	r.resolvers = append(r.resolvers, resolver)
 	r.metrics.available.Set(int64(len(r.resolvers)))
 }

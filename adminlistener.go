@@ -11,7 +11,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // Read/Write timeout in the admin server
@@ -65,7 +65,7 @@ func NewAdminListener(id, addr string, opt AdminListenerOptions) (*AdminListener
 
 // Start the admin server.
 func (s *AdminListener) Start() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": s.opt.Transport, "addr": s.addr}).Info("starting listener")
+	slog.Info("starting listener", "id", s.id, "protocol", s.opt.Transport, "addr", s.addr)
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -103,7 +103,7 @@ func (s *AdminListener) startQUIC() error {
 
 // Stop the server.
 func (s *AdminListener) Stop() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": s.opt.Transport, "addr": s.addr}).Info("stopping listener")
+	slog.Info("stopping listener", "id", s.id, "protocol", s.opt.Transport, "addr", s.addr)
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}

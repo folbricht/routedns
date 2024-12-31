@@ -7,7 +7,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // DoTClient is a DNS-over-TLS resolver.
@@ -73,10 +73,7 @@ func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Packing a message is not always a read-only operation, make a copy
 	q = q.Copy()
 
-	logger(d.id, q, ci).WithFields(logrus.Fields{
-		"resolver": d.endpoint,
-		"protocol": "dot",
-	}).Debug("querying upstream resolver")
+	slog.Debug("querying upstream resolver", slog.Group("details", slog.String("id", d.id), slog.String("resolver", d.endpoint), slog.String("protocol", "dot"), slog.String("qname", qName(q)), slog.String("qtype", qType(q))))
 
 	// Add padding to the query before sending over TLS
 	padQuery(q)

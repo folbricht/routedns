@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // IPBlocklistDB is a database containing IPs used in blocklists.
@@ -84,11 +84,11 @@ func (r *ResponseBlocklistIP) String() string {
 func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := Log.WithField("id", r.id)
+		log := slog.With("id", r.id)
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
-			Log.WithError(err).Error("failed to load rules")
+			slog.With("id", r.id).With("error", err.Error()).Error("failed to load rules")
 			continue
 		}
 		r.mu.Lock()
@@ -111,15 +111,21 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				continue
 			}
 			if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-				log := logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.GetList(), "rule": match.GetRule(), "ip": ip})
+				log := slog.With(
+					slog.String("id", r.id),
+					slog.String("qname", qName(query)),
+					slog.String("list", match.GetList()),
+					slog.String("rule", match.GetRule()),
+					slog.String("ip", ip.String()),
+				)
 				if r.BlocklistResolver != nil {
-					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
+					log.With(slog.String("resolver", r.BlocklistResolver.String())).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
 				answer = nxdomain(query)
 				if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{query, match}); err != nil {
-					log.WithError(err).Error("failed to apply edns0ede template")
+					log.With(slog.String("error", err.Error())).Error("failed to apply edns0ede template")
 				}
 				return answer, nil
 			}
@@ -132,9 +138,9 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 	answer.Answer = r.filterRR(query, ci, answer.Answer)
 	// If there's nothing left after applying the filter, return NXDOMAIN or send to the alternative resolver
 	if len(answer.Answer) == 0 {
-		log := Log.WithFields(logrus.Fields{"qname": qName(query)})
+		log := slog.With("qname", qName(query))
 		if r.BlocklistResolver != nil {
-			log.WithField("resolver", r.BlocklistResolver).Debug("no answers after filtering, forwarding to blocklist-resolver")
+			log.With(slog.String("resolver", r.BlocklistResolver.String())).Debug("no answers after filtering, forwarding to blocklist-resolver")
 			return r.BlocklistResolver.Resolve(query, ci)
 		}
 		log.Debug("no answers after filtering, blocking response")
@@ -159,7 +165,13 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			continue
 		}
 		if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
-			logger(r.id, query, ci).WithFields(logrus.Fields{"list": match.GetList(), "rule": match.GetRule(), "ip": ip}).Debug("filtering response")
+			slog.With(
+				slog.String("id", r.id),
+				slog.String("qname", qName(query)),
+				slog.String("list", match.GetList()),
+				slog.String("rule", match.GetRule()),
+				slog.String("ip", ip.String()),
+			).Debug("filtering response")
 			continue
 		}
 		newRRs = append(newRRs, rr)

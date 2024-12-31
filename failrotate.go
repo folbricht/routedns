@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slog"
 )
 
 // FailRotate is a resolver group that queries the same resolver unless that
@@ -87,10 +87,7 @@ func (r *FailRotate) errorFrom(i int) {
 	}
 	r.metrics.failover.Add(1)
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.WithFields(logrus.Fields{
-		"id":       r.id,
-		"resolver": r.resolvers[r.active].String(),
-	}).Debug("failing over to resolver")
+	slog.Debug("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 }
 
 // Returns true is the response is considered successful given the options.
