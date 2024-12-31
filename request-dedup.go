@@ -102,7 +102,7 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 		return a, err
 	}
-	log.WithField("resolver", r.resolver).Debug("forwarding query to resolver")
+	log.With("resolver", r.resolver).Debug("forwarding query to resolver")
 
 	// Not already in flight, make the request
 	a, err := r.resolver.Resolve(q, ci)

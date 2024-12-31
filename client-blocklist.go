@@ -4,8 +4,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // ClientBlocklist is a resolver that matches the IPs of clients against a blocklist

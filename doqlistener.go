@@ -7,11 +7,13 @@ import (
 	"expvar"
 	"io"
 	"net"
+	"os"
 	"time"
+
+	"log/slog"
 
 	"github.com/miekg/dns"
 	quic "github.com/quic-go/quic-go"
-	"golang.org/x/exp/slog"
 )
 
 // DoQListener is a DNS listener/server for QUIC.
@@ -67,7 +69,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 		addr:    addr,
 		r:       resolver,
 		opt:     opt,
-		log:     slog.New(slog.NewTextHandler(os.Stdout)),
+		log:     slog.New(slog.NewTextHandler(os.Stdout, nil)),
 		metrics: NewDoQListenerMetrics(id),
 	}
 	return l
@@ -91,7 +93,7 @@ func (s DoQListener) Start() error {
 			s.log.Warn("failed to accept", "error", err)
 			continue
 		}
-		s.log.Trace("started connection")
+		s.log.Debug("started connection")
 		go func() { s.handleConnection(connection) }()
 	}
 }
@@ -122,7 +124,7 @@ func (s DoQListener) handleConnection(connection quic.Connection) {
 		s.metrics.drop.Add(1)
 		return
 	}
-	log.Trace("accepting incoming connection")
+	log.Debug("accepting incoming connection")
 	s.metrics.connection.Add(1)
 
 	for {
@@ -130,10 +132,10 @@ func (s DoQListener) handleConnection(connection quic.Connection) {
 		if err != nil {
 			break
 		}
-		log.With("stream", stream.StreamID()).Trace("opening stream")
+		log.With("stream", stream.StreamID()).Debug("opening stream")
 		go func() {
 			s.handleStream(stream, log, ci)
-			log.With("stream", stream.StreamID()).Trace("closing stream")
+			log.With("stream", stream.StreamID()).Debug("closing stream")
 		}()
 	}
 }

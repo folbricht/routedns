@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/exp/slog"
 )
 
 // Read/Write timeout in the DoH server
@@ -130,9 +131,9 @@ func (s *DoHListener) startTCP() error {
 // Start the DoH server with QUIC transport.
 func (s *DoHListener) startQUIC() error {
 	s.quicServer = &http3.Server{
-		Addr:       s.addr,
-		TLSConfig:  s.opt.TLSConfig,
-		Handler:    s.handler,
+		Addr:      s.addr,
+		TLSConfig: s.opt.TLSConfig,
+		Handler:   s.handler,
 		QUICConfig: &quic.Config{
 			Allow0RTT:      true,
 			MaxIdleTimeout: 5 * time.Minute,

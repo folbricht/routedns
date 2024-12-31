@@ -4,8 +4,9 @@ import (
 	"crypto/tls"
 	"net"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // DNSListener is a standard DNS listener for UDP or TCP.

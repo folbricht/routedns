@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/pion/dtls/v2"
-	"golang.org/x/exp/slog"
 )
 
 // DTLSListener is a DNS listener/server for DNS-over-DTLS.

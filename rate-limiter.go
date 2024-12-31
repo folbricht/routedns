@@ -107,14 +107,14 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if reject {
 		r.metrics.exceed.Add(1)
 		if r.LimitResolver != nil {
-			log.WithField("resolver", r.LimitResolver).Debug("rate-limit exceeded, forwarding to limit-resolver")
+			log.With("resolver", r.LimitResolver).Debug("rate-limit exceeded, forwarding to limit-resolver")
 			return r.LimitResolver.Resolve(q, ci)
 		}
 		r.metrics.drop.Add(1)
 		log.Debug("rate-limit reached, dropping")
 		return nil, nil
 	}
-	log.WithField("resolver", r.resolver).Debug("forwarding query to resolver")
+	log.With("resolver", r.resolver).Debug("forwarding query to resolver")
 	return r.resolver.Resolve(q, ci)
 }
 

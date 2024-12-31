@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // ECSModifier manipulates EDNS0 Client Subnet in queries.
@@ -112,7 +113,7 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		ecs.Address = sourceIP
 		edns0.Option = append(edns0.Option, ecs)
 
-		slog.Debug("adding ecs option", slog.Group("details", slog.String("id", id), slog.String("ecs", sourceIP.String()), slog.Uint8("mask", mask)))
+		slog.Debug("adding ecs option", slog.Group("details", slog.String("id", id), slog.String("ecs", sourceIP.String()), slog.Any("mask", mask)))
 	}
 }
 
@@ -127,7 +128,7 @@ func ECSModifierAddIfMissing(addr net.IP, prefix4, prefix6 uint8) ECSModifierFun
 			for _, opt := range edns0.Option {
 				ecs, ok := opt.(*dns.EDNS0_SUBNET)
 				if ok {
-					slog.Debug("ecs option already present", slog.Group("details", slog.String("id", id), slog.String("addr", ecs.Address.String()), slog.Uint8("mask", ecs.SourceNetmask)))
+					slog.Debug("ecs option already present", slog.Group("details", slog.String("id", id), slog.String("addr", ecs.Address.String()), slog.Any("mask", ecs.SourceNetmask)))
 					return // There's an ECS option already, don't touch it
 				}
 			}
@@ -172,7 +173,7 @@ func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 		}
 
 		if hasECS {
-			slog.Debug("modifying ecs privacy", slog.Group("details", slog.String("id", id), slog.Uint8("ip4prefix", prefix4), slog.Uint8("ip6prefix", prefix6), slog.String("before-addr", beforeAddr.String()), slog.String("after-addr", afterAddr.String())))
+			slog.Debug("modifying ecs privacy", slog.Group("details", slog.String("id", id), slog.Any("ip4prefix", prefix4), slog.Any("ip6prefix", prefix6), slog.String("before-addr", beforeAddr.String()), slog.String("after-addr", afterAddr.String())))
 		}
 	}
 }

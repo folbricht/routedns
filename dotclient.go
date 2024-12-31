@@ -5,9 +5,10 @@ import (
 	"net"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
-	"golang.org/x/exp/slog"
 )
 
 // DoTClient is a DNS-over-TLS resolver.

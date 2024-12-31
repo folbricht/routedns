@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // FailBack is a resolver group that queries the same resolver unless that
@@ -81,13 +82,14 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	)
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
-		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
-		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		log.With("resolver", resolver.String()).Debug("resolver returned failure",
+			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 
 		r.errorFrom(active)
@@ -126,7 +128,6 @@ func (r *FailBack) errorFrom(i int) {
 	r.metrics.available.Add(-1)
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
-
 
 // Set active=0 regularly after the reset timer has expired without further failures. Any failure,
 // as signalled by the channel resets the timer again.

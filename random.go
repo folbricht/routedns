@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // Random is a resolver group that randomly picks a resolver from it's list
@@ -58,12 +59,13 @@ func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 
 		r.metrics.route.Add(resolver.String(), 1)
-		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
-		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		log.With("resolver", resolver.String()).Debug("resolver returned failure",
+			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		r.deactivate(resolver)
 	}

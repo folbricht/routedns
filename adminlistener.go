@@ -9,9 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/exp/slog"
 )
 
 // Read/Write timeout in the admin server

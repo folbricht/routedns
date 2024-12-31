@@ -8,10 +8,11 @@ import (
 	"net"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	quic "github.com/quic-go/quic-go"
-	"golang.org/x/exp/slog"
 )
 
 const (
@@ -43,7 +44,7 @@ type DoQClientOptions struct {
 
 	QueryTimeout time.Duration
 
-	Use0RTT       bool
+	Use0RTT bool
 }
 
 var _ Resolver = &DoQClient{}
@@ -87,7 +88,10 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	if opt.QueryTimeout == 0 {
 		opt.QueryTimeout = defaultQueryTimeout
 	}
-	log := slog.New(slog.NewTextHandler(os.Stdout))
+	log := Log.With(
+		"protocol", "doq",
+		"endpoint", endpoint,
+	)
 	return &DoQClient{
 		id:               id,
 		endpoint:         endpoint,
@@ -99,7 +103,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 			lAddr:     lAddr,
 			tlsConfig: tlsConfig,
 			config: &quic.Config{
-				TokenStore: quic.NewLRUTokenStore(10, 10),
+				TokenStore:           quic.NewLRUTokenStore(10, 10),
 				HandshakeIdleTimeout: opt.QueryTimeout,
 			},
 		},

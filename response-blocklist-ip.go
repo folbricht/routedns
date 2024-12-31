@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // IPBlocklistDB is a database containing IPs used in blocklists.

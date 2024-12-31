@@ -17,9 +17,10 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 
+	"log/slog"
+
 	"github.com/jtacoma/uritemplates"
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 	"golang.org/x/net/http2"
 )
 

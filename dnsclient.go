@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slog"
 )
 
 // DNSClient represents a simple DNS resolver for UDP or TCP.
