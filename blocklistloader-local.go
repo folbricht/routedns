@@ -26,14 +26,15 @@ func NewFileLoader(filename string, opt FileLoaderOptions) *FileLoader {
 }
 
 func (l *FileLoader) Load() (rules []string, err error) {
-	log := Log.WithField("file", l.filename)
-	log.Trace("loading blocklist")
+	log := Log.With("file", l.filename)
+	log.Debug("loading blocklist")
 
 	// If AllowFailure is enabled, return the last successfully loaded list
 	// and nil
 	defer func() {
 		if err != nil && l.opt.AllowFailure {
-			log.WithError(err).Warn("failed to load blocklist, continuing with previous ruleset")
+			log.Warn("failed to load blocklist, continuing with previous ruleset",
+				"error", err)
 			rules = l.lastSuccess
 			err = nil
 		} else {
@@ -50,6 +51,6 @@ func (l *FileLoader) Load() (rules []string, err error) {
 	for scanner.Scan() {
 		rules = append(rules, scanner.Text())
 	}
-	log.Trace("completed loading blocklist")
+	log.Debug("completed loading blocklist")
 	return rules, scanner.Err()
 }

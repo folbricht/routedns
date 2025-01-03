@@ -39,7 +39,7 @@ func (r *TruncateRetry) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Retry the same query on the other resolver if the first one returned a truncated response.
 	if a.Truncated {
-		logger(r.id, q, ci).WithField("resolver", r.retryResolver).Debug("truncated response, forwarding to retry-resolver")
+		logger(r.id, q, ci).With("resolver", r.retryResolver).Debug("truncated response, forwarding to retry-resolver")
 		a, err = r.retryResolver.Resolve(q, ci)
 	}
 	return a, err

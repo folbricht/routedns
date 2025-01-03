@@ -193,7 +193,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	r.metrics.miss.Add(1)
 
-	log.WithField("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
+	log.With("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
 	// Get a response from upstream
 	a, err := r.resolver.Resolve(q.Copy(), ci)

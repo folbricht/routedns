@@ -33,7 +33,7 @@ func (r *RoundRobin) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	resolver := r.resolvers[r.current]
 	r.current = (r.current + 1) % len(r.resolvers)
 	r.mu.Unlock()
-	logger(r.id, q, ci).WithField("resolver", resolver).Debug("forwarding query to resolver")
+	logger(r.id, q, ci).With("resolver", resolver).Debug("forwarding query to resolver")
 	r.metrics.route.Add(resolver.String(), 1)
 	msg, err := resolver.Resolve(q, ci)
 	if err != nil {

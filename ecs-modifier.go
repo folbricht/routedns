@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // ECSModifier manipulates EDNS0 Client Subnet in queries.
@@ -112,10 +111,10 @@ func ECSModifierAdd(addr net.IP, prefix4, prefix6 uint8) ECSModifierFunc {
 		ecs.Address = sourceIP
 		edns0.Option = append(edns0.Option, ecs)
 
-		logger(id, q, ci).WithFields(logrus.Fields{
-			"ecs":  sourceIP,
-			"mask": mask,
-		}).Debug("adding ecs option")
+		log := logger(id, q, ci)
+		log.Debug("adding ecs option",
+			"ecs", sourceIP.String(),
+			"mask", mask)
 	}
 }
 
@@ -130,10 +129,11 @@ func ECSModifierAddIfMissing(addr net.IP, prefix4, prefix6 uint8) ECSModifierFun
 			for _, opt := range edns0.Option {
 				ecs, ok := opt.(*dns.EDNS0_SUBNET)
 				if ok {
-					logger(id, q, ci).WithFields(logrus.Fields{
-						"addr": ecs.Address,
-						"mask": ecs.SourceNetmask,
-					}).Debug("ecs option already present")
+					log := logger(id, q, ci)
+					log.Debug("ecs option already present",
+						"ecs", ecs.Address.String(),
+						"mask", ecs.SourceNetmask)
+
 					return // There's an ECS option already, don't touch it
 				}
 			}
@@ -178,12 +178,12 @@ func ECSModifierPrivacy(prefix4, prefix6 uint8) ECSModifierFunc {
 		}
 
 		if hasECS {
-			logger(id, q, ci).WithFields(logrus.Fields{
-				"ip4prefix":   prefix4,
-				"ip6prefix":   prefix6,
-				"before-addr": beforeAddr,
-				"after-addr":  afterAddr,
-			}).Debug("modifying ecs privacy")
+			log := logger(id, q, ci)
+			log.Debug("modifying ecs privacy",
+				"before-addr", beforeAddr.String(),
+				"after-addr", afterAddr.String(),
+				"ip4prefix", prefix4,
+				"ip6prefix", prefix6)
 		}
 	}
 }
