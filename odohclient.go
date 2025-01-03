@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	odoh "github.com/cloudflare/odoh-go"
+	odoh "github.com/sthorne/odoh-go"
 	"github.com/miekg/dns"
 )
 
