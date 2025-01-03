@@ -1,7 +1,9 @@
 package rdns
 
 import (
-	"fmt"
+	"log"
+	"strings"
+	"sync"
 
 	"github.com/miekg/dns"
 )
@@ -18,116 +20,106 @@ func NewDNSSECenforcer(id string, resolver Resolver) *DNSSECenforcer {
 	return &DNSSECenforcer{id: id, resolver: resolver}
 }
 
-// Validate DNSSEC using DNSKEY and RRSIG
-func validateDNSSEC(aResponse, dnskeyResponse *dns.Msg) error {
-	dnskeys := []dns.RR{}
-	for _, rr := range dnskeyResponse.Answer {
-		if rr.Header().Rrtype == dns.TypeDNSKEY {
-			dnskeys = append(dnskeys, rr)
-		}
-	}
-
-	// Extract RRSIG from the A response
-	rrsig := &dns.RRSIG{}
-	for _, rr := range aResponse.Answer {
-		if sig, ok := rr.(*dns.RRSIG); ok && (sig.TypeCovered == dns.TypeA || sig.TypeCovered == dns.TypeAAAA) {
-			rrsig = sig
-			break
-		}
-	}
-
-	rrset := []dns.RR{}
-	for _, rr := range aResponse.Answer {
-		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
-			rrset = append(rrset, rr)
-		}
-	}
-
-	if rrsig == nil || len(dnskeys) == 0 {
-		return fmt.Errorf("missing RRSIG or DNSKEY")
-	}
-
-	// Perform validation
-	for _, dnskey := range dnskeys {
-		if key, ok := dnskey.(*dns.DNSKEY); ok {
-			if key.KeyTag() != rrsig.KeyTag {
-				continue
-			}
-			err := rrsig.Verify(key, rrset)
-			if err == nil {
-				Log.Debug("DNSSEC validated")
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("validation failed for all DNSKEYs")
-}
-
-func removeRRSIGs(response *dns.Msg) *dns.Msg {
-	// Create a new message to store the filtered response
-	filteredResponse := response.Copy()
-
-	// Filter out any RRSIG records from the Answer section
-	var filteredAnswers []dns.RR
-	for _, rr := range filteredResponse.Answer {
-		if _, isRRSIG := rr.(*dns.RRSIG); !isRRSIG {
-			filteredAnswers = append(filteredAnswers, rr)
-		}
-	}
-
-	// Set the filtered Answer section
-	filteredResponse.Answer = filteredAnswers
-	return filteredResponse
-}
-
 // Resolve a DNS query with DNSSEC verification. This requires sending a second DNS request for the DNSKEY. Also for the initial DNS query, the DO flag is set.
 func (d *DNSSECenforcer) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	// Set DNSSEC Do flag
-	if q.IsEdns0() == nil {
-		q.SetEdns0(1024, true)
-	} else {
-		q.IsEdns0().SetDo()
-	}
+	var answer *RRSet
+	var response *dns.Msg
+	var authChain *AuthenticationChain
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	defer close(errCh)
 
-	// Prepare DNSKEY query
-	k := new(dns.Msg)
-	k.SetQuestion(qName(q), dns.TypeDNSKEY)
-
-	results := make(chan *dns.Msg, 2)
-	errors := make(chan error, 2)
-	for _, m := range []*dns.Msg{q, k} {
-		go func(query *dns.Msg) {
-			res, err := d.resolver.Resolve(query, ci)
-			if err != nil {
-				errors <- err
-				return
-			}
-			results <- res
-		}(m)
-	}
-
-	var aResponse, dnskeyResponse *dns.Msg
-	for i := 0; i < 2; i++ {
-		select {
-		case res := <-results:
-			switch res.Question[0].Qtype {
-			case dns.TypeA, dns.TypeAAAA:
-				aResponse = res
-			case dns.TypeDNSKEY:
-				dnskeyResponse = res
-			}
-		case err := <-errors:
-			return nil, fmt.Errorf("query error: %v", err)
+	wg.Add(1)
+	// resolve the A query with RRSIG option
+	go func() {
+		defer wg.Done()
+		var err error
+		res, err := d.resolver.Resolve(setDNSSECdo(q), ci)
+		if err != nil {
+			errCh <- err
+			return
 		}
+		response = res.Copy()
+		answer, err = extractRRset(res)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if answer.IsEmpty() {
+			errCh <- ErrNoResult
+			return
+		}
+		if !answer.IsSigned() {
+			errCh <- ErrResourceNotSigned
+			return
+		}
+	}()
+
+	wg.Add(1)
+	// resolve the entire DNSSEC authentication chain
+	go func() {
+		defer wg.Done()
+		authChain = NewAuthenticationChain()
+		if populateErr := authChain.Populate(qName(q), d.resolver); populateErr != nil {
+			errCh <- populateErr
+			return
+		}
+	}()
+
+	wg.Wait()
+	if len(errCh) > 0 {
+		return nil, <-errCh
 	}
 
-	if err := validateDNSSEC(aResponse, dnskeyResponse); err != nil {
-		Log.Error("DNSSEC validation failed:", err)
+	if err := authChain.Verify(answer); err != nil {
 		return nil, err
 	}
-	return removeRRSIGs(aResponse), nil
+
+	log.Printf("Valid DNS Record Answer for %v (%v)\n", qName(q), dns.TypeA)
+	//printChain(authChain)
+	return removeRRSIGs(response), nil
 }
 
 func (d *DNSSECenforcer) String() string {
 	return d.id
+}
+
+func printChain(authChain *AuthenticationChain) {
+	log.Printf("containing the chain...\n")
+	log.Printf("-----------------------CHAIN-----------------------\n")
+	zones := authChain.DelegationChain
+	for i, sz := range zones {
+
+		spaces := make([]string, 0)
+		for k := 0; k < i*4; k++ {
+			spaces = append(spaces, " ")
+		}
+		spaceString := strings.Join(spaces, "")
+
+		log.Printf("%v[Chain Level %v]\n", spaceString, i+1)
+		log.Printf("%v\tZone      : %v\n", spaceString, sz.Zone)
+		log.Printf("%v\tDNSKEY    : (RRSET)\n", spaceString)
+		rrset := sz.Dnskey.RrSet
+		for _, s := range rrset {
+			log.Printf("%v\t\t%v\n", spaceString, s.String())
+		}
+		log.Printf("%v\tDNSKEY    : (RRSIG)\n", spaceString)
+		log.Printf("%v\t\t%v\n", spaceString, sz.Dnskey.RrSig)
+
+		if sz.Ds != nil {
+			dsset := sz.Ds.RrSet
+			log.Printf("%v\tDS        : (RRSET)\n", spaceString)
+			for _, s := range dsset {
+				log.Printf("%v\t\t%v\n", spaceString, s.String())
+			}
+			log.Printf("%v\tDS        : (RRSIG)\n", spaceString)
+			log.Printf("%v\t\t%v\n", spaceString, sz.Ds.RrSig)
+		}
+		log.Printf("%v\tKeys      :\n", spaceString)
+		for k, v := range sz.PubKeyLookup {
+			log.Printf("%v\t\t %v : %v\n", spaceString, k, v)
+		}
+		log.Println("")
+	}
+	log.Printf("-------------------END CHAIN-----------------------\n")
 }
