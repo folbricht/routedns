@@ -2,12 +2,11 @@ package rdns
 
 import (
 	"errors"
-	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -114,14 +113,8 @@ func newQuery(qname string, qtype uint16) *dns.Msg {
 func getRRset(qname string, qtype uint16, resolver Resolver) (*RRSet, error) {
 	q := newQuery(qname, qtype)
 	r, err := doQuery(q, resolver)
-	if err != nil {
-		log.Printf("cannot lookup %v", err)
+	if err != nil || r == nil {
 		return nil, err
-	}
-
-	if r.Rcode == dns.RcodeNameError {
-		log.Printf("no such domain %s\n", qName(q))
-		return nil, ErrNoResult
 	}
 	return extractRRset(r)
 }
@@ -149,89 +142,81 @@ func doQuery(q *dns.Msg, resolver Resolver) (*dns.Msg, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r == nil || r.Rcode == dns.RcodeNameError || r.Rcode == dns.RcodeSuccess {
+	if r.Rcode == dns.RcodeNameError {
+		Log.Printf("no such domain %s\n", qName(r))
+		return nil, ErrNoResult
+	}
+	if r == nil || r.Rcode == dns.RcodeSuccess {
 		return r, err
 	}
-	return nil, err
+	return nil, ErrInvalidRRsig
 }
 
 func queryDelegation(domainName string, resolver Resolver) (*SignedZone, error) {
 	signedZone := NewSignedZone(domainName)
+	signedZone.PubKeyLookup = make(map[uint16]*dns.DNSKEY)
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
-	defer close(errCh)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	var g errgroup.Group
+	g.Go(func() error {
 		var err error
 		signedZone.Dnskey, err = getRRset(domainName, dns.TypeDNSKEY, resolver)
 		if err != nil {
-			errCh <- err
-			return
+			return err
 		}
-		signedZone.PubKeyLookup = make(map[uint16]*dns.DNSKEY)
+
 		for _, rr := range signedZone.Dnskey.RrSet {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[%v] panic occurred: %v", domainName, r)
+					Log.Printf("[%v] panic occurred: %v", domainName, r)
 				}
 			}()
 			signedZone.addPubKey(rr.(*dns.DNSKEY))
 		}
-	}()
+		return nil
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	g.Go(func() error {
 		var err error
 		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver)
 		if err != nil {
-			log.Printf("DS query failed for %v: %v", domainName, err)
+			Log.Error("DS query failed for [", domainName, "] ", err)
+			return err
 		}
-	}()
+		return nil
+	})
 
-	wg.Wait()
-	if len(errCh) > 0 {
-		return nil, <-errCh
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
-
 	return signedZone, nil
 }
 
 func (authChain *AuthenticationChain) Populate(domainName string, resolver Resolver) error {
 	qnameComponents := strings.Split(domainName, ".")
 	zonesToVerify := len(qnameComponents)
-
 	authChain.DelegationChain = make([]SignedZone, zonesToVerify)
-	var wg sync.WaitGroup
-	errCh := make(chan error, zonesToVerify)
-	defer close(errCh)
 
+	var g errgroup.Group
 	for i := 0; i < zonesToVerify; i++ {
 		zoneName := dns.Fqdn(strings.Join(qnameComponents[i:], "."))
-		wg.Add(1)
+		index := i
 
-		go func(index int, zone string) {
-			defer wg.Done()
-			delegation, err := queryDelegation(zone, resolver)
+		g.Go(func() error {
+			delegation, err := queryDelegation(zoneName, resolver)
 			if err != nil {
-				errCh <- err
-				return
+				return err
 			}
 			authChain.DelegationChain[index] = *delegation
 			if index > 0 {
 				authChain.DelegationChain[index-1].ParentZone = delegation
 			}
-		}(i, zoneName)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	if len(errCh) > 0 {
-		return <-errCh
+	if err := g.Wait(); err != nil {
+		return err
 	}
-
 	return nil
 }
 
@@ -254,7 +239,7 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 	for _, signedZone := range authChain.DelegationChain {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("[AuthChain] panic occurred: %v", err)
+				Log.Error("[AuthChain] panic occurred: ", err)
 			}
 		}()
 
