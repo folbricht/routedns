@@ -59,10 +59,7 @@ type resolver struct {
 	Socks5ResolveLocal bool   `toml:"socks5-resolve-local"` // Resolve DNS server address locally (i.e. bootstrap-resolver), not on the SOCK5 proxy
 
 	//QUIC and DoH/3 configuration
-	Use0RTT bool `toml:"enable-0rtt"`
-	// URL for Oblivious DNS target
-	Target       string `toml:"target"`
-	TargetConfig string `toml:"target-config"`
+	Use0RTT       bool   `toml:"enable-0rtt"`
 }
 
 // DoH-specific resolver options
