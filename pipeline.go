@@ -154,7 +154,7 @@ func (c *Pipeline) start() {
 						// got a bad packet (like a truncated one for example).
 						if a == nil {
 							c.metrics.err.Add("read", 1)
-							Log.Error("read failed", "error", err)
+							log.Error("read failed", "error", err)
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
 							return
