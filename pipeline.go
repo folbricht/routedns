@@ -90,7 +90,7 @@ func (c *Pipeline) start() {
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
 			c.metrics.err.Add("open", 1)
-			Log.Error("failed to open connection", "error", err)
+			log.Error("failed to open connection", "error", err)
 			req.markDone(nil, err)
 			continue
 		}
