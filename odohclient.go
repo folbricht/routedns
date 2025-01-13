@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	odoh "github.com/sthorne/odoh-go"
+	odoh "github.com/cloudflare/odoh-go"
 	"github.com/miekg/dns"
 )
 
@@ -198,6 +198,7 @@ func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, er
 	odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(bodyBytes)
 	expiry := time.Now().Add(24 * time.Hour)
 
-	Log.Printf("got config: %x", odohConfigs.Marshal())
+	Log.Info("loaded config",
+		"conf", odohConfigs.Marshal())
 	return &odohConfigs.Configs[0], expiry, err
 }

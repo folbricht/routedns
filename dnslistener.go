@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // DNSListener is a standard DNS listener for UDP or TCP.
@@ -35,10 +34,7 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
-	Log.WithFields(logrus.Fields{
-		"id":       s.id,
-		"protocol": s.Net,
-		"addr":     s.Addr}).Info("starting listener")
+	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
 	return s.ListenAndServe()
 }
 
@@ -70,17 +66,23 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			ci.SourceIP = addr.IP
 		}
 
-		log := Log.WithFields(logrus.Fields{"id": id, "client": ci.SourceIP, "qname": qName(req), "protocol": protocol, "addr": addr})
+		log := Log.With(
+			"id", id,
+			"client", ci.SourceIP,
+			"qname", qName(req),
+			"protocol", protocol,
+			"addr", addr,
+		)
 		log.Debug("received query")
 		metrics.query.Add(1)
 
 		a := new(dns.Msg)
 		if isAllowed(allowedNet, ci.SourceIP) {
-			log.WithField("resolver", r.String()).Trace("forwarding query to resolver")
+			log.With("resolver", r.String()).Debug("forwarding query to resolver")
 			a, err = r.Resolve(req, ci)
 			if err != nil {
 				metrics.err.Add("resolve", 1)
-				log.WithError(err).Error("failed to resolve")
+				log.Error("failed to resolve", "error", err)
 				a = servfail(req)
 			}
 		} else {

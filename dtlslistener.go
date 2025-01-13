@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
 	"github.com/pion/dtls/v2"
-	"github.com/sirupsen/logrus"
 )
 
 // DTLSListener is a DNS listener/server for DNS-over-DTLS.
@@ -43,7 +44,7 @@ func NewDTLSListener(id, addr string, opt DTLSListenerOptions, resolver Resolver
 
 // Start the DTLS server.
 func (s *DTLSListener) Start() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dtls", "addr": s.Addr}).Info("starting listener")
+	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "dtls"), slog.String("addr", s.Addr)))
 
 	host, port, err := net.SplitHostPort(s.Server.Addr)
 	if err != nil {
@@ -69,7 +70,7 @@ func (s *DTLSListener) Start() error {
 
 // Stop the server.
 func (s *DTLSListener) Stop() error {
-	Log.WithFields(logrus.Fields{"id": s.id, "protocol": "dtls", "addr": s.Addr}).Info("stopping listener")
+	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "dtls"), slog.String("addr", s.Addr)))
 	return s.Shutdown()
 }
 

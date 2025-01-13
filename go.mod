@@ -5,6 +5,7 @@ go 1.22.0
 require (
 	github.com/BurntSushi/toml v1.3.2
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
+	github.com/cloudflare/odoh-go v1.0.1-0.20230926114050-f39fa019b017
 	github.com/heimdalr/dag v1.4.0
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.59
@@ -13,18 +14,15 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.48.2
 	github.com/redis/go-redis/v9 v9.5.1
-	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
-	github.com/sthorne/odoh-go v1.0.4
 	github.com/stretchr/testify v1.9.0
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
 	golang.org/x/net v0.28.0
 )
 
 require (
-	git.schwanenlied.me/yawning/x448.git v0.0.0-20170617130356-01b048fb03d6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cisco/go-hpke v0.0.0-20210215210317-01c430f1f302 // indirect
+	github.com/cisco/go-hpke v0.0.0-20230407100446-246075f83609 // indirect
 	github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

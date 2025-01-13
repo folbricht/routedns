@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // FastestTCP first resolves the query with the upstream resolver, then
@@ -88,7 +88,7 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Send TCP probes to all, if anything returns an error, just return
 	// the original response rather than trying to be clever and pick one.
-	log = log.WithField("port", r.port)
+	log = log.With("port", r.port)
 	var sorted []dns.RR
 	if r.opt.WaitAll {
 		sorted, err = r.probeAll(log, ipRRs)
@@ -96,7 +96,8 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		sorted, err = r.probeFastest(log, ipRRs)
 	}
 	if err != nil {
-		log.WithError(err).Debug("tcp probe failed")
+		log.Debug("tcp probe failed",
+			"error", err)
 		return a, nil
 	}
 	r.setTTL(sorted...)
@@ -129,7 +130,7 @@ func (r *FastestTCP) String() string {
 // Probes all IPs and returns only the RR with the fastest responding IP.
 // Waits for the first one that comes back. Returns an error if the fastest response
 // is an error.
-func (r *FastestTCP) probeFastest(log logrus.FieldLogger, rrs []dns.RR) ([]dns.RR, error) {
+func (r *FastestTCP) probeFastest(log *slog.Logger, rrs []dns.RR) ([]dns.RR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	resultCh := r.probe(ctx, log, rrs)
@@ -152,7 +153,7 @@ func (r *FastestTCP) probeFastest(log logrus.FieldLogger, rrs []dns.RR) ([]dns.R
 
 // Probes all IPs and returns them in the order of response time, fastest first. Returns
 // an error if any of the probes fail or if the probe times out.
-func (r *FastestTCP) probeAll(log logrus.FieldLogger, rrs []dns.RR) ([]dns.RR, error) {
+func (r *FastestTCP) probeAll(log *slog.Logger, rrs []dns.RR) ([]dns.RR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	resultCh := r.probe(ctx, log, rrs)
@@ -177,7 +178,7 @@ type tcpProbeResult struct {
 }
 
 // Probes all IPs and returns a channel with responses in the order they succeed or fail.
-func (r *FastestTCP) probe(ctx context.Context, log logrus.FieldLogger, rrs []dns.RR) <-chan tcpProbeResult {
+func (r *FastestTCP) probe(ctx context.Context, log *slog.Logger, rrs []dns.RR) <-chan tcpProbeResult {
 	resultCh := make(chan tcpProbeResult)
 	for _, rr := range rrs {
 		var d net.Dialer
@@ -193,13 +194,14 @@ func (r *FastestTCP) probe(ctx context.Context, log logrus.FieldLogger, rrs []dn
 				return
 			}
 			start := time.Now()
-			log.WithField("ip", ip).Debug("sending tcp probe")
+			log.Debug("sending tcp probe",
+				"ip", ip)
 			c, err := d.DialContext(ctx, network, net.JoinHostPort(ip, r.port))
 			if err != nil {
 				resultCh <- tcpProbeResult{err: err}
 				return
 			}
-			log.WithField("ip", ip).WithField("response-time", time.Since(start)).Debug("tcp probe finished")
+			log.With("ip", ip).With("response-time", time.Since(start)).Debug("tcp probe finished")
 			defer c.Close()
 			resultCh <- tcpProbeResult{rr: rr}
 		}(rr)
