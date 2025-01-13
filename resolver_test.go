@@ -2,13 +2,15 @@ package rdns
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 
 	"github.com/miekg/dns"
 )
 
 func init() {
 	// Silence the logger while running tests
-	Log.SetLevel(0)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // TestResolver is a configurable resolver used for testing. It counts the

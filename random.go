@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // Random is a resolver group that randomly picks a resolver from it's list
@@ -58,12 +57,13 @@ func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 
 		r.metrics.route.Add(resolver.String(), 1)
-		log.WithField("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
 		a, err := resolver.Resolve(q, ci)
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
-		log.WithField("resolver", resolver.String()).WithError(err).Debug("resolver returned failure")
+		log.With("resolver", resolver.String()).Debug("resolver returned failure",
+			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		r.deactivate(resolver)
 	}
@@ -94,7 +94,10 @@ func (r *Random) deactivate(bad Resolver) {
 	filtered := make([]Resolver, 0, len(r.resolvers))
 	for _, resolver := range r.resolvers {
 		if resolver == bad {
-			Log.WithFields(logrus.Fields{"id": r.id, "resolver": bad}).Trace("de-activating resolver")
+			Log.Debug("de-activating resolver",
+				"id", r.id,
+				"resolver", bad.String(),
+			)
 			go r.reactivateLater(bad)
 			continue
 		}
@@ -108,7 +111,10 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	time.Sleep(r.opt.ResetAfter)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	Log.WithFields(logrus.Fields{"id": r.id, "resolver": resolver}).Trace("re-activating resolver")
+	Log.Debug("re-activating resolver",
+		"id", r.id,
+		"resolver", resolver.String(),
+	)
 	r.resolvers = append(r.resolvers, resolver)
 	r.metrics.available.Set(int64(len(r.resolvers)))
 }

@@ -64,11 +64,11 @@ func (r *ResponseBlocklistName) String() string {
 func (r *ResponseBlocklistName) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := Log.WithField("id", r.id)
+		log := Log.With("id", r.id)
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
-			Log.WithError(err).Error("failed to load rules")
+			log.Error("failed to load rules", "error", err)
 			continue
 		}
 		r.mu.Lock()
@@ -104,15 +104,15 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 				continue
 			}
 			if _, _, rule, ok := r.BlocklistDB.Match(dns.Question{Name: name}); ok != r.Inverted {
-				log := logger(r.id, query, ci).WithField("rule", rule.GetRule())
+				log := logger(r.id, query, ci).With("rule", rule.GetRule())
 				if r.BlocklistResolver != nil {
-					log.WithField("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
+					log.With("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
 				answer = nxdomain(query)
 				if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{query, rule}); err != nil {
-					log.WithError(err).Error("failed to apply edns0ede template")
+					log.Error("failed to apply edns0ede template", "error", err)
 				}
 				return answer, nil
 			}
