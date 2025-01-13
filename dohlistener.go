@@ -53,6 +53,8 @@ type DoHListenerOptions struct {
 
 	// Disable TLS on the server (insecure, for testing purposes only).
 	NoTLS bool
+	// Flag that signals if this DoHListener is a child of an Oblivious listener
+	isChild bool
 }
 
 type DoHListenerMetrics struct {
@@ -94,7 +96,10 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 		opt:     opt,
 		metrics: NewDoHListenerMetrics(id),
 	}
-	l.handler = http.HandlerFunc(l.dohHandler)
+
+	if !l.opt.isChild {
+		l.handler = http.HandlerFunc(l.dohHandler)
+	}
 	return l, nil
 }
 

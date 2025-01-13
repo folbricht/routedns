@@ -31,6 +31,9 @@ type listener struct {
 	MutualTLS  bool     `toml:"mutual-tls"`
 	NoTLS      bool     `toml:"no-tls"` // Disable TLS in DoH servers
 	AllowedNet []string `toml:"allowed-net"`
+	KeySeed    string   `toml:"key-seed"`  // ODoH HPKE key seed, 16 byte hex key. Generate for example with: "openssl rand -hex 16"
+	OdohMode   string   `toml:"odoh-mode"` // switch between ODoH mode - accepts "proxy", "target" or does both if empty/other
+	AllowDoH   bool     `toml:"allow-doh"` // Allow ODoH listeners to also handle DoH queries to /dns-query
 	Frontend   dohFrontend
 }
 
