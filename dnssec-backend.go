@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ var (
 	ErrDsNotAvailable       = errors.New("DS RR does not exist")
 	ErrRRSigNotAvailable    = errors.New("RRSIG does not exist")
 	ErrInvalidRRsig         = errors.New("invalid RRSIG")
+	ErrForgedRRsig          = errors.New("forged RRSIG header")
 	ErrRrsigValidationError = errors.New("RR doesn't validate against RRSIG")
 	ErrRrsigValidityPeriod  = errors.New("invalid RRSIG validity period")
 	ErrUnknownDsDigestType  = errors.New("unknown DS digest type")
@@ -40,34 +42,20 @@ type AuthenticationChain struct {
 	DelegationChain []SignedZone
 }
 
-func NewSignedRRSet() *RRSet {
-	return &RRSet{
-		RrSet: make([]dns.RR, 0),
-	}
+func (r *RRSet) isSigned() bool {
+	return r.RrSig != nil
 }
 
-func NewSignedZone(domainName string) *SignedZone {
-	return &SignedZone{
-		Zone:   domainName,
-		Ds:     &RRSet{},
-		Dnskey: &RRSet{},
-	}
+func (r *RRSet) isEmpty() bool {
+	return len(r.RrSet) < 1
 }
 
-func NewAuthenticationChain() *AuthenticationChain {
-	return &AuthenticationChain{}
+func (r *RRSet) checkHeaderIntegrity(qname string) bool {
+	return r.RrSig != nil && r.RrSig.Header().Name != qname
 }
 
 func (z *SignedZone) checkHasDnskeys() bool {
 	return len(z.Dnskey.RrSet) > 0
-}
-
-func (sRRset *RRSet) IsSigned() bool {
-	return sRRset.RrSig != nil
-}
-
-func (sRRset *RRSet) IsEmpty() bool {
-	return len(sRRset.RrSet) < 1
 }
 
 func (z SignedZone) lookupPubKey(keyTag uint16) *dns.DNSKEY {
@@ -110,9 +98,9 @@ func newQuery(qname string, qtype uint16) *dns.Msg {
 	return dnsMessage
 }
 
-func getRRset(qname string, qtype uint16, resolver Resolver) (*RRSet, error) {
+func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RRSet, error) {
 	q := newQuery(qname, qtype)
-	r, err := doQuery(q, resolver)
+	r, err := doQuery(q, resolver, ci)
 	if err != nil || r == nil {
 		return nil, err
 	}
@@ -120,7 +108,7 @@ func getRRset(qname string, qtype uint16, resolver Resolver) (*RRSet, error) {
 }
 
 func extractRRset(r *dns.Msg) (*RRSet, error) {
-	result := NewSignedRRSet()
+	result := &RRSet{RrSet: make([]dns.RR, 0)}
 	if r.Answer == nil {
 		return result, nil
 	}
@@ -137,13 +125,13 @@ func extractRRset(r *dns.Msg) (*RRSet, error) {
 	return result, nil
 }
 
-func doQuery(q *dns.Msg, resolver Resolver) (*dns.Msg, error) {
-	r, err := resolver.Resolve(q, ClientInfo{})
+func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
+	r, err := resolver.Resolve(q, ci)
 	if err != nil {
 		return nil, err
 	}
 	if r.Rcode == dns.RcodeNameError {
-		Log.Printf("no such domain %s\n", qName(r))
+		Log.Info("no such domain", "info", qName(r))
 		return nil, ErrNoResult
 	}
 	if r == nil || r.Rcode == dns.RcodeSuccess {
@@ -152,14 +140,18 @@ func doQuery(q *dns.Msg, resolver Resolver) (*dns.Msg, error) {
 	return nil, ErrInvalidRRsig
 }
 
-func queryDelegation(domainName string, resolver Resolver) (*SignedZone, error) {
-	signedZone := NewSignedZone(domainName)
+func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*SignedZone, error) {
+	signedZone := &SignedZone{
+		Zone:   domainName,
+		Ds:     &RRSet{},
+		Dnskey: &RRSet{},
+	}
 	signedZone.PubKeyLookup = make(map[uint16]*dns.DNSKEY)
 
 	var g errgroup.Group
 	g.Go(func() error {
 		var err error
-		signedZone.Dnskey, err = getRRset(domainName, dns.TypeDNSKEY, resolver)
+		signedZone.Dnskey, err = getRRset(domainName, dns.TypeDNSKEY, resolver, ci)
 		if err != nil {
 			return err
 		}
@@ -167,7 +159,10 @@ func queryDelegation(domainName string, resolver Resolver) (*SignedZone, error) 
 		for _, rr := range signedZone.Dnskey.RrSet {
 			defer func() {
 				if r := recover(); r != nil {
-					Log.Printf("[%v] panic occurred: %v", domainName, r)
+					Log.Warn("panic occurred",
+						slog.String("domainName", domainName),
+						slog.Any("panic", r),
+					)
 				}
 			}()
 			signedZone.addPubKey(rr.(*dns.DNSKEY))
@@ -177,9 +172,13 @@ func queryDelegation(domainName string, resolver Resolver) (*SignedZone, error) 
 
 	g.Go(func() error {
 		var err error
-		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver)
+		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver, ci)
 		if err != nil {
-			Log.Error("DS query failed for [", domainName, "] ", err)
+			Log.Error("DS query failed",
+				slog.String("domainName", domainName),
+				"error", err,
+			)
+
 			return err
 		}
 		return nil
@@ -191,7 +190,7 @@ func queryDelegation(domainName string, resolver Resolver) (*SignedZone, error) 
 	return signedZone, nil
 }
 
-func (authChain *AuthenticationChain) Populate(domainName string, resolver Resolver) error {
+func (authChain *AuthenticationChain) Populate(domainName string, resolver Resolver, ci ClientInfo) error {
 	qnameComponents := strings.Split(domainName, ".")
 	zonesToVerify := len(qnameComponents)
 	authChain.DelegationChain = make([]SignedZone, zonesToVerify)
@@ -202,7 +201,7 @@ func (authChain *AuthenticationChain) Populate(domainName string, resolver Resol
 		index := i
 
 		g.Go(func() error {
-			delegation, err := queryDelegation(zoneName, resolver)
+			delegation, err := queryDelegation(zoneName, resolver, ci)
 			if err != nil {
 				return err
 			}
@@ -239,11 +238,11 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 	for _, signedZone := range authChain.DelegationChain {
 		defer func() {
 			if err := recover(); err != nil {
-				Log.Error("[AuthChain] panic occurred: ", err)
+				Log.Error("AuthChain panic occurred", "error", err)
 			}
 		}()
 
-		if signedZone.Dnskey.IsEmpty() {
+		if signedZone.Dnskey.isEmpty() {
 			return ErrDnskeyNotAvailable
 		}
 
@@ -254,7 +253,7 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 
 		if signedZone.ParentZone != nil {
 
-			if signedZone.Ds.IsEmpty() {
+			if signedZone.Ds.isEmpty() {
 				return ErrDsNotAvailable
 			}
 
@@ -272,7 +271,7 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 }
 
 func (z SignedZone) verifyRRSIG(signedRRset *RRSet) (err error) {
-	if !signedRRset.IsSigned() {
+	if !signedRRset.isSigned() {
 		return ErrRRSigNotAvailable
 	}
 
