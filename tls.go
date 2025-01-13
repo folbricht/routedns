@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 )
 
 // TLSServerConfig is a convenience function that builds a tls.Config instance for TLS servers
@@ -18,7 +18,7 @@ func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Conf
 	}
 	if caFile != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(caFile)
+		b, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +59,7 @@ func TLSClientConfig(caFile, crtFile, keyFile, serverName string) (*tls.Config, 
 	// Load custom CA set if provided
 	if caFile != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(caFile)
+		b, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, err
 		}

@@ -305,7 +305,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	}
 
 	dialer := func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
-		return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config)
+		return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config, opt.Use0RTT)
 	}
 	if opt.BootstrapAddr != "" {
 		dialer = func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
@@ -314,7 +314,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 				return nil, err
 			}
 			addr = net.JoinHostPort(opt.BootstrapAddr, port)
-			return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config)
+			return newQuicConnection(u.Hostname(), addr, lAddr, tlsConfig, config, opt.Use0RTT)
 		}
 	}
 
@@ -342,10 +342,11 @@ type quicConnection struct {
 	config    *quic.Config
 	mu        sync.Mutex
 	udpConn   *net.UDPConn
+	Use0RTT   bool
 }
 
-func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, error) {
-	connection, udpConn, err := quicDial(context.TODO(), hostname, rAddr, lAddr, tlsConfig, config)
+func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool) (quic.EarlyConnection, error) {
+	connection, udpConn, err := quicDial(context.TODO(), rAddr, lAddr, tlsConfig, config, use0RTT)
 	if err != nil {
 		return nil, err
 	}
@@ -365,6 +366,7 @@ func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Conf
 		config:          config,
 		udpConn:         udpConn,
 		EarlyConnection: connection,
+		Use0RTT:         use0RTT,
 	}, nil
 }
 
@@ -419,7 +421,7 @@ func quicRestart(s *quicConnection) error {
 	)
 	var err error
 	var earlyConn quic.EarlyConnection
-	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
+	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.rAddr, s.lAddr, s.tlsConfig, s.config, s.Use0RTT)
 	if err != nil || s.udpConn == nil {
 		Log.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
 		return err
@@ -430,7 +432,8 @@ func quicRestart(s *quicConnection) error {
 	return nil
 }
 
-func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
+func quicDial(ctx context.Context, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool) (quic.EarlyConnection, *net.UDPConn, error) {
+	var earlyConn quic.EarlyConnection
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
 		Log.Error("couldn't resolve remote addr for UDP quic client", "error", err, "rAddr", rAddr)
@@ -441,13 +444,36 @@ func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConf
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
 		return nil, nil, err
 	}
-	// use DialEarly so that we attempt to use 0-RTT DNS queries, it's lower latency (if the server supports it)
-	earlyConn, err := quic.DialEarly(ctx, udpConn, udpAddr, tlsConfig, config)
-	if err != nil {
-		// don't leak filehandles / sockets; if we got here udpConn must exist
-		_ = udpConn.Close()
-		Log.Error("couldn't dial quic early connection", "error", err)
-		return nil, nil, err
+
+	if use0RTT {
+		earlyConn, err = quic.DialEarly(ctx, udpConn, udpAddr, tlsConfig, config)
+		if err != nil {
+			_ = udpConn.Close()
+			Log.Error("couldn't dial quic early connection", "error", err)
+			return nil, nil, err
+		}
+	} else {
+		conn, err := quic.Dial(ctx, udpConn, udpAddr, tlsConfig, config)
+		if err != nil {
+			_ = udpConn.Close()
+			Log.Error("couldn't dial quic connection", "error", err)
+			return nil, nil, err
+		}
+		earlyConn = &earlyConnWrapper{Connection: conn}
 	}
 	return earlyConn, udpConn, nil
+}
+
+type earlyConnWrapper struct {
+	quic.Connection
+}
+
+func (e *earlyConnWrapper) HandshakeComplete() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+func (e *earlyConnWrapper) NextConnection(ctx context.Context) (quic.Connection, error) {
+	return nil, fmt.Errorf("NextConnection not supported for non-0RTT connections")
 }
