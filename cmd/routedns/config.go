@@ -122,7 +122,7 @@ type group struct {
 
 	// Blocklist options
 	Blocklist []string // Blocklist rules, only used by "blocklist" type
-	Format    string   // Blocklist input format: "regex", "domain", or "hosts"
+	Format    string   // Blocklist input format: "regex", "domain", "hosts", or "mac"
 	Source    string   // Location of external blocklist, can be a local path or remote URL
 	Refresh   int      // Blocklist refresh when using an external source, in seconds
 

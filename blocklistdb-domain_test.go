@@ -46,8 +46,10 @@ func TestDomainDB(t *testing.T) {
 		{"com.", false},
 	}
 	for _, test := range tests {
-		q := dns.Question{Name: test.q, Qtype: dns.TypeA, Qclass: dns.ClassINET}
-		_, _, _, ok := m.Match(q)
+		msg := new(dns.Msg)
+		msg.SetQuestion(test.q, dns.TypeA)
+
+		_, _, _, ok := m.Match(msg)
 		require.Equal(t, test.match, ok, "query: %s", test.q)
 	}
 }
