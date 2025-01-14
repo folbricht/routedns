@@ -123,6 +123,7 @@ Common options for all listeners:
 
 - `address` - Listen address.
 - `protocol` - The DNS protocol used to receive queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`.
+- `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both.
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 
