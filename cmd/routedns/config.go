@@ -60,6 +60,10 @@ type resolver struct {
 
 	//QUIC and DoH/3 configuration
 	Use0RTT bool `toml:"enable-0rtt"`
+
+	// URL for Oblivious DNS target
+	Target       string `toml:"target"`
+	TargetConfig string `toml:"target-config"`
 }
 
 // DoH-specific resolver options

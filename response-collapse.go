@@ -46,7 +46,8 @@ func (r *ResponseCollapse) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) 
 
 	// If there's nothing left after collapsing, return the null response code
 	if len(answer.Answer) == 0 {
-		log.Debugf("no answer left after collapse, returning response code %d", r.NullRCode)
+		log.Debug("no answer left after collapse, returning",
+			"response code", r.NullRCode)
 		return responseWithCode(q, r.NullRCode), nil
 	}
 	log.Debug("collapsing response")

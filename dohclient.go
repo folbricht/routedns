@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,9 +17,10 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 
+	"log/slog"
+
 	"github.com/jtacoma/uritemplates"
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
 )
 
@@ -48,6 +49,28 @@ type DoHClientOptions struct {
 	Use0RTT bool
 }
 
+// Returns an HTTP client based on the DoH options
+func (opt DoHClientOptions) client(endpoint string) (*http.Client, error) {
+	var (
+		tr  http.RoundTripper
+		err error
+	)
+	switch opt.Transport {
+	case "tcp", "":
+		tr, err = dohTcpTransport(opt)
+	case "quic":
+		tr, err = dohQuicTransport(endpoint, opt)
+	default:
+		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Transport: tr,
+	}, nil
+}
+
 // DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
 type DoHClient struct {
 	id       string
@@ -67,21 +90,9 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 		return nil, err
 	}
 
-	var tr http.RoundTripper
-	switch opt.Transport {
-	case "tcp", "":
-		tr, err = dohTcpTransport(opt)
-	case "quic":
-		tr, err = dohQuicTransport(endpoint, opt)
-	default:
-		err = fmt.Errorf("unknown protocol: '%s'", opt.Transport)
-	}
+	client, err := opt.client(endpoint)
 	if err != nil {
 		return nil, err
-	}
-
-	client := &http.Client{
-		Transport: tr,
 	}
 
 	if opt.Method == "" {
@@ -111,34 +122,65 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Packing a message is not always a read-only operation, make a copy
 	q = q.Copy()
+	log := logger(d.id, q, ci)
 
-	logger(d.id, q, ci).WithFields(logrus.Fields{
-		"resolver": d.endpoint,
-		"protocol": "doh",
-		"method":   d.opt.Method,
-	}).Debug("querying upstream resolver")
+	log.Debug("querying upstream resolver",
+		slog.String("resolver", d.endpoint),
+		slog.String("protocol", "doh"),
+		slog.String("method", d.opt.Method),
+	)
 
 	// Add padding before sending the query over HTTPS
 	padQuery(q)
 
-	d.metrics.query.Add(1)
-	switch d.opt.Method {
-	case "POST":
-		return d.ResolvePOST(q)
-	case "GET":
-		return d.ResolveGET(q)
-	}
-	return nil, errors.New("unsupported method")
-}
-
-// ResolvePOST resolves a DNS query via DNS-over-HTTP using the POST method.
-func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 	// Pack the DNS query into wire format
-	b, err := q.Pack()
+	msg, err := q.Pack()
 	if err != nil {
 		d.metrics.err.Add("pack", 1)
 		return nil, err
 	}
+
+	d.metrics.query.Add(1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
+	defer cancel()
+
+	// Build a DoH request and execute it
+	req, err := d.buildRequest(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := d.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Extract the DNS response from the HTTP response
+	return d.responseFromHTTP(resp)
+}
+
+func (d *DoHClient) buildRequest(ctx context.Context, msg []byte) (*http.Request, error) {
+	switch d.opt.Method {
+	case "POST":
+		return d.buildPostRequest(ctx, msg)
+	case "GET":
+		return d.buildGetRequest(ctx, msg)
+	default:
+		return nil, errors.New("unsupported method")
+	}
+}
+
+func (d *DoHClient) do(req *http.Request) (*http.Response, error) {
+	resp, err := d.client.Do(req)
+	if err != nil {
+		d.metrics.err.Add(req.Method, 1)
+		return nil, err
+	}
+	return resp, err
+}
+
+func (d *DoHClient) buildPostRequest(ctx context.Context, msg []byte) (*http.Request, error) {
 	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
 	u, err := d.template.Expand(map[string]interface{}{})
 	if err != nil {
@@ -146,35 +188,19 @@ func (d *DoHClient) ResolvePOST(q *dns.Msg) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(msg))
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
 	req.Header.Add("content-type", "application/dns-message")
-	resp, err := d.client.Do(req)
-	if err != nil {
-		d.metrics.err.Add("post", 1)
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return d.responseFromHTTP(resp)
+	return req, nil
 }
 
-// ResolveGET resolves a DNS query via DNS-over-HTTP using the GET method.
-func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
-	// Pack the DNS query into wire format
-	b, err := q.Pack()
-	if err != nil {
-		d.metrics.err.Add("pack", 1)
-		return nil, err
-	}
-	// Encode the query as base64url without padding
-	b64 := base64.RawURLEncoding.EncodeToString(b)
+func (d *DoHClient) buildGetRequest(ctx context.Context, msg []byte) (*http.Request, error) {
+	// Encode the query as base64url
+	b64 := base64.RawURLEncoding.EncodeToString(msg)
 
 	// The URL must be a template. Process it with the "dns" param containing the encoded query.
 	u, err := d.template.Expand(map[string]interface{}{"dns": b64})
@@ -182,9 +208,6 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 		d.metrics.err.Add("template", 1)
 		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), d.opt.QueryTimeout)
-	defer cancel()
 
 	method := http.MethodGet
 	if d.opt.Use0RTT && d.opt.Transport == "quic" {
@@ -197,13 +220,7 @@ func (d *DoHClient) ResolveGET(q *dns.Msg) (*dns.Msg, error) {
 		return nil, err
 	}
 	req.Header.Add("accept", "application/dns-message")
-	resp, err := d.client.Do(req)
-	if err != nil {
-		d.metrics.err.Add("get", 1)
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return d.responseFromHTTP(resp)
+	return req, nil
 }
 
 func (d *DoHClient) String() string {
@@ -216,7 +233,7 @@ func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 		d.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
-	rb, err := ioutil.ReadAll(resp.Body)
+	rb, err := io.ReadAll(resp.Body)
 	if err != nil {
 		d.metrics.err.Add("read", 1)
 		return nil, err
@@ -301,7 +318,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		}
 	}
 
-	tr := &http3.RoundTripper{
+	tr := &http3.Transport{
 		TLSClientConfig: tlsConfig,
 		QUICConfig: &quic.Config{
 			TokenStore: quic.NewLRUTokenStore(10, 10),
@@ -333,12 +350,12 @@ func newQuicConnection(hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Conf
 		return nil, err
 	}
 
-	Log.WithFields(logrus.Fields{
-		"protocol": "quic",
-		"hostname": hostname,
-		"remote":   rAddr,
-		"local":    lAddr.String(),
-	}).Debug("new quic connection")
+	Log.Debug("new quic connection",
+		slog.String("protocol", "quic"),
+		slog.String("hostname", hostname),
+		slog.String("remote", rAddr),
+		slog.String("local", lAddr.String()),
+	)
 
 	return &quicConnection{
 		hostname:        hostname,
@@ -356,7 +373,7 @@ func (s *quicConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error
 	defer s.mu.Unlock()
 	stream, err := s.EarlyConnection.OpenStreamSync(ctx)
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		Log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		Log.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
 		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
@@ -370,7 +387,7 @@ func (s *quicConnection) OpenStream() (quic.Stream, error) {
 	defer s.mu.Unlock()
 	stream, err := s.EarlyConnection.OpenStream()
 	if netErr, ok := err.(net.Error); ok && (netErr.Timeout() || netErr.Temporary()) {
-		Log.WithError(err).Debug("temporary fail when trying to open stream, attempting new connection")
+		Log.Debug("temporary fail when trying to open stream, attempting new connection", "error", err)
 		if err = quicRestart(s); err != nil {
 			return nil, err
 		}
@@ -395,29 +412,19 @@ func quicRestart(s *quicConnection) error {
 		_ = s.udpConn.Close()
 		s.udpConn = nil
 	}
-	Log.WithFields(logrus.Fields{
-		"protocol": "quic",
-		"hostname": s.hostname,
-		"local":    s.lAddr.String(),
-		"remote":   s.rAddr,
-	}).Debug("attempt reconnect")
+	Log.Debug("attempt reconnect", slog.String("protocol", "quic"),
+		slog.String("hostname", s.hostname),
+		slog.String("local", s.lAddr.String()),
+		slog.String("remote", s.rAddr),
+	)
 	var err error
 	var earlyConn quic.EarlyConnection
 	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.hostname, s.rAddr, s.lAddr, s.tlsConfig, s.config)
 	if err != nil || s.udpConn == nil {
-		Log.WithFields(logrus.Fields{
-			"protocol": "quic",
-			"address":  s.hostname,
-			"local":    s.lAddr.String(),
-		}).WithError(err).Error("couldn't restart quic connection")
+		Log.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
 		return err
 	}
-	Log.WithFields(logrus.Fields{
-		"protocol": "quic",
-		"address":  s.hostname,
-		"local":    s.lAddr.String(),
-		"rAddr":    s.rAddr,
-	}).Debug("restarted quic connection")
+	Log.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String()), slog.String("rAddr", s.rAddr)))
 
 	s.EarlyConnection = earlyConn
 	return nil
@@ -426,12 +433,12 @@ func quicRestart(s *quicConnection) error {
 func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConfig *tls.Config, config *quic.Config) (quic.EarlyConnection, *net.UDPConn, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", rAddr)
 	if err != nil {
-		Log.WithError(err).Debug("couldn't resolve remote addr (" + rAddr + ") for UDP quic client")
+		Log.Error("couldn't resolve remote addr for UDP quic client", "error", err, "rAddr", rAddr)
 		return nil, nil, err
 	}
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
-		Log.WithError(err).Debug("couldn't listen on UDP socket on local address [" + lAddr.String() + "]")
+		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
 		return nil, nil, err
 	}
 	// use DialEarly so that we attempt to use 0-RTT DNS queries, it's lower latency (if the server supports it)
@@ -439,7 +446,7 @@ func quicDial(ctx context.Context, hostname, rAddr string, lAddr net.IP, tlsConf
 	if err != nil {
 		// don't leak filehandles / sockets; if we got here udpConn must exist
 		_ = udpConn.Close()
-		Log.WithError(err).Debug("couldn't dial quic early connection")
+		Log.Error("couldn't dial quic early connection", "error", err)
 		return nil, nil, err
 	}
 	return earlyConn, udpConn, nil

@@ -4,8 +4,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/miekg/dns"
-	"github.com/sirupsen/logrus"
 )
 
 // ClientBlocklist is a resolver that matches the IPs of clients against a blocklist
@@ -50,10 +51,18 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 // resolver if one is configured.
 func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if match, ok := r.BlocklistDB.Match(ci.SourceIP); ok {
-		log := Log.WithFields(logrus.Fields{"id": r.id, "qname": qName(q), "list": match.List, "rule": match.Rule, "ip": ci.SourceIP})
+		log := Log.With(
+			slog.String("id", r.id),
+			slog.String("qname", qName(q)),
+			slog.String("list", match.List),
+			slog.String("rule", match.Rule),
+			slog.String("ip", ci.SourceIP.String()),
+		)
 		r.metrics.blocked.Add(1)
 		if r.BlocklistResolver != nil {
-			log.WithField("resolver", r.BlocklistResolver).Debug("client on blocklist, forwarding to blocklist-resolver")
+			log.With(
+				slog.String("resolver", r.BlocklistResolver.String()),
+			).Debug("client on blocklist, forwarding to blocklist-resolver")
 			return r.BlocklistResolver.Resolve(q, ci)
 		}
 		log.Debug("blocking client")
@@ -71,11 +80,14 @@ func (r *ClientBlocklist) String() string {
 func (r *ClientBlocklist) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
-		log := Log.WithField("id", r.id)
+		log := Log.With(
+			slog.String("id", r.id),
+		)
 		log.Debug("reloading blocklist")
 		db, err := r.BlocklistDB.Reload()
 		if err != nil {
-			Log.WithError(err).Error("failed to load rules")
+			log.Error("failed to load rules",
+				"error", err)
 			continue
 		}
 		r.mu.Lock()
