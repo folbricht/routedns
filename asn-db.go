@@ -71,7 +71,7 @@ func (m *ASNDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	}
 
 	if err := m.geoDB.Lookup(ip, &record); err != nil {
-		Log.WithField("ip", ip).WithError(err).Error("failed to lookup ip in geo location database")
+		Log.Error("failed to lookup ip in geo location database", "ip", ip, "error", err)
 		return nil, false
 	}
 
