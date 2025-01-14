@@ -30,7 +30,7 @@ Features:
 Install [Go](https://golang.org/dl) version 1.19+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
 
 ```text
-GO111MODULE=on go get -v github.com/folbricht/routedns/cmd/routedns
+go install github.com/folbricht/routedns/cmd/routedns@latest
 ```
 
 Alternative method using a clone, building from the tip of the master branch.
