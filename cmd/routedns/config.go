@@ -60,6 +60,7 @@ type resolver struct {
 
 	//QUIC and DoH/3 configuration
 	Use0RTT bool `toml:"enable-0rtt"`
+
 	// URL for Oblivious DNS target
 	Target       string `toml:"target"`
 	TargetConfig string `toml:"target-config"`
@@ -176,6 +177,10 @@ type group struct {
 	LogRequest  bool   `toml:"log-request"`  // Logs request records to syslog
 	LogResponse bool   `toml:"log-response"` // Logs response records to syslog
 	Verbose     bool   `toml:"verbose"`      // When logging responses, include types that don't match the query type
+
+	// Query logging options
+	OutputFile   string `toml:"output-file"`   // Log filename or blank for STDOUT
+	OutputFormat string `toml:"output-format"` // "text" or "json"
 }
 
 // Block/Allowlist items for blocklist-v2

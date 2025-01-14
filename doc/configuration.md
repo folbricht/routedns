@@ -38,6 +38,7 @@
   - [Retrying Truncated Responses](#retrying-truncated-responses)
   - [Request Deduplication](#request-deduplication)
   - [Syslog](#syslog)
+  - [Qyery Log](#query-log)
 - [Resolvers](#resolvers)
   - [Plain DNS](#plain-dns-resolver)
   - [DNS-over-TLS](#dns-over-tls-resolver)
@@ -1457,6 +1458,31 @@ log-response = true
 ```
 
 Example config files: [syslog.toml](../cmd/routedns/example-config/syslog.toml)
+
+### Query Log
+
+The `query-log` element logs all DNS query details, including time, client IP, DNS question name, class and type. Logs can be written to a file or STDOUT.
+
+#### Configuration
+
+To enable query-logging, add an element with `type = "query-log"` in the groups section of the configuration.
+
+Options:
+
+- `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation.
+- `output-format` - Output format. Defaults to "text".
+
+Examples:
+
+```toml
+[groups.query-log]
+type   = "query-log"
+resolvers = ["cloudflare-dot"]
+output-file = "/tmp/query.log"
+output-format = "text"
+```
+
+Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.toml)
 
 ## Resolvers
 
