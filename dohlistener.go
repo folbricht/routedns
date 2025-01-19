@@ -32,8 +32,6 @@ type DoHListener struct {
 	r    Resolver
 	opt  DoHListenerOptions
 
-	handler http.Handler
-
 	metrics *DoHListenerMetrics
 }
 
@@ -53,8 +51,8 @@ type DoHListenerOptions struct {
 
 	// Disable TLS on the server (insecure, for testing purposes only).
 	NoTLS bool
-	// Flag that signals if this DoHListener is a child of an Oblivious listener
-	isChild bool
+	// Custom request handler used with the Oblivious listener
+	customMux *http.ServeMux
 }
 
 type DoHListenerMetrics struct {
@@ -97,15 +95,18 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 		metrics: NewDoHListenerMetrics(id),
 	}
 
-	if !l.opt.isChild {
-		l.handler = http.HandlerFunc(l.dohHandler)
+	if opt.customMux == nil {
+		Log.Debug("new mux")
+		mux := http.NewServeMux()
+		mux.HandleFunc("/dns-query", l.dohHandler)
+		l.opt.customMux = mux
 	}
 	return l, nil
 }
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
-	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
+	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -117,9 +118,9 @@ func (s *DoHListener) startTCP() error {
 	s.httpServer = &http.Server{
 		Addr:         s.addr,
 		TLSConfig:    s.opt.TLSConfig,
-		Handler:      s.handler,
 		ReadTimeout:  dohServerTimeout,
 		WriteTimeout: dohServerTimeout,
+		Handler:      s.opt.customMux,
 	}
 
 	ln, err := net.Listen("tcp", s.addr)
@@ -138,18 +139,18 @@ func (s *DoHListener) startQUIC() error {
 	s.quicServer = &http3.Server{
 		Addr:      s.addr,
 		TLSConfig: s.opt.TLSConfig,
-		Handler:   s.handler,
 		QUICConfig: &quic.Config{
 			Allow0RTT:      true,
 			MaxIdleTimeout: 5 * time.Minute,
 		},
+		Handler: s.opt.customMux,
 	}
 	return s.quicServer.ListenAndServe()
 }
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
-	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("addr", s.addr)))
+	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
 	if s.opt.Transport == "quic" {
 		return s.quicServer.Close()
 	}
@@ -161,6 +162,7 @@ func (s *DoHListener) String() string {
 }
 
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
+	Log.Debug("new handler call")
 	switch r.Method {
 	case "GET":
 		s.metrics.get.Add(1)

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -30,6 +31,7 @@ type ODoHListener struct {
 	addr        string
 	proxyClient *http.Client // Client for proxy forwarding if acting as ODoH proxy
 	doh         *DoHListener
+	config      []byte
 
 	r           Resolver // Forwarding DNS queries if acting as ODoH Target
 	opt         ODoHListenerOptions
@@ -51,20 +53,10 @@ var _ Listener = &ODoHListener{}
 func NewODoHListener(id, addr string, opt ODoHListenerOptions, resolver Resolver) (*ODoHListener, error) {
 	keyPair, err := getKeyPair(opt)
 	if err != nil {
-		Log.Error("Failed to generate HPKE key pair", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to generate HPKE key pair: %w", err)
 	}
 
-	dohOpt := DoHListenerOptions{
-		TLSConfig: opt.TLSConfig,
-		isChild:   true,
-	}
-	dohListen, err := NewDoHListener(id, addr, dohOpt, resolver)
-	if err != nil {
-		Log.Error("Failed to spawn DoH listener", "error", err)
-		return nil, err
-	}
-
+	configSet := odoh.CreateObliviousDoHConfigs([]odoh.ObliviousDoHConfig{keyPair.Config})
 	l := &ODoHListener{
 		id:          id,
 		addr:        addr,
@@ -72,20 +64,32 @@ func NewODoHListener(id, addr string, opt ODoHListenerOptions, resolver Resolver
 		opt:         opt,
 		proxyClient: &http.Client{},
 		odohKeyPair: keyPair,
-		doh:         dohListen,
+		config:      configSet.Marshal(),
 	}
 
+	mux := http.NewServeMux()
 	switch opt.OdohMode {
+	case "dual":
+		mux.HandleFunc(ODOH_PROXY_PATH, l.ODoHproxyHandler)
+		mux.HandleFunc(ODOH_QUERY_PATH, l.ODoHqueryHandler)
+		mux.HandleFunc(ODOH_CONFIG_PATH, l.configHandler)
 	case "proxy":
-		http.HandleFunc(ODOH_PROXY_PATH, l.ODoHproxyHandler)
-	case "target":
-		http.HandleFunc(ODOH_QUERY_PATH, l.ODoHqueryHandler)
-		http.HandleFunc(ODOH_CONFIG_PATH, l.configHandler)
-	default:
-		http.HandleFunc(ODOH_PROXY_PATH, l.ODoHproxyHandler)
-		http.HandleFunc(ODOH_QUERY_PATH, l.ODoHqueryHandler)
-		http.HandleFunc(ODOH_CONFIG_PATH, l.configHandler)
+		mux.HandleFunc(ODOH_PROXY_PATH, l.ODoHproxyHandler)
+	case "target", "":
+		mux.HandleFunc(ODOH_QUERY_PATH, l.ODoHqueryHandler)
+		mux.HandleFunc(ODOH_CONFIG_PATH, l.configHandler)
 	}
+
+	dohOpt := DoHListenerOptions{
+		TLSConfig: opt.TLSConfig,
+		customMux: mux,
+	}
+	dohListen, err := NewDoHListener(id, addr, dohOpt, resolver)
+	if err != nil {
+		return nil, fmt.Errorf("failed to spawn DoH listener:  %w", err)
+	}
+
+	l.doh = dohListen
 	return l, nil
 }
 
@@ -98,7 +102,7 @@ func (s *ODoHListener) Stop() error {
 }
 
 func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -114,8 +118,7 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	defer r.Body.Close()
-	b, err := io.ReadAll(r.Body)
+	b, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -130,24 +133,22 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	if response.StatusCode != 200 {
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
 		http.Error(w, http.StatusText(response.StatusCode), response.StatusCode)
 		return
 	}
 
-	defer response.Body.Close()
-	rb, err := io.ReadAll(response.Body)
-	if err != nil {
+	w.Header().Set("Content-Type", contentType)
+	if _, err := io.Copy(w, response.Body); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Write(rb)
 }
 
 func forwardProxyRequest(client *http.Client, targethost string, targetPath string, body []byte, contentType string) (*http.Response, error) {
 	targetURL := "https://" + targethost + targetPath
-	req, err := http.NewRequest("POST", targetURL, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		Log.Error("Failed creating target POST request", "error", err)
 		return nil, errors.New("failed creating target POST request")
@@ -158,7 +159,7 @@ func forwardProxyRequest(client *http.Client, targethost string, targetPath stri
 
 func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) {
 	qHeader := r.Header.Get("Content-Type")
-	if r.Method != "POST" || qHeader == DOH_CONTENT_TYPE {
+	if r.Method != http.MethodPost || qHeader == DOH_CONTENT_TYPE {
 		if s.opt.AllowDoH {
 			Log.Debug("Forwarding DoH query")
 			s.doh.dohHandler(w, r)
@@ -174,8 +175,7 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "only contentType oblivious-dns-message allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	defer r.Body.Close()
-	b, err := io.ReadAll(r.Body)
+	b, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -214,7 +214,7 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 	response := odoh.CreateObliviousDNSResponse(p, 0)
 	obliviousResponse, err := responseContext.EncryptResponse(response)
 	if err != nil {
-		http.Error(w, "failed to create oblivious response", http.StatusBadRequest)
+		http.Error(w, "failed to encrypt oblivious response", http.StatusBadRequest)
 		return
 	}
 
@@ -227,9 +227,7 @@ func (s *ODoHListener) String() string {
 }
 
 func (s *ODoHListener) configHandler(w http.ResponseWriter, r *http.Request) {
-	configSet := []odoh.ObliviousDoHConfig{s.odohKeyPair.Config}
-	configs := odoh.CreateObliviousDoHConfigs(configSet)
-	w.Write(configs.Marshal())
+	w.Write(s.config)
 }
 
 func getKeyPair(opt ODoHListenerOptions) (odoh.ObliviousDoHKeyPair, error) {
@@ -238,12 +236,12 @@ func getKeyPair(opt ODoHListenerOptions) (odoh.ObliviousDoHKeyPair, error) {
 	if opt.KeySeed != "" {
 		seed, err = hex.DecodeString(opt.KeySeed)
 		if err != nil {
-			Log.Error("Failed to read key seed", "error", err)
+			return odoh.ObliviousDoHKeyPair{}, fmt.Errorf("failed to read key seed: %w", err)
 		}
 	} else {
 		seed = make([]byte, defaultSeedLength)
 		if _, err := rand.Read(seed); err != nil {
-			Log.Error("Failed to generate random seed", "error", err)
+			return odoh.ObliviousDoHKeyPair{}, fmt.Errorf("failed to generate random seed: %w", err)
 		}
 	}
 	return odoh.CreateKeyPairFromSeed(kemID, kdfID, aeadID, seed)

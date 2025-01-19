@@ -312,7 +312,7 @@ resolver = "cloudflare-dot"
 
 # The key seed is used to generate the HPKE keypair. 
 key-seed = "414dd55667a0cdff72dfbbd8515a9e0a"
-# odoh-mode allows restricting to only "proxy" mode or "target" mode. If not set (default), both modes are enabled.
+# odoh-mode allowed values are "dual", "proxy" or "target". If not set (default), target mode is enabled and proxy requests are not handled.
 odoh-mode  = "target"
 
 # If enabled, the listener will also respond to regular DoH queries using the same resolver. When not set or false, DoH queries are ignored. Has no effect if odoh-mode is set to proxy
