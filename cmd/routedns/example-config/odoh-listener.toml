@@ -1,0 +1,22 @@
+# Server-side of a oblivious DNS-over HTTPS (ODoH) listener + proxy.
+
+[resolvers.cloudflare]
+address = "1.1.1.1:53"
+protocol = "udp"
+
+[listeners.local-odoh]
+address = ":443"
+protocol = "odoh"
+resolver = "cloudflare"
+
+# The key seed is used to generate the HPKE keypair. Not necessary if running in proxy mode. If this is not set, the listener will generate a new random key on each launch.
+key-seed = "414dd55667a0cdff72dfbbd8515a9e0a"
+# odoh-mode allowed values are "dual", "proxy" or "target". If not set (default), target mode is enabled and proxy requests are not handled.
+odoh-mode  = "dual"
+
+# If enabled, the listener will also respond to regular DoH queries using the same resolver. When not set or false, DoH queries are ignored.
+allow-doh = true
+
+# TLS information
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"

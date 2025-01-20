@@ -303,6 +303,24 @@ func start(opt options, args []string) error {
 			}
 			ln := rdns.NewQUICListener(id, l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
+		case "odoh":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
+			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			opt := rdns.ODoHListenerOptions{
+				TLSConfig:     tlsConfig,
+				KeySeed:       l.KeySeed,
+				OdohMode:      l.OdohMode,
+				AllowDoH:      l.AllowDoH,
+				ListenOptions: opt,
+			}
+			ln, err := rdns.NewODoHListener(id, l.Address, opt, resolver)
+			if err != nil {
+				return err
+			}
+			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
 		}
