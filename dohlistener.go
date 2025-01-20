@@ -97,7 +97,7 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 
 	if opt.customMux == nil {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/dns-query", l.dohHandler)
+		mux.HandleFunc("/", l.dohHandler)
 		l.opt.customMux = mux
 	}
 	return l, nil
