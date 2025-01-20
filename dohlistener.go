@@ -96,7 +96,6 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 	}
 
 	if opt.customMux == nil {
-		Log.Debug("new mux")
 		mux := http.NewServeMux()
 		mux.HandleFunc("/dns-query", l.dohHandler)
 		l.opt.customMux = mux
@@ -162,7 +161,6 @@ func (s *DoHListener) String() string {
 }
 
 func (s *DoHListener) dohHandler(w http.ResponseWriter, r *http.Request) {
-	Log.Debug("new handler call")
 	switch r.Method {
 	case "GET":
 		s.metrics.get.Add(1)
