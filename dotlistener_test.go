@@ -20,7 +20,7 @@ func TestDoTListenerSimple(t *testing.T) {
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 
-	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, "", DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	go func() {
 		err := s.Start()
 		require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestDoTListenerMutual(t *testing.T) {
 	// Create the listener, expecting client certs to be presented.
 	tlsServerConfig, err := TLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true)
 	require.NoError(t, err)
-	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, "", DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 
 	go func() {
 		err := s.Start()
@@ -90,7 +90,7 @@ func TestDoTListenerPadding(t *testing.T) {
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 
-	s := NewDoTListener("test-ln", addr, DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	s := NewDoTListener("test-ln", addr, "", DoTListenerOptions{TLSConfig: tlsServerConfig}, upstream)
 	go func() {
 		err := s.Start()
 		require.NoError(t, err)

@@ -211,15 +211,21 @@ func start(opt options, args []string) error {
 			return err
 		}
 
+		if l.IPVersion != 4 && l.IPVersion != 6 && l.IPVersion != 0 {
+			return errors.New("ip-version must be 4 or 6")
+		}
+
 		opt := rdns.ListenOptions{AllowedNet: allowedNet}
 
 		switch l.Protocol {
 		case "tcp":
+			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "tcp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
 		case "udp":
+			network := networkForIPVersion("udp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, "udp", opt, resolver))
+			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
 		case "admin":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
@@ -236,12 +242,13 @@ func start(opt options, args []string) error {
 			}
 			listeners = append(listeners, ln)
 		case "dot":
+			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoTPort)
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(id, l.Address, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			ln := rdns.NewDoTListener(id, l.Address, network, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
 			listeners = append(listeners, ln)
 		case "dtls":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
@@ -768,6 +775,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			BlocklistResolver: resolvers[g.BlockListResolver],
 			BlocklistDB:       blocklistDB,
 			BlocklistRefresh:  time.Duration(g.BlocklistRefresh) * time.Second,
+			UseECS:            g.UseECS,
 		}
 		resolvers[id], err = rdns.NewClientBlocklist(id, gr[0], opt)
 		if err != nil {
@@ -835,7 +843,18 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			LimitResolver: resolvers[g.LimitResolver],
 		}
 		resolvers[id] = rdns.NewRateLimiter(id, gr[0], opt)
-
+	case "query-log":
+		if len(gr) != 1 {
+			return fmt.Errorf("type query-log only supports one resolver in '%s'", id)
+		}
+		opt := rdns.QueryLogResolverOptions{
+			OutputFile:   g.OutputFile,
+			OutputFormat: rdns.LogFormat(g.OutputFormat),
+		}
+		resolvers[id], err = rdns.NewQueryLogResolver(id, gr[0], opt)
+		if err != nil {
+			return fmt.Errorf("failed to initialize 'query-log': %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
 	}
@@ -901,6 +920,8 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 		return rdns.NewDomainDB(name, loader)
 	case "hosts":
 		return rdns.NewHostsDB(name, loader)
+	case "mac":
+		return rdns.NewMACDB(name, loader)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
@@ -941,9 +962,18 @@ func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlockli
 		return rdns.NewCidrDB(name, loader)
 	case "location":
 		return rdns.NewGeoIPDB(name, loader, locationDB)
+	case "asn":
+		return rdns.NewASNDB(name, loader, locationDB)
 	default:
 		return nil, fmt.Errorf("unsupported format '%s'", l.Format)
 	}
+}
+
+func networkForIPVersion(base string, ipVersion int) string {
+	if ipVersion == 0 {
+		return base
+	}
+	return base + strconv.Itoa(ipVersion)
 }
 
 func printVersion() {

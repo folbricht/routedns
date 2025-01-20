@@ -22,12 +22,15 @@ type DoTListenerOptions struct {
 }
 
 // NewDoTListener returns an instance of a DNS-over-TLS listener.
-func NewDoTListener(id, addr string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
+func NewDoTListener(id, addr, network string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
+	if network == "" {
+		network = "tcp-tls"
+	}
 	return &DoTListener{
 		id: id,
 		Server: &dns.Server{
 			Addr:      addr,
-			Net:       "tcp-tls",
+			Net:       network,
 			TLSConfig: opt.TLSConfig,
 			Handler:   listenHandler(id, "dot", addr, resolver, opt.AllowedNet),
 		},

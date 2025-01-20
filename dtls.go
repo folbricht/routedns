@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/pion/dtls/v2"
 )
@@ -18,7 +18,7 @@ func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*dtls.Co
 	}
 	if caFile != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(caFile)
+		b, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +57,7 @@ func DTLSClientConfig(caFile, crtFile, keyFile string) (*dtls.Config, error) {
 	// Load custom CA set if provided
 	if caFile != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(caFile)
+		b, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, err
 		}

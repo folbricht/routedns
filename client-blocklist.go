@@ -28,6 +28,11 @@ type ClientBlocklistOptions struct {
 
 	// Refresh period for the blocklist. Disabled if 0.
 	BlocklistRefresh time.Duration
+
+	// Use the provided ECS address instead of the real client IP if one was
+	// provided. This can be used to "test" blocklists by simulating different
+	// client IPs.
+	UseECS bool
 }
 
 // NewClientBlocklistIP returns a new instance of a client blocklist resolver.
@@ -50,7 +55,22 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 // REFUSED if the client IP is on the blocklist, or sends the query to an alternative
 // resolver if one is configured.
 func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if match, ok := r.BlocklistDB.Match(ci.SourceIP); ok {
+	ip := ci.SourceIP
+
+	// Use the ECS IP if one is available and useECS is set
+	if r.UseECS {
+		edns0 := q.IsEdns0()
+		if edns0 != nil {
+			for _, opt := range edns0.Option {
+				if ecs, ok := opt.(*dns.EDNS0_SUBNET); ok {
+					ip = ecs.Address
+					break
+				}
+			}
+		}
+	}
+
+	if match, ok := r.BlocklistDB.Match(ip); ok {
 		log := Log.With(
 			slog.String("id", r.id),
 			slog.String("qname", qName(q)),

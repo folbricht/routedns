@@ -38,6 +38,7 @@
   - [Retrying Truncated Responses](#retrying-truncated-responses)
   - [Request Deduplication](#request-deduplication)
   - [Syslog](#syslog)
+  - [Qyery Log](#query-log)
 - [Resolvers](#resolvers)
   - [Plain DNS](#plain-dns-resolver)
   - [DNS-over-TLS](#dns-over-tls-resolver)
@@ -122,6 +123,7 @@ Common options for all listeners:
 
 - `address` - Listen address.
 - `protocol` - The DNS protocol used to receive queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`.
+- `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both.
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 
@@ -601,7 +603,7 @@ This replacer could be used where the company has multiple environment behind VP
 
 Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist. A blocklist can have multiple rule-sets, with different formats. In its simplest form, the blocklist has just one upstream resolver and forwards anything that does not match its rules. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP, depending on what blocklist format is used.
 
-The blocklist group supports 3 types of blocklist formats:
+The blocklist group supports 4 types of blocklist formats:
 
 - `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
@@ -609,6 +611,7 @@ The blocklist group supports 3 types of blocklist formats:
   - `.domain.com` matches domain.com and all sub-domains.
   - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
 - `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
+- `mac` - A blocklist of MAC addresses in the form `01:23:34:ab:bc:de` representing the MAC address of a client. The query is expected to contain the value of the client's MAC in EDNS0 option 65001.
 
 In addition to reading the blocklist rules from the configuration file, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `blocklist-source` property of the blocklist to provide a list of blocklists of different formats, either local files or URLs. The `blocklist-refresh` property can be used to specify a reload-period (in seconds). If no `blocklist-refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
 
@@ -721,7 +724,7 @@ allowlist-source = [
 ]
 ```
 
-Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blocklist-regexp.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [blocklist-domain.toml](../cmd/routedns/example-config/blocklist-domain.toml), [blocklist-hosts.toml](../cmd/routedns/example-config/blocklist-hosts.toml), [blocklist-local.toml](../cmd/routedns/example-config/blocklist-local.toml), [blocklist-remote.toml](../cmd/routedns/example-config/blocklist-remote.toml), [blocklist-allow.toml](../cmd/routedns/example-config/blocklist-allow.toml), [blocklist-resolver.toml](../cmd/routedns/example-config/blocklist-resolver.toml), [blocklist-domain-ede.toml](../cmd/routedns/example-config/blocklist-domain-ede.toml)
+Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blocklist-regexp.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [blocklist-domain.toml](../cmd/routedns/example-config/blocklist-domain.toml), [blocklist-hosts.toml](../cmd/routedns/example-config/blocklist-hosts.toml), [blocklist-local.toml](../cmd/routedns/example-config/blocklist-local.toml), [blocklist-remote.toml](../cmd/routedns/example-config/blocklist-remote.toml), [blocklist-allow.toml](../cmd/routedns/example-config/blocklist-allow.toml), [blocklist-resolver.toml](../cmd/routedns/example-config/blocklist-resolver.toml), [blocklist-domain-ede.toml](../cmd/routedns/example-config/blocklist-domain-ede.toml), [blocklist-mac.toml](../cmd/routedns/example-config/blocklist-mac.toml)
 
 ### Response Blocklist
 
@@ -750,7 +753,7 @@ Options:
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
-Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option.
+Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP resonses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
 
 Examples:
 
@@ -826,7 +829,19 @@ blocklist           = [
 ]
 ```
 
-Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml)
+Response blocklist based on ASN of the IP. The ASNs of the organizations to be blocked must be provided as an array of string.
+
+```toml
+[groups.cloudflare-blocklist]
+type                = "response-blocklist-ip"
+resolvers           = ["cloudflare-dot"]
+blocklist-format    = "asn"
+blocklist           = [
+  "15169", # Google
+]
+```
+
+Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml), [response-blocklist-asn.toml](../cmd/routedns/example-config/response-blocklist-asn.toml)
 
 ### Client Blocklist
 
@@ -846,6 +861,7 @@ Options:
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
 - `blocklist-source` - An array of blocklists, each with `format` and `source` and optionally `name`.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
+- `use-ecs` - If set to true, will use the IP address in the client's ECS record instead of the real IP. Can be used to simulate queries from other source IPs. The address should be set to the IP, not a subnet for this to work. Uses the client's real IP if no ECS record is found in the query.
 
 Examples:
 
@@ -1457,6 +1473,31 @@ log-response = true
 ```
 
 Example config files: [syslog.toml](../cmd/routedns/example-config/syslog.toml)
+
+### Query Log
+
+The `query-log` element logs all DNS query details, including time, client IP, DNS question name, class and type. Logs can be written to a file or STDOUT.
+
+#### Configuration
+
+To enable query-logging, add an element with `type = "query-log"` in the groups section of the configuration.
+
+Options:
+
+- `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation.
+- `output-format` - Output format. Defaults to "text".
+
+Examples:
+
+```toml
+[groups.query-log]
+type   = "query-log"
+resolvers = ["cloudflare-dot"]
+output-file = "/tmp/query.log"
+output-format = "text"
+```
+
+Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.toml)
 
 ## Resolvers
 

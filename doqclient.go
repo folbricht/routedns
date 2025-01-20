@@ -38,13 +38,10 @@ type DoQClientOptions struct {
 	BootstrapAddr string
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr net.IP
-
-	TLSConfig *tls.Config
-
+	LocalAddr    net.IP
+	TLSConfig    *tls.Config
 	QueryTimeout time.Duration
-
-	Use0RTT bool
+	Use0RTT      bool
 }
 
 var _ Resolver = &DoQClient{}
@@ -106,6 +103,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 				TokenStore:           quic.NewLRUTokenStore(10, 10),
 				HandshakeIdleTimeout: opt.QueryTimeout,
 			},
+			Use0RTT: opt.Use0RTT,
 		},
 		metrics: NewListenerMetrics("client", id),
 	}, nil
@@ -217,7 +215,7 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stre
 	// If we don't have a connection yet, make one
 	if s.EarlyConnection == nil {
 		var err error
-		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), s.hostname, endpoint, s.lAddr, s.tlsConfig, s.config)
+		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), endpoint, s.lAddr, s.tlsConfig, s.config, s.Use0RTT)
 		if err != nil {
 			log.Error("failed to open connection",
 				"hostname", s.hostname,
