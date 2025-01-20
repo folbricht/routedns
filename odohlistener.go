@@ -10,6 +10,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 
 	"github.com/cisco/go-hpke"
 	odoh "github.com/cloudflare/odoh-go"
@@ -107,20 +110,31 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	contentType := r.Header.Get("Content-Type")
+	if contentType == "" || contentType != ODOH_CONTENT_TYPE {
+		http.Error(w, "invalid or missing Content-Type", http.StatusBadRequest)
+		return
+	}
+
 	host := r.URL.Query().Get("targethost")
 	if host == "" {
 		http.Error(w, "no targethost specified", http.StatusBadRequest)
 		return
 	}
+
+	if len(host) > 253 || !regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$`).MatchString(host) {
+		http.Error(w, "invalid targethost", http.StatusBadRequest)
+		return
+	}
+
 	path := r.URL.Query().Get("targetpath")
-	if path == "" {
-		http.Error(w, "no targetpath specified", http.StatusBadRequest)
+	if path == "" || len(path) > 1024 || !strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
+		http.Error(w, "invalid targetpath", http.StatusBadRequest)
 		return
 	}
 
 	b, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
 
@@ -139,15 +153,20 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", ODOH_CONTENT_TYPE)
 	if _, err := io.Copy(w, response.Body); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 }
 
-func forwardProxyRequest(client *http.Client, targethost string, targetPath string, body []byte, contentType string) (*http.Response, error) {
-	targetURL := "https://" + targethost + targetPath
+func forwardProxyRequest(client *http.Client, host string, path string, body []byte, contentType string) (*http.Response, error) {
+	url := &url.URL{
+		Scheme: "https",
+		Host:   host,
+		Path:   path,
+	}
+	targetURL := url.String()
 	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		Log.Error("Failed creating target POST request", "error", err)
