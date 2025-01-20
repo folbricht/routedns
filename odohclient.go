@@ -200,6 +200,10 @@ func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, er
 	odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(bodyBytes)
 	expiry := time.Now().Add(24 * time.Hour)
 
+	if err != nil || len(odohConfigs.Marshal()) < 1 {
+		Log.Warn("Could not load the targets ODoH config")
+		return nil, time.Time{}, err
+	}
 	Log.Info("Successfully loaded ODoH config", "config", fmt.Sprintf("%x", odohConfigs.Marshal()))
 	return &odohConfigs.Configs[0], expiry, err
 }
