@@ -1,25 +1,36 @@
 package rdns
 
 import (
+	"errors"
 	"log/slog"
 
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
 )
 
-// The DNSSEC enforcer will upgrade DNS queries to also request DNSSEC and only forwards DNSSEC validated responses
-type DNSSECenforcer struct {
-	id       string
-	resolver Resolver
+// The DNSSEC validator will upgrade DNS queries to also request DNSSEC and only forwards DNSSEC validated responses
+type DNSSECvalidator struct {
+	id          string
+	resolver    Resolver
+	fwdUnsigned bool
 }
 
-var _ Resolver = &DNSSECenforcer{}
-
-func NewDNSSECenforcer(id string, resolver Resolver) *DNSSECenforcer {
-	return &DNSSECenforcer{id: id, resolver: resolver}
+type DNSSECvalidatorOptions struct {
+	Mode string
 }
 
-func (d *DNSSECenforcer) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+var _ Resolver = &DNSSECvalidator{}
+
+func NewDNSSECvalidator(id string, resolver Resolver, opt DNSSECvalidatorOptions) *DNSSECvalidator {
+	mode := true
+	if opt.Mode == "strict" {
+		Log.Debug("Forwarding unsigned responses disabled")
+		mode = false
+	}
+	return &DNSSECvalidator{id: id, resolver: resolver, fwdUnsigned: mode}
+}
+
+func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	var g errgroup.Group
 
 	var rrSet *RRSet
@@ -55,6 +66,11 @@ func (d *DNSSECenforcer) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	})
 
 	if err := g.Wait(); err != nil {
+		if errors.Is(err, ErrResourceNotSigned) && d.fwdUnsigned {
+			Log.Debug("Forwarding unsigned DNS Record Answer", slog.String("domain", qName(q)))
+			return removeRRSIGs(response), nil
+		}
+
 		return nil, err
 	}
 	if err := authChain.Verify(rrSet); err != nil {
@@ -65,6 +81,6 @@ func (d *DNSSECenforcer) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	return removeRRSIGs(response), nil
 }
 
-func (d *DNSSECenforcer) String() string {
+func (d *DNSSECvalidator) String() string {
 	return d.id
 }

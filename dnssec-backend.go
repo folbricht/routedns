@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ var (
 	ErrNoResult             = errors.New("requested RR not found")
 	ErrDnskeyNotAvailable   = errors.New("DNSKEY RR does not exist")
 	ErrDsNotAvailable       = errors.New("DS RR does not exist")
+	ErrDsFailed             = errors.New("DS query failed")
 	ErrRRSigNotAvailable    = errors.New("RRSIG does not exist")
 	ErrInvalidRRsig         = errors.New("invalid RRSIG")
 	ErrForgedRRsig          = errors.New("forged RRSIG header")
@@ -88,14 +88,9 @@ func setDNSSECdo(q *dns.Msg) *dns.Msg {
 }
 
 func newQuery(qname string, qtype uint16) *dns.Msg {
-	dnsMessage := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			RecursionDesired: true,
-		},
-	}
-	dnsMessage.SetEdns0(4096, true)
-	dnsMessage.SetQuestion(qname, qtype)
-	return dnsMessage
+	m := &dns.Msg{}
+	m.SetEdns0(4096, true)
+	return m.SetQuestion(qname, qtype)
 }
 
 func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RRSet, error) {
@@ -108,12 +103,12 @@ func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RR
 }
 
 func extractRRset(r *dns.Msg) (*RRSet, error) {
-	result := &RRSet{RrSet: make([]dns.RR, 0)}
+	result := &RRSet{}
 	if r.Answer == nil {
 		return result, nil
 	}
 
-	result.RrSet = make([]dns.RR, 0, len(r.Answer))
+	result.RrSet = []dns.RR{}
 	for _, rr := range r.Answer {
 		switch t := rr.(type) {
 		case *dns.RRSIG:
@@ -135,7 +130,7 @@ func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
 		return nil, ErrNoResult
 	}
 	if r == nil || r.Rcode == dns.RcodeSuccess {
-		return r, err
+		return r, nil
 	}
 	return nil, ErrInvalidRRsig
 }
@@ -157,14 +152,6 @@ func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*Sign
 		}
 
 		for _, rr := range signedZone.Dnskey.RrSet {
-			defer func() {
-				if r := recover(); r != nil {
-					Log.Warn("panic occurred",
-						slog.String("domainName", domainName),
-						slog.Any("panic", r),
-					)
-				}
-			}()
 			signedZone.addPubKey(rr.(*dns.DNSKEY))
 		}
 		return nil
@@ -174,12 +161,7 @@ func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*Sign
 		var err error
 		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver, ci)
 		if err != nil {
-			Log.Error("DS query failed",
-				slog.String("domainName", domainName),
-				"error", err,
-			)
-
-			return err
+			return ErrDsFailed
 		}
 		return nil
 	})
@@ -213,10 +195,7 @@ func (authChain *AuthenticationChain) Populate(domainName string, resolver Resol
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	return nil
+	return g.Wait()
 }
 
 func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
@@ -236,12 +215,6 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 	}
 
 	for _, signedZone := range authChain.DelegationChain {
-		defer func() {
-			if err := recover(); err != nil {
-				Log.Error("AuthChain panic occurred", "error", err)
-			}
-		}()
-
 		if signedZone.Dnskey.isEmpty() {
 			return ErrDnskeyNotAvailable
 		}
@@ -252,7 +225,6 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 		}
 
 		if signedZone.ParentZone != nil {
-
 			if signedZone.Ds.isEmpty() {
 				return ErrDsNotAvailable
 			}

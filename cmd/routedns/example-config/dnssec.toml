@@ -1,0 +1,20 @@
+[resolvers.cloudflare-doh]
+protocol = "doh"
+address = "https://1.1.1.1/dns-query{?dns}"
+
+[groups.cached]
+type = "cache"
+resolvers = ["cloudflare-doh"]
+backend = {type = "memory"}
+
+[groups.dnssec]
+type = "dnssec"
+resolvers = ["cached"]
+# If dnssec-mode is set to strict, only DNS responses that are DNSSEC validated are forwarded.
+# If not set to "strict", responses for unsigned domains are also forwarded.
+dnssec-mode = "strict"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dnssec"
