@@ -183,6 +183,9 @@ type group struct {
 	// Query logging options
 	OutputFile   string `toml:"output-file"`   // Log filename or blank for STDOUT
 	OutputFormat string `toml:"output-format"` // "text" or "json"
+
+	//DNSSEC options
+	DNSSECmode string `toml:"dnssec-mode"` // "strict" will only allow DNSSEC signed domains
 }
 
 // Block/Allowlist items for blocklist-v2
