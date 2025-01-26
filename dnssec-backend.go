@@ -125,11 +125,11 @@ func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.Rcode == dns.RcodeNameError {
+	if  r == nil || r.Rcode == dns.RcodeNameError {
 		Log.Info("no such domain", "info", qName(r))
 		return nil, ErrNoResult
 	}
-	if r == nil || r.Rcode == dns.RcodeSuccess {
+	if r.Rcode == dns.RcodeSuccess {
 		return r, nil
 	}
 	return nil, ErrInvalidRRsig
