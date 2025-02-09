@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -85,11 +86,13 @@ func start(opt options, args []string) error {
 	// Convert logrus levels to slog levels
 	var level slog.Level
 	switch opt.logLevel {
-	case 0:
+	case 0, 1:
+		level = math.MaxInt // Basically disables logging
+	case 2:
 		level = slog.LevelError
-	case 1, 2:
+	case 3:
 		level = slog.LevelWarn
-	case 3, 4:
+	case 4:
 		level = slog.LevelInfo
 	case 5, 6:
 		level = slog.LevelDebug
