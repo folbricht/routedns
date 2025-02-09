@@ -423,7 +423,7 @@ func quicRestart(s *quicConnection) error {
 	var earlyConn quic.EarlyConnection
 	earlyConn, s.udpConn, err = quicDial(context.TODO(), s.rAddr, s.lAddr, s.tlsConfig, s.config, s.Use0RTT)
 	if err != nil || s.udpConn == nil {
-		Log.Error("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
+		Log.Warn("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String())), "error", err)
 		return err
 	}
 	Log.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("address", s.hostname), slog.String("local", s.lAddr.String()), slog.String("rAddr", s.rAddr)))
@@ -449,14 +449,14 @@ func quicDial(ctx context.Context, rAddr string, lAddr net.IP, tlsConfig *tls.Co
 		earlyConn, err = quic.DialEarly(ctx, udpConn, udpAddr, tlsConfig, config)
 		if err != nil {
 			_ = udpConn.Close()
-			Log.Error("couldn't dial quic early connection", "error", err)
+			Log.Warn("couldn't dial quic early connection", "error", err)
 			return nil, nil, err
 		}
 	} else {
 		conn, err := quic.Dial(ctx, udpConn, udpAddr, tlsConfig, config)
 		if err != nil {
 			_ = udpConn.Close()
-			Log.Error("couldn't dial quic connection", "error", err)
+			Log.Warn("couldn't dial quic connection", "error", err)
 			return nil, nil, err
 		}
 		earlyConn = &earlyConnWrapper{Connection: conn}

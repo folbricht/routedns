@@ -108,13 +108,13 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 			if _, _, rule, ok := r.BlocklistDB.Match(msg); ok != r.Inverted {
 				log := logger(r.id, query, ci).With("rule", rule.GetRule())
 				if r.BlocklistResolver != nil {
-					log.With("resolver", r.BlocklistResolver).Debug("blocklist match, forwarding to blocklist-resolver")
+					log.Debug("blocklist match, forwarding to blocklist-resolver", "resolver", r.BlocklistResolver)
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
 				answer = nxdomain(query)
 				if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{query, rule}); err != nil {
-					log.Error("failed to apply edns0ede template", "error", err)
+					log.Warn("failed to apply edns0ede template", "error", err)
 				}
 				return answer, nil
 			}

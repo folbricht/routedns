@@ -276,7 +276,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		log.With("resolver", s.r.String()).Debug("forwarding query to resolver")
 		a, err = s.r.Resolve(q, ci)
 		if err != nil {
-			log.Error("failed to resolve", "error", err)
+			log.Warn("failed to resolve", "error", err)
 			a = new(dns.Msg)
 			a.SetRcode(q, dns.RcodeServerFailure)
 		}
