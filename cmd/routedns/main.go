@@ -54,7 +54,7 @@ arguments.
 		SilenceUsage: true,
 	}
 
-	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 0=None .. 6=Trace")
+	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 1=None,2=Error,3=Warn,4=Info,5=Debug,6=Trace")
 	cmd.Flags().BoolVarP(&opt.version, "version", "v", false, "Prints code version string")
 
 	if err := cmd.Execute(); err != nil {
