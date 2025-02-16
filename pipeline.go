@@ -90,7 +90,7 @@ func (c *Pipeline) start() {
 		conn, err := c.client.Dial(c.addr)
 		if err != nil {
 			c.metrics.err.Add("open", 1)
-			log.Error("failed to open connection", "error", err)
+			log.Warn("failed to open connection", "error", err)
 			req.markDone(nil, err)
 			continue
 		}
@@ -154,7 +154,7 @@ func (c *Pipeline) start() {
 						// got a bad packet (like a truncated one for example).
 						if a == nil {
 							c.metrics.err.Add("read", 1)
-							log.Error("read failed", "error", err)
+							log.Warn("read failed", "error", err)
 							close(done) // tell the writer to not use this connection anymore
 							wg.Done()
 							return
