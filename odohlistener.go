@@ -219,7 +219,7 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 
 	a, err := s.r.Resolve(q, ClientInfo{Listener: s.id, TLSServerName: r.TLS.ServerName})
 	if err != nil {
-		Log.Error("failed to resolve", "error", err)
+		Log.Warn("failed to resolve", "error", err)
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
