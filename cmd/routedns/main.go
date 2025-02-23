@@ -555,6 +555,12 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "dnssec":
+		if len(gr) != 1 {
+			return fmt.Errorf("type dnssec only supports one resolver in '%s'", id)
+		}
+		opt := rdns.DNSSECvalidatorOptions{Mode: g.DNSSECmode}
+		resolvers[id] = rdns.NewDNSSECvalidator(id, gr[0], opt)
 	case "edns0-modifier":
 		if len(gr) != 1 {
 			return fmt.Errorf("type edns0-modifier only supports one resolver in '%s'", id)
