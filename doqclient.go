@@ -193,7 +193,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if edns0 != nil {
 		for _, opt := range edns0.Option {
 			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
-				d.log.Error("received edns-tcp-keepalive from doq server, aborting")
+				d.log.Warn("received edns-tcp-keepalive from doq server, aborting")
 				d.metrics.err.Add("keepalive", 1)
 				return nil, errors.New("received edns-tcp-keepalive over doq server")
 			}
@@ -217,7 +217,7 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stre
 		var err error
 		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), endpoint, s.lAddr, s.tlsConfig, s.config, s.Use0RTT)
 		if err != nil {
-			log.Error("failed to open connection",
+			log.Warn("failed to open connection",
 				"hostname", s.hostname,
 				"error", err,
 			)
@@ -233,12 +233,12 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stre
 			"error", err,
 		)
 		if err = quicRestart(s); err != nil {
-			log.Error("failed to open connection", "hostname", s.hostname, "error", err)
+			log.Warn("failed to open connection", "hostname", s.hostname, "error", err)
 			return nil, err
 		}
 		stream, err = s.EarlyConnection.OpenStream()
 		if err != nil {
-			log.Error("failed to open stream",
+			log.Warn("failed to open stream",
 				"error", err,
 			)
 		}

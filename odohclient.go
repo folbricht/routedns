@@ -16,6 +16,8 @@ import (
 )
 
 const (
+	ODOH_PROXY_PATH   = "/proxy"
+	ODOH_QUERY_PATH   = "/dns-query"
 	ODOH_CONFIG_PATH  = "/.well-known/odohconfigs"
 	DOH_CONTENT_TYPE  = "application/dns-message"
 	ODOH_CONTENT_TYPE = "application/oblivious-dns-message"
@@ -104,7 +106,7 @@ func (d *ODoHClient) decodeProxyResponse(resp *http.Response, queryContext odoh.
 		d.proxy.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
-	if resp.Header.Get("content-type") != "application/oblivious-dns-message" {
+	if resp.Header.Get("content-type") != ODOH_CONTENT_TYPE {
 		return nil, errors.New("received invalid odoh header from proxy")
 	}
 	rb, err := io.ReadAll(resp.Body)
@@ -198,7 +200,10 @@ func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, er
 	odohConfigs, err := odoh.UnmarshalObliviousDoHConfigs(bodyBytes)
 	expiry := time.Now().Add(24 * time.Hour)
 
-	Log.Info("loaded config",
-		"conf", odohConfigs.Marshal())
+	if err != nil || len(odohConfigs.Marshal()) < 1 {
+		Log.Warn("Could not load the targets ODoH config")
+		return nil, time.Time{}, err
+	}
+	Log.Info("Successfully loaded ODoH config", "config", fmt.Sprintf("%x", odohConfigs.Marshal()))
 	return &odohConfigs.Configs[0], expiry, err
 }

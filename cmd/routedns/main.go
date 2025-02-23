@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -53,7 +54,7 @@ arguments.
 		SilenceUsage: true,
 	}
 
-	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 0=None .. 6=Trace")
+	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 1=None,2=Error,3=Warn,4=Info,5=Debug,6=Trace")
 	cmd.Flags().BoolVarP(&opt.version, "version", "v", false, "Prints code version string")
 
 	if err := cmd.Execute(); err != nil {
@@ -85,11 +86,13 @@ func start(opt options, args []string) error {
 	// Convert logrus levels to slog levels
 	var level slog.Level
 	switch opt.logLevel {
-	case 0:
+	case 0, 1:
+		level = math.MaxInt // Basically disables logging
+	case 2:
 		level = slog.LevelError
-	case 1, 2:
+	case 3:
 		level = slog.LevelWarn
-	case 3, 4:
+	case 4:
 		level = slog.LevelInfo
 	case 5, 6:
 		level = slog.LevelDebug
@@ -302,6 +305,24 @@ func start(opt options, args []string) error {
 				return err
 			}
 			ln := rdns.NewQUICListener(id, l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
+			listeners = append(listeners, ln)
+		case "odoh":
+			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
+			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			if err != nil {
+				return err
+			}
+			opt := rdns.ODoHListenerOptions{
+				TLSConfig:     tlsConfig,
+				KeySeed:       l.KeySeed,
+				OdohMode:      l.OdohMode,
+				AllowDoH:      l.AllowDoH,
+				ListenOptions: opt,
+			}
+			ln, err := rdns.NewODoHListener(id, l.Address, opt, resolver)
+			if err != nil {
+				return err
+			}
 			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
