@@ -12,11 +12,13 @@ import (
 type DNSSECvalidator struct {
 	id          string
 	resolver    Resolver
+	rootKeys    *RRSet
 	fwdUnsigned bool
 }
 
 type DNSSECvalidatorOptions struct {
-	Mode string
+	Mode            string
+	TrustAnchorFile string
 }
 
 var _ Resolver = &DNSSECvalidator{}
@@ -27,7 +29,19 @@ func NewDNSSECvalidator(id string, resolver Resolver, opt DNSSECvalidatorOptions
 		Log.Debug("Forwarding unsigned responses disabled")
 		mode = false
 	}
-	return &DNSSECvalidator{id: id, resolver: resolver, fwdUnsigned: mode}
+
+	var rk *RRSet
+	if len(opt.TrustAnchorFile) != 0 {
+		rk, err := loadRootKeysFromXML(opt.TrustAnchorFile)
+		if err != nil || len(rk.RrSet) == 0 {
+			Log.Error("Error loading root keys", slog.String("error", err.Error()))
+			return nil
+		}
+
+		Log.Debug("Succesfully Loaded Root Keys")
+	}
+
+	return &DNSSECvalidator{id: id, resolver: resolver, fwdUnsigned: mode, rootKeys: rk}
 }
 
 func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
@@ -43,10 +57,7 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return err
 		}
 		response = res.Copy()
-		rrSet, err = extractRRset(res)
-		if err != nil {
-			return err
-		}
+		rrSet = extractRRset(res)
 		if rrSet.isEmpty() {
 			return ErrNoResult
 		}
@@ -73,7 +84,7 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 		return nil, err
 	}
-	if err := authChain.Verify(rrSet); err != nil {
+	if err := authChain.Verify(rrSet, d.rootKeys); err != nil {
 		return nil, err
 	}
 

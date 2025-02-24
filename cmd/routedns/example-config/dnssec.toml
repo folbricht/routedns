@@ -14,6 +14,9 @@ resolvers = ["cached"]
 # If not set to "strict", responses for unsigned domains are also forwarded.
 dnssec-mode = "strict"
 
+# Trust anchor XML file (usually from https://data.iana.org/root-anchors/root-anchors.xml)
+trust-anchor = "root-anchors.xml"
+
 [listeners.local-udp]
 address = "127.0.0.1:53"
 protocol = "udp"

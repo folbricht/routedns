@@ -188,7 +188,8 @@ type group struct {
 	OutputFormat string `toml:"output-format"` // "text" or "json"
 
 	//DNSSEC options
-	DNSSECmode string `toml:"dnssec-mode"` // "strict" will only allow DNSSEC signed domains
+	DNSSECmode string `toml:"dnssec-mode"`  // "strict" will only allow DNSSEC signed domains
+	DNSSECroot string `toml:"trust-anchor"` // XML file with the DNSSEC root keys
 }
 
 // Block/Allowlist items for blocklist-v2

@@ -1223,6 +1223,7 @@ A DNSSEC validator element is instantiated with `type = "dnssec"` in the groups 
 
 Options:
 - `dnssec-mode` - If dnssec-mode is set to "strict", only DNS responses that are DNSSEC validated are forwarded. If not set to "strict", responses for unsigned domains are also forwarded.
+- `trust-anchor` - If set, the module will always validate the root keys with the local ones. File has to be in XML format, can be taken from [IANA](https://data.iana.org/root-anchors/root-anchors.xml)
 
 Examples:
 
@@ -1231,6 +1232,7 @@ Examples:
 type = "dnssec"
 resolvers = ["google-dot"]
 dnssec-mode = "strict"
+trust-anchor = "root-anchors.xml"
 ```
 
 Example config files: [response-collapse.toml](../cmd/routedns/example-config/dnssec.toml)

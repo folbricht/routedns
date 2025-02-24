@@ -1,7 +1,11 @@
 package rdns
 
 import (
+	"encoding/xml"
 	"errors"
+	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -99,13 +103,13 @@ func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RR
 	if err != nil || r == nil {
 		return nil, err
 	}
-	return extractRRset(r)
+	return extractRRset(r), nil
 }
 
-func extractRRset(r *dns.Msg) (*RRSet, error) {
+func extractRRset(r *dns.Msg) *RRSet {
 	result := &RRSet{}
 	if r.Answer == nil {
-		return result, nil
+		return result
 	}
 
 	result.RrSet = []dns.RR{}
@@ -117,7 +121,7 @@ func extractRRset(r *dns.Msg) (*RRSet, error) {
 			result.RrSet = append(result.RrSet, rr)
 		}
 	}
-	return result, nil
+	return result
 }
 
 func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
@@ -125,7 +129,7 @@ func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
 	if err != nil {
 		return nil, err
 	}
-	if  r == nil || r.Rcode == dns.RcodeNameError {
+	if r == nil || r.Rcode == dns.RcodeNameError {
 		Log.Info("no such domain", "info", qName(r))
 		return nil, ErrNoResult
 	}
@@ -158,6 +162,9 @@ func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*Sign
 	})
 
 	g.Go(func() error {
+		if domainName == "." {
+			return nil
+		}
 		var err error
 		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver, ci)
 		if err != nil {
@@ -198,7 +205,7 @@ func (authChain *AuthenticationChain) Populate(domainName string, resolver Resol
 	return g.Wait()
 }
 
-func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
+func (authChain *AuthenticationChain) Verify(answerRRset *RRSet, rootKeys *RRSet) error {
 	zones := authChain.DelegationChain
 	if len(zones) == 0 {
 		return ErrDelegationChain
@@ -215,6 +222,11 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet) error {
 	}
 
 	for _, signedZone := range authChain.DelegationChain {
+		if signedZone.Zone == "." && rootKeys != nil {
+			if err := validateRootDNSKEY(signedZone.Dnskey, rootKeys); err != nil {
+				return fmt.Errorf("root DNSKEY validation failed: %w", err)
+			}
+		}
 		if signedZone.Dnskey.isEmpty() {
 			return ErrDnskeyNotAvailable
 		}
@@ -282,4 +294,73 @@ func (z SignedZone) verifyDS(dsRrset []dns.RR) (err error) {
 		return ErrDsInvalid
 	}
 	return ErrUnknownDsDigestType
+}
+
+func validateRootDNSKEY(dnskeyRRset *RRSet, rootKeys *RRSet) error {
+	if dnskeyRRset == nil || dnskeyRRset.RrSet == nil || dnskeyRRset.RrSig == nil {
+		return errors.New("missing DNSKEY or RRSIG for root")
+	}
+
+	for _, key := range rootKeys.RrSet {
+		Log.Debug(key.String())
+		if dnsKey, ok := key.(*dns.DNSKEY); ok {
+			err := dnskeyRRset.RrSig.Verify(dnsKey, dnskeyRRset.RrSet)
+			if err == nil {
+				return nil
+			}
+		}
+	}
+	return errors.New("root DNSKEY validation failed with all keys")
+}
+
+type TrustAnchor struct {
+	Zone      string      `xml:"Zone"`
+	KeyDigest []KeyDigest `xml:"KeyDigest"`
+}
+
+type KeyDigest struct {
+	KeyTag     int    `xml:"KeyTag"`
+	Algorithm  int    `xml:"Algorithm"`
+	DigestType int    `xml:"DigestType"`
+	Digest     string `xml:"Digest"`
+	PublicKey  string `xml:"PublicKey"` // Base64 encoded DNSKEY
+	Flags      int    `xml:"Flags"`
+}
+
+func loadRootKeysFromXML(filename string) (*RRSet, error) { // Return *RRSet
+	xmlFile, err := os.ReadFile(filename)
+	if err != nil {
+		Log.Error("Error reading XML file", slog.String("error", err.Error()), slog.String("filename", filename))
+		return nil, err
+	}
+
+	var trustAnchor TrustAnchor
+	err = xml.Unmarshal(xmlFile, &trustAnchor)
+	if err != nil {
+		Log.Error("Error unmarshalling XML", slog.String("error", err.Error()), slog.String("filename", filename))
+		return nil, err
+	}
+
+	rrSet := &RRSet{
+		RrSet: make([]dns.RR, 0, len(trustAnchor.KeyDigest)),
+	}
+
+	for _, kd := range trustAnchor.KeyDigest {
+		if kd.PublicKey == "" {
+			continue
+		}
+		rr, err := dns.NewRR(fmt.Sprintf("%s %s %d %d %d %s",
+			trustAnchor.Zone, dns.TypeToString[dns.TypeDNSKEY], kd.Flags, 3, kd.Algorithm, kd.PublicKey))
+		if err != nil {
+			Log.Error("Error parsing DNSKEY", slog.String("error", err.Error()), slog.String("publicKey", kd.PublicKey))
+			continue
+		}
+		dnsKey, ok := rr.(*dns.DNSKEY)
+		if !ok {
+			Log.Error("Error: RR is not a DNSKEY", slog.String("publicKey", kd.PublicKey))
+			continue
+		}
+		rrSet.RrSet = append(rrSet.RrSet, dnsKey)
+	}
+	return rrSet, nil
 }
