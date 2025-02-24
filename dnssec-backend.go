@@ -398,11 +398,11 @@ func validateRootDNSKEY(dnskeyRRset *RRSet, rootKeys *RRSet) error {
 func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
 	for _, rr := range nsec {
 		n := rr.(*dns.NSEC)
-		c1, _ := canonicalNameCompare(qname, n.Header().Name)
+		c1 := dns.CompareDomainName(qname, n.Header().Name)
 		if c1 < 0 {
 			continue
 		}
-		c2, _ := canonicalNameCompare(qname, n.NextDomain)
+		c2 := dns.CompareDomainName(qname, n.NextDomain)
 
 		if c1 >= 0 && c2 < 0 {
 			Log.Debug("NSEC record covers non-existent domain", slog.String("qname", qname), slog.String("record", n.String()))
@@ -477,43 +477,6 @@ func denialNSEC3(nsec3 []dns.RR, qname string, qtype uint16, rcode string) error
 		}
 	}
 	return nil
-}
-
-// canonicalNameCompare optimizes DNS name comparison according to RFC 4034.
-func canonicalNameCompare(name1 string, name2 string) (int, error) {
-	if _, ok := dns.IsDomainName(dns.Fqdn(name1)); !ok {
-		return 0, errors.New("invalid domain name")
-	}
-	if _, ok := dns.IsDomainName(dns.Fqdn(name2)); !ok {
-		return 0, errors.New("invalid domain name")
-	}
-
-	labels1 := dns.SplitDomainName(dns.Fqdn(name1))
-	labels2 := dns.SplitDomainName(dns.Fqdn(name2))
-
-	len1 := len(labels1)
-	len2 := len(labels2)
-	minLen := len1
-	if len2 < minLen {
-		minLen = len2
-	}
-
-	for i := 1; i <= minLen; i++ {
-		label1 := labels1[len1-i]
-		label2 := labels2[len2-i]
-		res := strings.Compare(strings.ToLower(label1), strings.ToLower(label2))
-		if res != 0 {
-			return res, nil
-		}
-	}
-
-	if len1 == len2 {
-		return 0, nil
-	} else if len1 < len2 {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
 }
 
 type TrustAnchor struct {
