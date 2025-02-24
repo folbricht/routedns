@@ -49,6 +49,9 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	var rrSet *RRSet
 	var response *dns.Msg
+	var nsecs []dns.RR
+
+	doIsSet := q.IsEdns0().Do()
 
 	// Resolve the A query with RRSIG option
 	g.Go(func() error {
@@ -57,15 +60,12 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return err
 		}
 		response = res.Copy()
-		rrSet = extractRRset(res)
-		if rrSet.isEmpty() {
-			return ErrNoResult
-		}
-		if !rrSet.isSigned() {
-			return ErrResourceNotSigned
-		}
+		rrSet = extractRRset(response)
 		if rrSet.checkHeaderIntegrity(qName(q)) {
 			return ErrForgedRRsig
+		}
+		if rrSet.isEmpty() || !rrSet.isSigned() {
+			nsecs = extractNSEC(res)
 		}
 		return nil
 	})
@@ -77,19 +77,48 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	})
 
 	if err := g.Wait(); err != nil {
-		if errors.Is(err, ErrResourceNotSigned) && d.fwdUnsigned {
-			Log.Debug("Forwarding unsigned DNS Record Answer", slog.String("domain", qName(q)))
-			return removeRRSIGs(response), nil
+		if !rrSet.isEmpty() {
+			if errors.Is(err, ErrResourceNotSigned) || errors.Is(err, ErrDnskeyNotAvailable) {
+				if d.fwdUnsigned {
+					Log.Debug("Forwarding unsigned DNS Record Answer", slog.String("domain", qName(q)))
+					return forwardResponse(response, doIsSet), nil
+				}
+				Log.Debug("Dropping unsigned DNS Record Answer")
+				return nil, ErrResourceNotSigned
+			}
+			return nil, err
+		}
+	}
+
+	if len(nsecs) > 0 && rrSet.isEmpty() { // NSEC Validate non-existance of record
+		validNsecSet, err := authChain.ValidateNSEC(nsecs)
+		if err != nil {
+			Log.Debug("have some error validating the NSEC records")
+			return nil, err
 		}
 
-		return nil, err
+		var nsecErr error
+		qname := qName(response)
+		qtype := response.Question[0].Qtype
+		rcode := rCode(response)
+		if validNsecSet[0].Header().Rrtype == dns.TypeNSEC {
+			nsecErr = denialNSEC(validNsecSet, qname, qtype)
+		} else {
+			nsecErr = denialNSEC3(validNsecSet, qname, qtype, rcode)
+		}
+
+		if nsecErr != nil {
+			return nil, ErrResourceNotSigned
+		}
+		return nil, ErrNoResult
 	}
+
 	if err := authChain.Verify(rrSet, d.rootKeys); err != nil {
 		return nil, err
 	}
 
 	Log.Debug("Valid DNS Record Answer", slog.String("domain", qName(q)))
-	return removeRRSIGs(response), nil
+	return forwardResponse(response, doIsSet), nil
 }
 
 func (d *DNSSECvalidator) String() string {
