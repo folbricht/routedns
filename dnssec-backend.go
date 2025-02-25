@@ -289,8 +289,7 @@ func (authChain *AuthenticationChain) ValidateNSEC(nsec []dns.RR) ([]dns.RR, err
 	}
 
 	var validNsecSet []dns.RR
-	for i := 0; i < len(nsec); i++ {
-		rr := nsec[i]
+	for _, rr := range nsec {
 		if rr.Header().Rrtype != dns.TypeRRSIG {
 			continue
 		}
@@ -303,18 +302,23 @@ func (authChain *AuthenticationChain) ValidateNSEC(nsec []dns.RR) ([]dns.RR, err
 		var key *dns.DNSKEY
 		for _, signedZone := range authChain.DelegationChain {
 			key = signedZone.lookupPubKey(rrsig.KeyTag)
-			if key == nil {
+			if key != nil {
 				break
 			}
 		}
 
+		if key == nil {
+			Log.Debug("no matching DNSKEY found for RRSIG")
+			continue
+		}
+
 		myset := findNSEC(nsec, rr.Header().Name, rrsig.TypeCovered)
 		if myset != nil {
-			if err := rrsig.Verify(key, myset); err != nil {
+			if err := rrsig.Verify(key, myset); err == nil {
 				validNsecSet = append(validNsecSet, myset...)
-				Log.Debug("successfully validated ", slog.String("qtype", dns.TypeToString[rrsig.TypeCovered]))
+				Log.Debug("successfully validated", slog.String("qtype", dns.TypeToString[rrsig.TypeCovered]))
 			} else {
-				return nil, errors.New("could not validate all NSEC records")
+				Log.Debug("NSEC validation failed", slog.String("error", err.Error()))
 			}
 		}
 	}

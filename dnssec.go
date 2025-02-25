@@ -77,6 +77,10 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	})
 
 	if err := g.Wait(); err != nil {
+		if rrSet == nil {
+			return nil, err
+		}
+
 		if !rrSet.isEmpty() {
 			if errors.Is(err, ErrResourceNotSigned) || errors.Is(err, ErrDnskeyNotAvailable) {
 				if d.fwdUnsigned {
