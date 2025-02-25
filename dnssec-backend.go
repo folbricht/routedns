@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -410,10 +411,8 @@ func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
 
 		if c1 >= 0 && c2 < 0 {
 			Log.Debug("NSEC record covers non-existent domain", slog.String("qname", qname), slog.String("record", n.String()))
-			for _, t := range n.TypeBitMap {
-				if t == qtype {
-					return errors.New("NSEC denial failed, type " + dns.TypeToString[qtype] + " exists in bitmap")
-				}
+			if slices.Contains(n.TypeBitMap, qtype) {
+				return errors.New("NSEC denial failed, type " + dns.TypeToString[qtype] + " exists in bitmap")
 			}
 			Log.Debug("Denial", slog.String("message", "secure authenticated denial of existence using NSEC for domain"), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
 			return nil
