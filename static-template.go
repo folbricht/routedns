@@ -64,7 +64,7 @@ func (r *StaticTemplateResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, e
 	answer.Truncated = r.truncate
 
 	if err := r.opt.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{q, nil}); err != nil {
-		log.Error("failed to apply edns0ede template", "error", err)
+		log.Warn("failed to apply edns0ede template", "error", err)
 	}
 
 	logger(r.id, q, ci).With("truncated", r.truncate).Debug("responding")
@@ -93,13 +93,13 @@ func (r *StaticTemplateResolver) processRRTemplates(q *dns.Msg, ci ClientInfo, t
 	for _, tpl := range templates {
 		text, err := tpl.Apply(input)
 		if err != nil {
-			log.Error("failed to apply template", "error", err)
+			log.Warn("failed to apply template", "error", err)
 			continue
 		}
 
 		rr, err := dns.NewRR(text)
 		if err != nil {
-			log.Error("failed to parse template output", "error", err)
+			log.Warn("failed to parse template output", "error", err)
 			continue
 		}
 		// Update the name of every answer record to match that of the query
