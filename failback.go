@@ -30,7 +30,7 @@ type FailBack struct {
 // FailBackOptions contain group-specific options.
 type FailBackOptions struct {
 	// Switch back to the first resolver in the group after no further failures
-	// for this amount of time. Default 1 minute.
+	// for this amount of time. Default 0 seconds (switch back immediately).
 	ResetAfter time.Duration
 
 	// Determines if a SERVFAIL returned by a resolver should be considered an
@@ -61,9 +61,6 @@ func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
 
 // NewFailBack returns a new instance of a failover resolver group.
 func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
-	if opt.ResetAfter == 0 {
-		opt.ResetAfter = time.Minute
-	}
 	return &FailBack{
 		id:        id,
 		resolvers: resolvers,
