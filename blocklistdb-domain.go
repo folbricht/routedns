@@ -36,6 +36,9 @@ func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
 		// Strip trailing . in case the list has FQDN names with . suffixes.
 		r = strings.TrimSuffix(r, ".")
 
+		// Force all domain names to lower case
+		r = strings.ToLower(r)
+
 		// Break up the domain into its parts and iterate backwards over them, building
 		// a graph of maps
 		parts := strings.Split(r, ".")
@@ -65,7 +68,7 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 
 func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
 	q := msg.Question[0]
-	s := strings.TrimSuffix(q.Name, ".")
+	s := strings.ToLower(strings.TrimSuffix(q.Name, "."))
 	var matched []string
 	parts := strings.Split(s, ".")
 	n := m.root
