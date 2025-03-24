@@ -111,7 +111,7 @@ type group struct {
 	// Failover/Failback options
 	ResetAfter    int  `toml:"reset-after"`    // Time in seconds after which to reset resolvers in fail-back and random groups, default 0 (reset immediately).
 	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
-	EmptyError    bool `toml:"empty-error"`    // If true, empty responses that are unusual (such as NOERROR with no records instead of NXDOMAIN) are considered errors and cause failover etc.
+	EmptyError    bool `toml:"empty-error"`    // If true, empty responses are considered errors and cause failover etc.
 
 	// Cache options
 	Backend                  *cacheBackend

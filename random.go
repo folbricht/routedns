@@ -31,8 +31,8 @@ type RandomOptions struct {
 	// error response and cause the resolver to be removed from the group temporarily.
 	ServfailError bool
 
-	// Determines if an empty reponse (that isn't NXDOMAIN) returned by a resolver
-	// should be considered an error respone and trigger a failover.
+	// Determines if an empty reponse returned by a resolver should be considered an
+	// error respone and trigger a failover.
 	EmptyError bool
 }
 
@@ -123,6 +123,5 @@ func (r *Random) reactivateLater(resolver Resolver) {
 // Returns true is the response is considered successful given the options.
 func (r *Random) isSuccessResponse(a *dns.Msg) bool {
 	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure) &&
-	                   !(r.opt.EmptyError    && a.Rcode == dns.RcodeSuccess   && len(a.Answer) == 0 ||
-	       	                                    a.Rcode == dns.RcodeNameError && len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeCNAME)
+	                   !(r.opt.EmptyError    && (len(a.Answer) == 0 || len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeCNAME))
 }
