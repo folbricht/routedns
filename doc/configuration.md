@@ -519,6 +519,7 @@ Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a switch to the next resolver. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, a unusual empty reponse (such as NOERROR with no records instead of NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -539,8 +540,9 @@ Fail-Back groups are instantiated with `type = "fail-back"` in the groups sectio
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
-- `reset-after` - Time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
+- `reset-after` - Time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), default 0 (meaning it will switch after a single request). Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, a unusual empty reponse (such as NOERROR with no records instead of NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -561,8 +563,9 @@ Random groups are instantiated with `type = "random"` in the groups section of t
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
-- `reset-after` - Time in seconds to disable a failed resolver, default 60.
+- `reset-after` - Time in seconds to disable a failed resolver, default 0 (disabled only for a single request).
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure which will take the resolver temporarily out of the group. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, a unusual empty reponse (such as NOERROR with no records instead of NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 

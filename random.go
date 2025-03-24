@@ -30,14 +30,15 @@ type RandomOptions struct {
 	// Determines if a SERVFAIL returned by a resolver should be considered an
 	// error response and cause the resolver to be removed from the group temporarily.
 	ServfailError bool
+
+	// Determines if an empty reponse (that isn't NXDOMAIN) returned by a resolver
+	// should be considered an error respone and trigger a failover.
+	EmptyError bool
 }
 
 // NewRandom returns a new instance of a random resolver group.
 func NewRandom(id string, opt RandomOptions, resolvers ...Resolver) *Random {
 	rand.Seed(time.Now().UnixNano())
-	if opt.ResetAfter == 0 {
-		opt.ResetAfter = time.Minute
-	}
 	return &Random{
 		id:        id,
 		resolvers: resolvers,
@@ -121,5 +122,7 @@ func (r *Random) reactivateLater(resolver Resolver) {
 
 // Returns true is the response is considered successful given the options.
 func (r *Random) isSuccessResponse(a *dns.Msg) bool {
-	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
+	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure) &&
+	                   !(r.opt.EmptyError    && a.Rcode == dns.RcodeSuccess   && len(a.Answer) == 0 ||
+	       	                                    a.Rcode == dns.RcodeNameError && len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeCNAME)
 }

@@ -36,6 +36,10 @@ type FailBackOptions struct {
 	// Determines if a SERVFAIL returned by a resolver should be considered an
 	// error response and trigger a failover.
 	ServfailError bool
+
+	// Determines if an empty reponse (that isn't NXDOMAIN) returned by a resolver
+	// should be considered an error respone and trigger a failover.
+	EmptyError bool
 }
 
 var _ Resolver = &FailBack{}
@@ -155,5 +159,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
-	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
+	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure) &&
+	                   !(r.opt.EmptyError    && a.Rcode == dns.RcodeSuccess   && len(a.Answer) == 0 ||
+	       	                                    a.Rcode == dns.RcodeNameError && len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeCNAME)
 }
