@@ -370,12 +370,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 	case "fail-rotate":
 		opt := rdns.FailRotateOptions{
 			ServfailError: g.ServfailError,
+			EmptyError:    g.EmptyError,
 		}
 		resolvers[id] = rdns.NewFailRotate(id, opt, gr...)
 	case "fail-back":
 		opt := rdns.FailBackOptions{
 			ResetAfter:    time.Duration(time.Duration(g.ResetAfter) * time.Second),
 			ServfailError: g.ServfailError,
+			EmptyError:    g.EmptyError,
 		}
 		resolvers[id] = rdns.NewFailBack(id, opt, gr...)
 	case "fastest":
@@ -384,6 +386,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		opt := rdns.RandomOptions{
 			ResetAfter:    time.Duration(time.Duration(g.ResetAfter) * time.Second),
 			ServfailError: g.ServfailError,
+			EmptyError:    g.EmptyError,
 		}
 		resolvers[id] = rdns.NewRandom(id, opt, gr...)
 	case "blocklist":
