@@ -122,6 +122,8 @@ func (r *Random) reactivateLater(resolver Resolver) {
 
 // Returns true is the response is considered successful given the options.
 func (r *Random) isSuccessResponse(a *dns.Msg) bool {
+	aLen := len(a.Answer)
 	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure) &&
-	                   !(r.opt.EmptyError    && (len(a.Answer) == 0 || len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeCNAME))
+	                   !(r.opt.EmptyError    && (aLen == 0 || a.Answer[0].Header().Rrtype == dns.TypeCNAME &&
+	                                            (aLen == 1 || a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME)))
 }
