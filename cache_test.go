@@ -52,6 +52,13 @@ func TestCache(t *testing.T) {
 	require.Equal(t, 1, r.HitCount())
 	require.True(t, a.Answer[0].Header().Ttl < answerTTL)
 
+	// Capital chars in the query should be preserved when serving from the cache
+	q.SetQuestion("Example.com.", dns.TypeA)
+	a, err = c.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	require.Equal(t, "Example.com.", a.Question[0].Name)
+
 	// Different question should go through to upstream again, low TTL
 	answerTTL = 1
 	q.SetQuestion("example2.com.", dns.TypeA)
@@ -67,6 +74,7 @@ func TestCache(t *testing.T) {
 	_, err = c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 3, r.HitCount())
+
 }
 
 func TestCacheNXDOMAIN(t *testing.T) {

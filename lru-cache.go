@@ -3,6 +3,7 @@ package rdns
 import (
 	"encoding/json"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
@@ -211,7 +212,10 @@ func (c *lruCache) deserialize(r io.Reader) error {
 }
 
 func lruKeyFromQuery(q *dns.Msg) lruKey {
-	key := lruKey{Question: q.Question[0]}
+	question := q.Question[0]
+	// disregard case of the question name when storing
+	question.Name = strings.ToLower(question.Name)
+	key := lruKey{Question: question}
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
