@@ -117,6 +117,11 @@ func (r *FailBack) current() (Resolver, int) {
 // requests. Another request could have initiated the failover already. So ignore if i is not
 // (no longer) the active store.
 func (r *FailBack) errorFrom(i int) {
+	// If ResetAfter is set to -1, we fail-over to the next resolver, but
+	// only for this single request. It won't affect any other request.
+	if r.opt.ResetAfter != -1 {
+		return
+	}
 	r.mu.Lock()
 	if i != r.active {
 		r.mu.Unlock()
@@ -162,12 +167,21 @@ func (r *FailBack) startResetTimer() chan struct{} {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
-	if a == nil || r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure { return false }
+	if a == nil || r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+		return false
+	}
 	if r.opt.EmptyError {
 		switch aLen := len(a.Answer); aLen {
-			case 0:  return false
-			case 1:  if a.Answer[0].Header().Rrtype == dns.TypeCNAME { return false }
-			default: if a.Answer[0].Header().Rrtype == dns.TypeCNAME && a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME { return false }
+		case 0:
+			return false
+		case 1:
+			if a.Answer[0].Header().Rrtype == dns.TypeCNAME {
+				return false
+			}
+		default:
+			if a.Answer[0].Header().Rrtype == dns.TypeCNAME && a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME {
+				return false
+			}
 		}
 	}
 	return true
