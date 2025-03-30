@@ -30,7 +30,7 @@ type FailBack struct {
 // FailBackOptions contain group-specific options.
 type FailBackOptions struct {
 	// Switch back to the first resolver in the group after no further failures
-	// for this amount of time. Default 0 seconds (switch back immediately).
+	// for this amount of time. Default 1 minute.
 	ResetAfter time.Duration
 
 	// Determines if a SERVFAIL returned by a resolver should be considered an
@@ -65,6 +65,9 @@ func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
 
 // NewFailBack returns a new instance of a failover resolver group.
 func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
+	if opt.ResetAfter == 0 {
+		opt.ResetAfter = time.Minute
+	}
 	return &FailBack{
 		id:        id,
 		resolvers: resolvers,
@@ -159,8 +162,13 @@ func (r *FailBack) startResetTimer() chan struct{} {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
-	aLen := len(a.Answer)
-	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure) &&
-	                   !(r.opt.EmptyError    && (aLen == 0 || a.Answer[0].Header().Rrtype == dns.TypeCNAME &&
-	                                            (aLen == 1 || a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME)))
+	if a == nil || r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure { return false }
+	if r.opt.EmptyError {
+		switch aLen := len(a.Answer); aLen {
+			case 0:  return false
+			case 1:  if a.Answer[0].Header().Rrtype == dns.TypeCNAME { return false }
+			default: if a.Answer[0].Header().Rrtype == dns.TypeCNAME && a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME { return false }
+		}
+	}
+	return true
 }
