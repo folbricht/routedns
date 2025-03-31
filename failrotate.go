@@ -98,12 +98,23 @@ func (r *FailRotate) errorFrom(i int) {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
-	if a == nil || r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure { return false }
+	if a == nil {
+		return true
+	}
+	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+		return false
+	}
 	if r.opt.EmptyError {
-		switch aLen := len(a.Answer); aLen {
-			case 0:  return false
-			case 1:  if a.Answer[0].Header().Rrtype == dns.TypeCNAME { return false }
-			default: if a.Answer[0].Header().Rrtype == dns.TypeCNAME && a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME { return false }
+		// Check if there are only CNAMEs in the answer section
+		var onlyCNAME = true
+		for _, rr := range a.Answer {
+			if rr.Header().Rrtype != dns.TypeCNAME {
+				onlyCNAME = false
+				break
+			}
+		}
+		if onlyCNAME {
+			return false
 		}
 	}
 	return true

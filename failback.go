@@ -65,9 +65,6 @@ func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
 
 // NewFailBack returns a new instance of a failover resolver group.
 func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
-	if opt.ResetAfter == 0 {
-		opt.ResetAfter = time.Minute
-	}
 	return &FailBack{
 		id:        id,
 		resolvers: resolvers,
@@ -117,9 +114,9 @@ func (r *FailBack) current() (Resolver, int) {
 // requests. Another request could have initiated the failover already. So ignore if i is not
 // (no longer) the active store.
 func (r *FailBack) errorFrom(i int) {
-	// If ResetAfter is set to -1, we fail-over to the next resolver, but
-	// only for this single request. It won't affect any other request.
-	if r.opt.ResetAfter != -1 {
+	// If ResetAfter is set to 0, we fail-over to the next resolver, but
+	// only for this single request. It won't affect any other requests.
+	if r.opt.ResetAfter == 0 {
 		return
 	}
 	r.mu.Lock()
@@ -167,21 +164,23 @@ func (r *FailBack) startResetTimer() chan struct{} {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
-	if a == nil || r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+	if a == nil {
+		return true
+	}
+	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
 		return false
 	}
 	if r.opt.EmptyError {
-		switch aLen := len(a.Answer); aLen {
-		case 0:
+		// Check if there are only CNAMEs in the answer section
+		var onlyCNAME = true
+		for _, rr := range a.Answer {
+			if rr.Header().Rrtype != dns.TypeCNAME {
+				onlyCNAME = false
+				break
+			}
+		}
+		if onlyCNAME {
 			return false
-		case 1:
-			if a.Answer[0].Header().Rrtype == dns.TypeCNAME {
-				return false
-			}
-		default:
-			if a.Answer[0].Header().Rrtype == dns.TypeCNAME && a.Answer[aLen-1].Header().Rrtype == dns.TypeCNAME {
-				return false
-			}
 		}
 	}
 	return true
