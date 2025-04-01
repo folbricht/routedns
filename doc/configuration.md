@@ -1230,7 +1230,7 @@ A route has the following fields:
 - `type` - If defined, only matches queries of this type, `A`, `AAAA`, `MX`, etc. Optional.
 - `types` - List of types. If defined, only matches queries whose type is in this list. Optional.
 - `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
-- `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. Optional.
+- `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details. Optional.
 - `source` - Network in CIDR notation. Used to route based on client IP. Optional.
 - `weekdays` - List of weekdays this route should match on. Possible values: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. Uses local time, not UTC.
 - `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`. Note that together with the `before` parameter it is possible to accidentally write routes that can never trigger. For example `after=12:00 before=11:00` can never match as both conditions have to be met for the route to be used.
