@@ -36,6 +36,10 @@ type FailBackOptions struct {
 	// Determines if a SERVFAIL returned by a resolver should be considered an
 	// error response and trigger a failover.
 	ServfailError bool
+
+	// Determines if an empty reponse returned by a resolver should be considered an
+	// error respone and trigger a failover.
+	EmptyError bool
 }
 
 var _ Resolver = &FailBack{}
@@ -61,9 +65,6 @@ func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
 
 // NewFailBack returns a new instance of a failover resolver group.
 func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBack {
-	if opt.ResetAfter == 0 {
-		opt.ResetAfter = time.Minute
-	}
 	return &FailBack{
 		id:        id,
 		resolvers: resolvers,
@@ -113,6 +114,11 @@ func (r *FailBack) current() (Resolver, int) {
 // requests. Another request could have initiated the failover already. So ignore if i is not
 // (no longer) the active store.
 func (r *FailBack) errorFrom(i int) {
+	// If ResetAfter is set to 0, we fail-over to the next resolver, but
+	// only for this single request. It won't affect any other requests.
+	if r.opt.ResetAfter == 0 {
+		return
+	}
 	r.mu.Lock()
 	if i != r.active {
 		r.mu.Unlock()
@@ -158,5 +164,24 @@ func (r *FailBack) startResetTimer() chan struct{} {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
-	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
+	if a == nil {
+		return true
+	}
+	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+		return false
+	}
+	if r.opt.EmptyError {
+		// Check if there are only CNAMEs in the answer section
+		var onlyCNAME = true
+		for _, rr := range a.Answer {
+			if rr.Header().Rrtype != dns.TypeCNAME {
+				onlyCNAME = false
+				break
+			}
+		}
+		if onlyCNAME {
+			return false
+		}
+	}
+	return true
 }
