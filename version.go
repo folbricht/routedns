@@ -1,8 +1,8 @@
 package rdns
 
 var (
-	BuildVersion string = "v0.1.106"
-	BuildTime    string = "Sun Mar 23 10:44:20 UTC 2025"
-	BuildNumber     string = "86"
+	BuildVersion string = "v0.1.107"
+	BuildTime    string = "Tue Apr  1 07:01:54 UTC 2025"
+	BuildNumber     string = "87"
 )
 
