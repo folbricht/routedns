@@ -72,12 +72,12 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 			defer cancel()
 			ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
 			if err != nil {
-				Log.Error("failed to lookup host locally", "error", err,
+				Log.Warn("failed to lookup host locally", "error", err,
 					"host", host)
 				return
 			}
 			if len(ips) == 0 {
-				Log.Error("failed to resolve dns server locally, forwarding to socks5 proxy", "error", err)
+				Log.Warn("failed to resolve dns server locally, forwarding to socks5 proxy", "error", err)
 				return
 			}
 			d.addr = net.JoinHostPort(ips[0].String(), port)
