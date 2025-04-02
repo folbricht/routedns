@@ -58,7 +58,7 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 			ip = nil
 		}
 		for _, name := range names {
-			name = strings.TrimSuffix(name, ".")
+			name = strings.ToLower(strings.TrimSuffix(name, "."))
 			ips := filters[name]
 			if isIP4 {
 				if len(ips.ip4) > maxHostsResponses {
@@ -89,7 +89,7 @@ func (m *HostsDB) Reload() (BlocklistDB, error) {
 func (m *HostsDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
 	q := msg.Question[0]
 	if q.Qtype == dns.TypePTR {
-		names, ok := m.ptrMap[q.Name]
+		names, ok := m.ptrMap[strings.ToLower(q.Name)]
 		var rule string
 		if len(names) > 0 {
 			rule = names[0]
@@ -99,7 +99,7 @@ func (m *HostsDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool
 			Rule: rule,
 		}, ok
 	}
-	name := strings.TrimSuffix(q.Name, ".")
+	name := strings.ToLower(strings.TrimSuffix(q.Name, "."))
 	ips, ok := m.filters[name]
 	if q.Qtype == dns.TypeA {
 		return ips.ip4,
