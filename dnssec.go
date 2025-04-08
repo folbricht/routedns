@@ -3,6 +3,7 @@ package rdns
 import (
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
@@ -60,14 +61,13 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return err
 		}
 		response = res.Copy()
-		rrSet = extractRRset(response)
-		if rrSet.checkHeaderIntegrity(qName(q)) {
-			return ErrForgedRRsig
+		rrSet = extractRRset(response, q.Question[0].Qtype)
+		if !rrSet.isSigned() {
+			nsecs, err = extractNSEC(res)
+		} else if rrSet.RrSig.Header().Name != qName(q) {
+			return errors.New("forged RRSIG header")
 		}
-		if rrSet.isEmpty() || !rrSet.isSigned() {
-			nsecs = extractNSEC(res)
-		}
-		return nil
+		return err
 	})
 
 	// Resolve the entire DNSSEC authentication chain
@@ -94,17 +94,22 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
-	if len(nsecs) > 0 && rrSet.isEmpty() { // NSEC Validate non-existance of record
+	if len(nsecs) > 0 {
+		if !rrSet.isEmpty() {
+			return nil, errors.New("NSEC response should not contain other RRs")
+		}
+
 		validNsecSet, err := authChain.ValidateNSEC(nsecs)
 		if err != nil {
 			Log.Debug("have some error validating the NSEC records")
 			return nil, err
 		}
 
-		var nsecErr error
-		qname := qName(response)
+		qname := strings.ToLower(qName(response))
 		qtype := response.Question[0].Qtype
 		rcode := rCode(response)
+
+		var nsecErr error
 		if validNsecSet[0].Header().Rrtype == dns.TypeNSEC {
 			nsecErr = denialNSEC(validNsecSet, qname, qtype)
 		} else {
@@ -112,9 +117,9 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 
 		if nsecErr != nil {
-			return nil, ErrResourceNotSigned
+			return nil, nsecErr
 		}
-		return nil, ErrNoResult
+		return forwardResponse(response, doIsSet), nil
 	}
 
 	if err := authChain.Verify(rrSet, d.rootKeys); err != nil {

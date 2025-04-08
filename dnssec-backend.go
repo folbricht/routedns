@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"cmp"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -15,36 +16,16 @@ import (
 )
 
 var (
-	ErrResourceNotSigned    = errors.New("resource is not signed with RRSIG")
-	ErrNoResult             = errors.New("requested RR not found")
-	ErrDnskeyNotAvailable   = errors.New("DNSKEY RR does not exist")
-	ErrDsNotAvailable       = errors.New("DS RR does not exist")
-	ErrDsFailed             = errors.New("DS query failed")
-	ErrRRSigNotAvailable    = errors.New("RRSIG does not exist")
-	ErrInvalidRRsig         = errors.New("invalid RRSIG")
-	ErrForgedRRsig          = errors.New("forged RRSIG header")
-	ErrRrsigValidationError = errors.New("RR doesn't validate against RRSIG")
-	ErrRrsigValidityPeriod  = errors.New("invalid RRSIG validity period")
-	ErrUnknownDsDigestType  = errors.New("unknown DS digest type")
-	ErrDsInvalid            = errors.New("DS RR does not match DNSKEY")
-	ErrDelegationChain      = errors.New("AuthChain has no Delegations")
+	ErrResourceNotSigned  = errors.New("resource is not signed with RRSIG")
+	ErrNoResult           = errors.New("requested RR not found")
+	ErrDnskeyNotAvailable = errors.New("DNSKEY RR does not exist")
+	ErrDsNotAvailable     = errors.New("DS RR does not exist")
+	ErrInvalidRRsig       = errors.New("invalid RRSIG")
 )
 
 type RRSet struct {
 	RrSet []dns.RR
 	RrSig *dns.RRSIG
-}
-
-type SignedZone struct {
-	Zone         string
-	Dnskey       *RRSet
-	Ds           *RRSet
-	ParentZone   *SignedZone
-	PubKeyLookup map[uint16]*dns.DNSKEY
-}
-
-type AuthenticationChain struct {
-	DelegationChain []SignedZone
 }
 
 func (r *RRSet) isSigned() bool {
@@ -55,12 +36,12 @@ func (r *RRSet) isEmpty() bool {
 	return len(r.RrSet) < 1
 }
 
-func (r *RRSet) checkHeaderIntegrity(qname string) bool {
-	return r.RrSig != nil && r.RrSig.Header().Name != qname
-}
-
-func (z *SignedZone) checkHasDnskeys() bool {
-	return len(z.Dnskey.RrSet) > 0
+type SignedZone struct {
+	Zone         string
+	Dnskey       *RRSet
+	Ds           *RRSet
+	ParentZone   *SignedZone
+	PubKeyLookup map[uint16]*dns.DNSKEY
 }
 
 func (z SignedZone) lookupPubKey(keyTag uint16) *dns.DNSKEY {
@@ -69,6 +50,10 @@ func (z SignedZone) lookupPubKey(keyTag uint16) *dns.DNSKEY {
 
 func (z SignedZone) addPubKey(k *dns.DNSKEY) {
 	z.PubKeyLookup[k.KeyTag()] = k
+}
+
+type AuthenticationChain struct {
+	DelegationChain []SignedZone
 }
 
 func forwardResponse(response *dns.Msg, doIsSet bool) *dns.Msg {
@@ -81,6 +66,7 @@ func forwardResponse(response *dns.Msg, doIsSet bool) *dns.Msg {
 			}
 		}
 
+		filteredResponse.Ns = nil
 		filteredResponse.Answer = filteredAnswers
 		return filteredResponse
 	}
@@ -95,40 +81,39 @@ func setDNSSECdo(q *dns.Msg) *dns.Msg {
 	return q
 }
 
-func newQuery(qname string, qtype uint16) *dns.Msg {
-	m := &dns.Msg{}
-	m.SetEdns0(4096, true)
-	return m.SetQuestion(qname, qtype)
-}
-
 func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RRSet, error) {
-	q := newQuery(qname, qtype)
-	r, err := doQuery(q, resolver, ci)
+	q := &dns.Msg{}
+	q.SetEdns0(4096, true)
+	q.SetQuestion(qname, qtype)
+
+	r, err := resolver.Resolve(q, ci)
 	if err != nil || r == nil {
-		return nil, err
+		return nil, ErrNoResult
 	}
-	return extractRRset(r), nil
+	if r.Rcode == dns.RcodeSuccess || r.Rcode == dns.RcodeNameError {
+		return extractRRset(r, qtype), nil
+	}
+	return nil, ErrInvalidRRsig
 }
 
-func extractRRset(r *dns.Msg) *RRSet {
-	result := &RRSet{}
-	if r.Answer == nil {
-		return result
-	}
-
-	result.RrSet = []dns.RR{}
+func extractRRset(r *dns.Msg, qtype uint16) *RRSet {
+	result := &RRSet{RrSet: []dns.RR{}}
 	for _, rr := range r.Answer {
 		switch t := rr.(type) {
 		case *dns.RRSIG:
-			result.RrSig = t
-		case *dns.DNSKEY, *dns.DS, *dns.A, *dns.AAAA:
-			result.RrSet = append(result.RrSet, rr)
+			if t.TypeCovered == qtype {
+				result.RrSig = t
+			}
+		default:
+			if rr.Header().Rrtype == qtype {
+				result.RrSet = append(result.RrSet, rr)
+			}
 		}
 	}
 	return result
 }
 
-func extractNSEC(r *dns.Msg) []dns.RR {
+func extractNSEC(r *dns.Msg) ([]dns.RR, error) {
 	result := []dns.RR{}
 	isNSEC := false
 	isNSEC3 := false
@@ -149,29 +134,16 @@ func extractNSEC(r *dns.Msg) []dns.RR {
 	}
 
 	if isNSEC && isNSEC3 {
-		return nil // "bogus mixed NSEC and NSEC3 records found"
+		return nil, errors.New("bogus mixed NSEC records")
 	}
-	return result
-}
-
-func doQuery(q *dns.Msg, resolver Resolver, ci ClientInfo) (*dns.Msg, error) {
-	r, err := resolver.Resolve(q, ci)
-	if err != nil || r == nil {
-		return nil, ErrNoResult
-	}
-	if r.Rcode == dns.RcodeSuccess || r.Rcode == dns.RcodeNameError {
-		return r, nil
-	}
-	return nil, ErrInvalidRRsig
+	return result, nil
 }
 
 func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*SignedZone, error) {
 	signedZone := &SignedZone{
-		Zone:   domainName,
-		Ds:     &RRSet{},
-		Dnskey: &RRSet{},
+		Zone:         domainName,
+		PubKeyLookup: make(map[uint16]*dns.DNSKEY),
 	}
-	signedZone.PubKeyLookup = make(map[uint16]*dns.DNSKEY)
 
 	var g errgroup.Group
 	g.Go(func() error {
@@ -181,7 +153,7 @@ func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*Sign
 			return err
 		}
 
-		if len(signedZone.Dnskey.RrSet) < 1 {
+		if signedZone.Dnskey.isEmpty() {
 			return ErrDnskeyNotAvailable
 		}
 
@@ -198,7 +170,7 @@ func queryDelegation(domainName string, resolver Resolver, ci ClientInfo) (*Sign
 		var err error
 		signedZone.Ds, err = getRRset(domainName, dns.TypeDS, resolver, ci)
 		if err != nil {
-			return ErrDsFailed
+			return err
 		}
 		return nil
 	})
@@ -215,18 +187,16 @@ func (authChain *AuthenticationChain) Populate(domainName string, resolver Resol
 	authChain.DelegationChain = make([]SignedZone, zonesToVerify)
 
 	var g errgroup.Group
-	for i := 0; i < zonesToVerify; i++ {
-		zoneName := dns.Fqdn(strings.Join(qnameComponents[i:], "."))
-		index := i
-
+	for zone := range zonesToVerify {
+		zoneName := dns.Fqdn(strings.Join(qnameComponents[zone:], "."))
 		g.Go(func() error {
 			delegation, err := queryDelegation(zoneName, resolver, ci)
 			if err != nil {
 				return err
 			}
-			authChain.DelegationChain[index] = *delegation
-			if index > 0 {
-				authChain.DelegationChain[index-1].ParentZone = delegation
+			authChain.DelegationChain[zone] = *delegation
+			if zone > 0 {
+				authChain.DelegationChain[zone-1].ParentZone = delegation
 			}
 			return nil
 		})
@@ -238,11 +208,11 @@ func (authChain *AuthenticationChain) Populate(domainName string, resolver Resol
 func (authChain *AuthenticationChain) Verify(answerRRset *RRSet, rootKeys *RRSet) error {
 	zones := authChain.DelegationChain
 	if len(zones) == 0 {
-		return ErrDelegationChain
+		return errors.New("AuthChain has no Delegations")
 	}
 
 	signedZone := authChain.DelegationChain[0]
-	if !signedZone.checkHasDnskeys() {
+	if signedZone.Dnskey.isEmpty() {
 		return ErrDnskeyNotAvailable
 	}
 
@@ -263,7 +233,7 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet, rootKeys *RRSet
 
 		err := signedZone.verifyRRSIG(signedZone.Dnskey)
 		if err != nil {
-			return ErrRrsigValidationError
+			return errors.New("RR doesn't validate against RRSIG")
 		}
 
 		if signedZone.ParentZone != nil {
@@ -273,11 +243,11 @@ func (authChain *AuthenticationChain) Verify(answerRRset *RRSet, rootKeys *RRSet
 
 			err := signedZone.ParentZone.verifyRRSIG(signedZone.Ds)
 			if err != nil {
-				return ErrRrsigValidationError
+				return errors.New("RR doesn't validate against RRSIG")
 			}
 			err = signedZone.verifyDS(signedZone.Ds.RrSet)
 			if err != nil {
-				return ErrDsInvalid
+				return errors.New("DS RR does not match DNSKEY")
 			}
 		}
 	}
@@ -342,7 +312,7 @@ func findNSEC(l []dns.RR, name string, t uint16) []dns.RR {
 
 func (z SignedZone) verifyRRSIG(signedRRset *RRSet) error {
 	if !signedRRset.isSigned() {
-		return ErrRRSigNotAvailable
+		return errors.New("RRSIG does not exist")
 	}
 
 	key := z.lookupPubKey(signedRRset.RrSig.KeyTag)
@@ -356,7 +326,7 @@ func (z SignedZone) verifyRRSIG(signedRRset *RRSet) error {
 	}
 
 	if !signedRRset.RrSig.ValidityPeriod(time.Now()) {
-		return ErrRrsigValidityPeriod
+		return errors.New("invalid RRSIG validity period")
 	}
 	return nil
 }
@@ -377,9 +347,9 @@ func (z SignedZone) verifyDS(dsRrset []dns.RR) error {
 		if parentDsDigest == dsDigest {
 			return nil
 		}
-		return ErrDsInvalid
+		return errors.New("DS RR does not match DNSKEY")
 	}
-	return ErrUnknownDsDigestType
+	return errors.New("unknown DS digest type")
 }
 
 func validateRootDNSKEY(dnskeyRRset *RRSet, rootKeys *RRSet) error {
@@ -399,87 +369,209 @@ func validateRootDNSKEY(dnskeyRRset *RRSet, rootKeys *RRSet) error {
 	return errors.New("root DNSKEY validation failed with all keys")
 }
 
-// NSEC and NSEC3 helpers (https://github.com/miekg/exdns/blob/master/q/q.go)
 func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
+	var nameExistsNSEC *dns.NSEC
+	var coveringNSEC *dns.NSEC
+
 	for _, rr := range nsec {
-		n := rr.(*dns.NSEC)
-		c1, _ := canonicalNameCompare(qname, n.Header().Name)
-		if c1 < 0 {
+		n, _ := rr.(*dns.NSEC)
+		ownerName := strings.ToLower(dns.Fqdn(n.Header().Name))
+		nextDomain := strings.ToLower(dns.Fqdn(n.NextDomain))
+
+		ownerComparedToQname, err := canonicalNameCompare(ownerName, qname)
+		if err != nil {
+			return fmt.Errorf("internal error comparing ownerName '%s': %w", ownerName, err)
+		}
+
+		nextComparedToQname, err := canonicalNameCompare(nextDomain, qname)
+		if err != nil {
+			return fmt.Errorf("internal error comparing nextDomain '%s': %w", nextDomain, err)
+		}
+
+		ownerComparedToNext, err := canonicalNameCompare(ownerName, nextDomain)
+		if err != nil {
+			return fmt.Errorf("internal error comparing NSEC owner '%s' vs next '%s': %w", ownerName, nextDomain, err)
+		}
+
+		if ownerComparedToQname == 0 {
+			nameExistsNSEC = n
 			continue
 		}
-		c2, _ := canonicalNameCompare(qname, n.NextDomain)
 
-		if c1 >= 0 && c2 < 0 {
-			Log.Debug("NSEC record covers non-existent domain", slog.String("qname", qname), slog.String("record", n.String()))
-			if slices.Contains(n.TypeBitMap, qtype) {
-				return errors.New("NSEC denial failed, type " + dns.TypeToString[qtype] + " exists in bitmap")
-			}
-			Log.Debug("Denial", slog.String("message", "secure authenticated denial of existence using NSEC for domain"), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
-			return nil
-		}
-	}
-	return errors.New("NSEC denial failed, no matching NSEC record found")
-}
-
-func denialNSEC3(nsec3 []dns.RR, qname string, qtype uint16, rcode string) error {
-	switch rcode {
-	case "NOERROR":
-		nsec30 := nsec3[0].(*dns.NSEC3)
-		if !nsec30.Match(qname) {
-			return errors.New("NSEC3 denial failed, owner name does not match qname")
-		}
-		for _, t := range nsec30.TypeBitMap {
-			if t == qtype {
-				return errors.New("NSEC3 denial failed, found type " + dns.TypeToString[qtype] + " in bitmap")
-			}
-			if t > qtype {
-				break
-			}
-		}
-		Log.Debug("Denial", slog.String("message", "secure authenticated denial of existence proof for no data"), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
-		return nil
-
-	case "NXDOMAIN":
-		indx := dns.Split(qname)
-		var ce, nc, wc string
-	ClosestEncloser:
-		for i := 0; i < len(indx); i++ {
-			label := qname[indx[i]:]
-			for j := 0; j < len(nsec3); j++ {
-				nsec3j := nsec3[j].(*dns.NSEC3)
-				if nsec3j.Match(label) {
-					ce = label
-					wc = "*." + ce
-					if i == 0 {
-						nc = qname
-					} else {
-						nc = qname[indx[i-1]:]
-					}
-					break ClosestEncloser
+		isCovering := false
+		if ownerComparedToQname == -1 && nextComparedToQname == 1 {
+			isCovering = true
+		} else {
+			if ownerComparedToNext == 1 {
+				if ownerComparedToQname == -1 || nextComparedToQname == 1 {
+					isCovering = true
 				}
 			}
 		}
-		if ce == "" {
-			return errors.New("NSEC3 denial failed, closest encloser not found")
-		}
-		Log.Debug("Denial", slog.String("message", "closest encloser "+ce), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
-		covered := 0
-		for _, rr := range nsec3 {
-			n := rr.(*dns.NSEC3)
-			if n.Cover(nc) {
-				Log.Debug("Denial", slog.String("message", "next closer "+nc+" covered by "+n.Header().Name), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
-				covered++
-			}
-			if n.Cover(wc) {
-				Log.Debug("Denial", slog.String("message", "source of synthesis "+wc+" covered by "+n.Header().Name), slog.String("qname", qname), slog.String("qtype", dns.TypeToString[qtype]))
-				covered++
-			}
-		}
-		if covered != 2 {
-			return errors.New("NSEC3 denial failed, too many covering records")
+
+		if isCovering {
+			coveringNSEC = n
+			continue
 		}
 	}
-	return nil
+
+	if coveringNSEC != nil {
+		if nameExistsNSEC != nil {
+			return errors.New("NSEC denial failed: contradictory NSEC records received (NXDOMAIN proof and NODATA proof)")
+		}
+		return nil
+	}
+
+	if nameExistsNSEC != nil {
+		if slices.Contains(nameExistsNSEC.TypeBitMap, qtype) {
+			return fmt.Errorf("NSEC denial failed: type %s proven to exist for %s via NSEC bitmap", dns.TypeToString[qtype], qname)
+		}
+		Log.Debug("NSEC proven non-existence")
+		return nil
+	}
+	return errors.New("NSEC denial failed: no validated NSEC record found proving non-existence for the query")
+}
+
+func denialNSEC3(nsec3 []dns.RR, qname string, qtype uint16, rcodeStr string) error {
+	var firstParams *dns.NSEC3
+	if n3, ok := nsec3[0].(*dns.NSEC3); ok {
+		firstParams = n3
+	} else {
+		foundFirst := false
+		for _, rr := range nsec3 {
+			if n3, ok := rr.(*dns.NSEC3); ok {
+				firstParams = n3
+				foundFirst = true
+				break
+			}
+		}
+		if !foundFirst {
+			return errors.New("NSEC3 denial check: no NSEC3 records found in input slice")
+		}
+	}
+
+	for _, rr := range nsec3 {
+		n3, ok := rr.(*dns.NSEC3)
+		if !ok {
+			continue
+		}
+
+		if n3.Hash != firstParams.Hash ||
+			n3.Flags != firstParams.Flags ||
+			n3.Iterations != firstParams.Iterations ||
+			n3.Salt != firstParams.Salt {
+			return errors.New("NSEC3 denial failed: inconsistent parameters in provided records")
+		}
+	}
+
+	switch rcodeStr {
+	case dns.RcodeToString[dns.RcodeSuccess]:
+		var matchingNSEC3 *dns.NSEC3
+		matchCount := 0
+
+		for _, rr := range nsec3 {
+			n3, ok := rr.(*dns.NSEC3)
+			if !ok {
+				continue
+			}
+
+			if n3.Match(qname) {
+				matchingNSEC3 = n3
+				matchCount++
+			}
+		}
+
+		if matchCount == 0 {
+			return errors.New("NSEC3 denial failed (NODATA): no NSEC3 record matches qname hash")
+		}
+		if matchCount > 1 {
+			return errors.New("NSEC3 denial failed (NODATA): multiple NSEC3 records match qname hash")
+		}
+		if slices.Contains(matchingNSEC3.TypeBitMap, qtype) {
+			return fmt.Errorf("NSEC3 denial failed: type %s proven to exist for %s via NSEC3 bitmap", dns.TypeToString[qtype], qname)
+		}
+		return nil
+
+	case dns.RcodeToString[dns.RcodeNameError]:
+		qLabels := dns.SplitDomainName(qname)
+		if qLabels == nil {
+			if qname == "." {
+				return errors.New("NSEC3 denial failed (NXDOMAIN): cannot process root query for NXDOMAIN proof")
+			}
+			return errors.New("NSEC3 denial failed (NXDOMAIN): could not split qname into labels")
+		}
+		qLabelCount := dns.CountLabel(qname)
+
+		var ce string = "."
+	SearchCE:
+		for i := range qLabelCount {
+			ancestorLabels := qLabels[i:]
+			potentialCE := dns.Fqdn(strings.Join(ancestorLabels, "."))
+
+			for _, rr := range nsec3 {
+				n3, ok := rr.(*dns.NSEC3)
+				if !ok {
+					continue
+				}
+				if n3.Match(potentialCE) {
+					ce = potentialCE
+					break SearchCE
+				}
+			}
+		}
+
+		var nc, wc string
+		if ce == "." {
+			if qLabelCount > 0 {
+				nc = dns.Fqdn(qLabels[0])
+			} else {
+				return errors.New("NSEC3 denial failed (NXDOMAIN): qname is empty or root, cannot determine nc")
+			}
+			wc = "*."
+		} else {
+			ceLabelCount := dns.CountLabel(ce)
+			if qLabelCount <= ceLabelCount {
+				if qname == ce {
+					return errors.New("NSEC3 denial failed (NXDOMAIN): qname matches closest encloser, but RCODE is NXDOMAIN")
+				}
+				return errors.New("NSEC3 denial failed (NXDOMAIN): inconsistent label counts for qname/ce")
+			}
+
+			ncLabelIndex := qLabelCount - ceLabelCount - 1
+			ncLabels := qLabels[ncLabelIndex:]
+			nc = dns.Fqdn(strings.Join(ncLabels, "."))
+			wc = dns.Fqdn("*." + ce)
+		}
+		foundCeMatch := false
+		foundNcCover := false
+		foundWcCover := false
+
+		for _, rr := range nsec3 {
+			n3, ok := rr.(*dns.NSEC3)
+			if !ok {
+				continue
+			}
+
+			if n3.Match(ce) {
+				foundCeMatch = true
+			}
+			if nc != "" && n3.Cover(nc) {
+				foundNcCover = true
+			}
+			if wc != "" && n3.Cover(wc) {
+				foundWcCover = true
+			}
+		}
+
+		if foundCeMatch && foundNcCover && foundWcCover {
+			Log.Debug("NSEC3 proven non-existence")
+			return nil // Successful NXDOMAIN denial proof
+		} else {
+			return fmt.Errorf("NSEC3 denial failed (NXDOMAIN): proof incomplete")
+		}
+	default:
+		return fmt.Errorf("NSEC3 denial check cannot prove denial for RCODE: %s", rcodeStr)
+	}
 }
 
 // canonicalNameCompare optimizes DNS name comparison according to RFC 4034.
@@ -496,10 +588,7 @@ func canonicalNameCompare(name1 string, name2 string) (int, error) {
 
 	len1 := len(labels1)
 	len2 := len(labels2)
-	minLen := len1
-	if len2 < minLen {
-		minLen = len2
-	}
+	minLen := min(len1, len2)
 
 	for i := 1; i <= minLen; i++ {
 		label1 := labels1[len1-i]
@@ -510,13 +599,7 @@ func canonicalNameCompare(name1 string, name2 string) (int, error) {
 		}
 	}
 
-	if len1 == len2 {
-		return 0, nil
-	} else if len1 < len2 {
-		return -1, nil
-	} else {
-		return 1, nil
-	}
+	return cmp.Compare(len1, len2), nil
 }
 
 type TrustAnchor struct {
