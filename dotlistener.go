@@ -23,8 +23,13 @@ type DoTListenerOptions struct {
 
 // NewDoTListener returns an instance of a DNS-over-TLS listener.
 func NewDoTListener(id, addr, network string, opt DoTListenerOptions, resolver Resolver) *DoTListener {
-	if network == "" {
+	switch network {
+	case "", "tcp":
 		network = "tcp-tls"
+	case "tcp4":
+		network = "tcp4-tls"
+	case "tcp6":
+		network = "tcp6-tls"
 	}
 	return &DoTListener{
 		id: id,
