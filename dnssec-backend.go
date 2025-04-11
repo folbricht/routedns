@@ -17,7 +17,6 @@ import (
 
 var (
 	ErrResourceNotSigned  = errors.New("resource is not signed with RRSIG")
-	ErrNoResult           = errors.New("requested RR not found")
 	ErrDnskeyNotAvailable = errors.New("DNSKEY RR does not exist")
 	ErrDsNotAvailable     = errors.New("DS RR does not exist")
 	ErrInvalidRRsig       = errors.New("invalid RRSIG")
@@ -88,7 +87,7 @@ func getRRset(qname string, qtype uint16, resolver Resolver, ci ClientInfo) (*RR
 
 	r, err := resolver.Resolve(q, ci)
 	if err != nil || r == nil {
-		return nil, ErrNoResult
+		return nil, err
 	}
 	if r.Rcode == dns.RcodeSuccess || r.Rcode == dns.RcodeNameError {
 		return extractRRset(r, qtype), nil
@@ -332,24 +331,33 @@ func (z SignedZone) verifyRRSIG(signedRRset *RRSet) error {
 }
 
 func (z SignedZone) verifyDS(dsRrset []dns.RR) error {
+	supportedDigestTypes := map[uint8]bool{
+		dns.SHA1:   true,
+		dns.SHA256: true,
+		dns.SHA384: true,
+		dns.SHA512: true,
+	}
+	lastError := errors.New("no verifiable DS record found")
+
 	for _, rr := range dsRrset {
 		ds := rr.(*dns.DS)
-		if ds.DigestType != dns.SHA256 {
+		if !supportedDigestTypes[ds.DigestType] {
 			continue
 		}
 
-		parentDsDigest := strings.ToUpper(ds.Digest)
 		key := z.lookupPubKey(ds.KeyTag)
 		if key == nil {
-			return ErrDnskeyNotAvailable
+			lastError = ErrDnskeyNotAvailable
+			continue
 		}
-		dsDigest := strings.ToUpper(key.ToDS(ds.DigestType).Digest)
-		if parentDsDigest == dsDigest {
+
+		if strings.EqualFold(ds.Digest, key.ToDS(ds.DigestType).Digest) {
 			return nil
+		} else {
+			lastError = errors.New("DS RR does not match DNSKEY")
 		}
-		return errors.New("DS RR does not match DNSKEY")
 	}
-	return errors.New("unknown DS digest type")
+	return lastError
 }
 
 func validateRootDNSKEY(dnskeyRRset *RRSet, rootKeys *RRSet) error {
@@ -441,8 +449,8 @@ func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
 
 // canonicalNameCompare optimizes DNS name comparison according to RFC 4034.
 func canonicalNameCompare(name1 string, name2 string) int {
-	labels1 := dns.SplitDomainName(dns.Fqdn(name1))
-	labels2 := dns.SplitDomainName(dns.Fqdn(name2))
+	labels1 := dns.SplitDomainName(name1)
+	labels2 := dns.SplitDomainName(name2)
 
 	len1 := len(labels1)
 	len2 := len(labels2)
@@ -451,7 +459,7 @@ func canonicalNameCompare(name1 string, name2 string) int {
 	for i := 1; i <= minLen; i++ {
 		label1 := labels1[len1-i]
 		label2 := labels2[len2-i]
-		res := strings.Compare(strings.ToLower(label1), strings.ToLower(label2))
+		res := strings.Compare(label1, label2)
 		if res != 0 {
 			return res
 		}
