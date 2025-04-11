@@ -27,6 +27,10 @@ type FailRotateOptions struct {
 	// Determines if a SERVFAIL returned by a resolver should be considered an
 	// error response and trigger a failover.
 	ServfailError bool
+
+	// Determines if an empty reponse returned by a resolver should be considered an
+	// error respone and trigger a failover.
+	EmptyError bool
 }
 
 var _ Resolver = &FailRotate{}
@@ -94,5 +98,24 @@ func (r *FailRotate) errorFrom(i int) {
 
 // Returns true is the response is considered successful given the options.
 func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
-	return a == nil || !(r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure)
+	if a == nil {
+		return true
+	}
+	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+		return false
+	}
+	if r.opt.EmptyError {
+		// Check if there are only CNAMEs in the answer section
+		var onlyCNAME = true
+		for _, rr := range a.Answer {
+			if rr.Header().Rrtype != dns.TypeCNAME {
+				onlyCNAME = false
+				break
+			}
+		}
+		if onlyCNAME {
+			return false
+		}
+	}
+	return true
 }
