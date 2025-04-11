@@ -378,25 +378,14 @@ func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
 		ownerName := strings.ToLower(dns.Fqdn(n.Header().Name))
 		nextDomain := strings.ToLower(dns.Fqdn(n.NextDomain))
 
-		ownerComparedToQname, err := canonicalNameCompare(ownerName, qname)
-		if err != nil {
-			return fmt.Errorf("internal error comparing ownerName '%s': %w", ownerName, err)
-		}
-
-		nextComparedToQname, err := canonicalNameCompare(nextDomain, qname)
-		if err != nil {
-			return fmt.Errorf("internal error comparing nextDomain '%s': %w", nextDomain, err)
-		}
-
-		ownerComparedToNext, err := canonicalNameCompare(ownerName, nextDomain)
-		if err != nil {
-			return fmt.Errorf("internal error comparing NSEC owner '%s' vs next '%s': %w", ownerName, nextDomain, err)
-		}
-
+		ownerComparedToQname := canonicalNameCompare(ownerName, qname)
 		if ownerComparedToQname == 0 {
 			nameExistsNSEC = n
 			continue
 		}
+
+		nextComparedToQname := canonicalNameCompare(nextDomain, qname)
+		ownerComparedToNext := canonicalNameCompare(ownerName, nextDomain)
 
 		isCovering := false
 		if ownerComparedToQname == -1 && nextComparedToQname == 1 {
@@ -419,17 +408,55 @@ func denialNSEC(nsec []dns.RR, qname string, qtype uint16) error {
 		if nameExistsNSEC != nil {
 			return errors.New("NSEC denial failed: contradictory NSEC records received (NXDOMAIN proof and NODATA proof)")
 		}
+		Log.Debug("NSEC proven complete non-existence of domain", "qname", qname)
 		return nil
 	}
 
 	if nameExistsNSEC != nil {
+		// check if all or most types are metadata types, it's likely a name-only NSEC
+		if len(nameExistsNSEC.TypeBitMap) <= 4 {
+			metaTypes := []uint16{
+				dns.TypeNSEC, dns.TypeRRSIG, dns.TypeNS, dns.TypeSOA, dns.TypeDNSKEY,
+			}
+			metaCount := 0
+			for _, t := range nameExistsNSEC.TypeBitMap {
+				if slices.Contains(metaTypes, t) {
+					metaCount++
+				}
+			}
+			if metaCount >= len(nameExistsNSEC.TypeBitMap)-1 {
+				Log.Debug("NSEC proven complete non-existence (from synthesized NSEC)", "qname", qname)
+				return nil
+			}
+		}
 		if slices.Contains(nameExistsNSEC.TypeBitMap, qtype) {
 			return fmt.Errorf("NSEC denial failed: type %s proven to exist for %s via NSEC bitmap", dns.TypeToString[qtype], qname)
 		}
-		Log.Debug("NSEC proven non-existence")
+		Log.Debug("NSEC proven non-existence of record type", "qname", qname,
+			"qtype", dns.TypeToString[qtype], "hasCoveringNSEC", coveringNSEC != nil)
 		return nil
 	}
 	return errors.New("NSEC denial failed: no validated NSEC record found proving non-existence for the query")
+}
+
+// canonicalNameCompare optimizes DNS name comparison according to RFC 4034.
+func canonicalNameCompare(name1 string, name2 string) int {
+	labels1 := dns.SplitDomainName(dns.Fqdn(name1))
+	labels2 := dns.SplitDomainName(dns.Fqdn(name2))
+
+	len1 := len(labels1)
+	len2 := len(labels2)
+	minLen := min(len1, len2)
+
+	for i := 1; i <= minLen; i++ {
+		label1 := labels1[len1-i]
+		label2 := labels2[len2-i]
+		res := strings.Compare(strings.ToLower(label1), strings.ToLower(label2))
+		if res != 0 {
+			return res
+		}
+	}
+	return cmp.Compare(len1, len2)
 }
 
 func denialNSEC3(nsec3 []dns.RR, qname string, qtype uint16, rcodeStr string) error {
@@ -572,34 +599,6 @@ func denialNSEC3(nsec3 []dns.RR, qname string, qtype uint16, rcodeStr string) er
 	default:
 		return fmt.Errorf("NSEC3 denial check cannot prove denial for RCODE: %s", rcodeStr)
 	}
-}
-
-// canonicalNameCompare optimizes DNS name comparison according to RFC 4034.
-func canonicalNameCompare(name1 string, name2 string) (int, error) {
-	if _, ok := dns.IsDomainName(dns.Fqdn(name1)); !ok {
-		return 0, errors.New("invalid domain name")
-	}
-	if _, ok := dns.IsDomainName(dns.Fqdn(name2)); !ok {
-		return 0, errors.New("invalid domain name")
-	}
-
-	labels1 := dns.SplitDomainName(dns.Fqdn(name1))
-	labels2 := dns.SplitDomainName(dns.Fqdn(name2))
-
-	len1 := len(labels1)
-	len2 := len(labels2)
-	minLen := min(len1, len2)
-
-	for i := 1; i <= minLen; i++ {
-		label1 := labels1[len1-i]
-		label2 := labels2[len2-i]
-		res := strings.Compare(strings.ToLower(label1), strings.ToLower(label2))
-		if res != 0 {
-			return res, nil
-		}
-	}
-
-	return cmp.Compare(len1, len2), nil
 }
 
 type TrustAnchor struct {
