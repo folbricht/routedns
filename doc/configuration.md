@@ -632,7 +632,7 @@ Query blocklists can be added to resolver-chains to prevent further processing o
 
 The blocklist group supports 4 types of blocklist formats:
 
-- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
+- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details on what is supported.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
   - `domain.com` matches just domain.com and no sub-domains.
   - `.domain.com` matches domain.com and all sub-domains.
@@ -675,7 +675,7 @@ type             = "blocklist-v2"
 resolvers        = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
 blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
 blocklist        = [                     # Define the names to be blocked
-  '(^|\.)evil\.com\.$',
+  '(?i)(^|\.)evil\.com\.$',
   '(^|\.)unsafe[123]\.org\.$',
 ]
 ```
@@ -1240,6 +1240,8 @@ A route has the following fields:
 - `listener` - Regexp that matches on the ID of the listener that first received.
 - `servername` - Regexp that matches on the TLS server name used in the TLS handshake with the listener.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
+
+For all regular expressions, see [Syntax](https://github.com/google/re2/wiki/Syntax) on what is supported. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`.
 
 Examples:
 
