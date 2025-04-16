@@ -179,9 +179,31 @@ func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
 				break
 			}
 		}
-		if onlyCNAME {
+		// The answer may be blank because it was blocked by a filter.
+		// If so (as determined by the presence of an EDE option), we
+		// consider it "successful" as we shouldn't retry or fail-over
+		// in that case.
+		if onlyCNAME && !hasExtendedErrorBlocked(a) {
 			return false
 		}
 	}
 	return true
+}
+
+// Returns true if the message contains an extended error option indicating it
+// was blocked, censored, or filtered.
+func hasExtendedErrorBlocked(msg *dns.Msg) bool {
+	edns0 := msg.IsEdns0()
+	if edns0 == nil {
+		return false
+	}
+	for _, opt := range edns0.Option {
+		if ede, ok := opt.(*dns.EDNS0_EDE); ok {
+			switch ede.InfoCode {
+			case dns.ExtendedErrorCodeBlocked, dns.ExtendedErrorCodeCensored, dns.ExtendedErrorCodeFiltered:
+				return true
+			}
+		}
+	}
+	return false
 }

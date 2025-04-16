@@ -113,7 +113,11 @@ func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
 				break
 			}
 		}
-		if onlyCNAME {
+		// The answer may be blank because it was blocked by a filter.
+		// If so (as determined by the presence of an EDE option), we
+		// consider it "successful" as we shouldn't retry or fail-over
+		// in that case.
+		if onlyCNAME && !hasExtendedErrorBlocked(a) {
 			return false
 		}
 	}
