@@ -82,7 +82,7 @@ func (r *FailBack) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		a   *dns.Msg
 	)
 	for i := 0; i < len(r.resolvers); i++ {
-		resolver, active := r.current()
+		resolver, active := r.current(i)
 		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
@@ -103,7 +103,12 @@ func (r *FailBack) String() string {
 }
 
 // Thread-safe method to return the currently active resolver.
-func (r *FailBack) current() (Resolver, int) {
+func (r *FailBack) current(attempt int) (Resolver, int) {
+	// With ResetAfter set to 0, simply iterate through the list of
+	// resolvers on a per-request basis.
+	if r.opt.ResetAfter == 0 {
+		return r.resolvers[attempt], attempt
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.resolvers[r.active], r.active
