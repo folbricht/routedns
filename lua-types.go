@@ -1,9 +1,10 @@
 package rdns
 
-// Define Lua types
-const (
-	luaResolverTypeName = "Resolver"
-	luaMessageTypeName  = "Message"
-	luaQuestionTypeName = "Question"
-	luaErrorTypeName    = "Error"
-)
+import lua "github.com/yuin/gopher-lua"
+
+func userDataWithMetatable(L *lua.LState, mtName string, value any) *lua.LUserData {
+	ud := L.NewUserData()
+	ud.Value = value
+	L.SetMetatable(ud, L.GetTypeMetatable(mtName))
+	return ud
+}

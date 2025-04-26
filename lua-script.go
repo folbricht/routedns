@@ -51,13 +51,13 @@ func (s *LuaScript) Call(fnName string, nret int, params ...any) ([]any, error) 
 	// }
 
 	args := []lua.LValue{
-		userDataWithType(s.L, luaMessageTypeName, params[0]),
-		userDataWithType(s.L, "", params[1]),
+		userDataWithMetatable(s.L, luaMessageMetatableName, params[0]),
+		userDataWithMetatable(s.L, "", params[1]),
 	}
 
 	// Call the resolve() function in the lua script
 	if err := s.L.CallByParam(lua.P{
-		Fn:      s.L.GetGlobal("resolve"),
+		Fn:      s.L.GetGlobal(fnName),
 		NRet:    nret,
 		Protect: true,
 	}, args...); err != nil {

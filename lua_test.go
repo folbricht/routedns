@@ -11,8 +11,10 @@ func TestLuaSimplePassthrough(t *testing.T) {
 	opt := LuaOptions{
 		Script: `
 function resolve(msg, ci)
-	resolver = Resolvers[1]
-	answer, err = resolver:resolve(msg, ci)
+		end
+function Resolve(msg, ci)
+	local resolver = Resolvers[1]
+	local answer, err = resolver:resolve(msg, ci)
 	if err ~= nil then
 		return nil, err
 	end
@@ -48,7 +50,7 @@ func TestLuaMissingResolveFunc(t *testing.T) {
 func TestLuaResolveError(t *testing.T) {
 	opt := LuaOptions{
 		Script: `
-function resolve(msg, ci)
+function Resolve(msg, ci)
 	return nil, Error.new("no bueno")
 end`,
 	}
@@ -70,9 +72,9 @@ end`,
 func TestLuaStaticAnswer(t *testing.T) {
 	opt := LuaOptions{
 		Script: `
-function resolve(msg, ci)
-	answer = Message.new()
-	question = Question.new()
+function Resolve(msg, ci)
+	local answer = Message.new()
+	local question = Question.new()
 	question:set_name("example.com.")
 	answer:set_question({question})
 	return answer, nil

@@ -7,9 +7,11 @@ import (
 
 // Question functions
 
+const luaQuestionMetatableName = "Question"
+
 func (s *LuaScript) RegisterQuestionType() {
 	L := s.L
-	mt := L.NewTypeMetatable(luaQuestionTypeName)
+	mt := L.NewTypeMetatable(luaQuestionMetatableName)
 	L.SetGlobal("Question", mt)
 	// static attributes
 	L.SetField(mt, "new", L.NewFunction(newQuestion))
@@ -25,7 +27,7 @@ func (s *LuaScript) RegisterQuestionType() {
 }
 
 func newQuestion(L *lua.LState) int {
-	L.Push(userDataWithType(L, luaQuestionTypeName, new(dns.Question)))
+	L.Push(userDataWithMetatable(L, luaQuestionMetatableName, new(dns.Question)))
 	return 1
 }
 

@@ -10,9 +10,11 @@ import (
 
 // Resolver functions
 
+const luaResolverMetatableName = "Resolver"
+
 func (s *LuaScript) InjectResolvers(resolvers []Resolver) {
 	L := s.L
-	mt := L.NewTypeMetatable(luaResolverTypeName)
+	mt := L.NewTypeMetatable(luaResolverMetatableName)
 	L.SetGlobal("Resolver", mt)
 
 	// Methods
@@ -22,7 +24,7 @@ func (s *LuaScript) InjectResolvers(resolvers []Resolver) {
 
 	table := L.CreateTable(len(resolvers), 0)
 	for _, r := range resolvers {
-		lv := userDataWithType(L, luaResolverTypeName, r)
+		lv := userDataWithMetatable(L, luaResolverMetatableName, r)
 		table.Append(lv)
 	}
 	L.SetGlobal("Resolvers", table)
@@ -49,11 +51,11 @@ func resolverResolve(L *lua.LState) int {
 	resp, err := r.Resolve(msg, ci)
 
 	// Return the answer
-	L.Push(userDataWithType(L, luaMessageTypeName, resp))
+	L.Push(userDataWithMetatable(L, luaMessageMetatableName, resp))
 
 	// Return the error
 	if err != nil {
-		L.Push(userDataWithType(L, luaErrorTypeName, err))
+		L.Push(userDataWithMetatable(L, luaErrorMetatableName, err))
 	} else {
 		L.Push(lua.LNil)
 	}

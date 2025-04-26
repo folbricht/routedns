@@ -7,10 +7,12 @@ import (
 
 // Message functions
 
+const luaMessageMetatableName = "Message"
+
 func (s *LuaScript) RegisterMessageType() {
 	L := s.L
-	mt := L.NewTypeMetatable(luaMessageTypeName)
-	L.SetGlobal("Message", mt)
+	mt := L.NewTypeMetatable(luaMessageMetatableName)
+	L.SetGlobal(luaMessageMetatableName, mt)
 	// static attributes
 	L.SetField(mt, "new", L.NewFunction(newMessage))
 	// methods
@@ -21,14 +23,14 @@ func (s *LuaScript) RegisterMessageType() {
 }
 
 func newMessage(L *lua.LState) int {
-	L.Push(userDataWithType(L, luaMessageTypeName, new(dns.Msg)))
+	L.Push(userDataWithMetatable(L, luaMessageMetatableName, new(dns.Msg)))
 	return 1
 }
 
 func messageGetQuestion(L *lua.LState, msg *dns.Msg) {
 	table := L.CreateTable(len(msg.Question), 0)
 	for _, q := range msg.Question {
-		lv := userDataWithType(L, luaQuestionTypeName, &q)
+		lv := userDataWithMetatable(L, luaQuestionMetatableName, &q)
 		table.Append(lv)
 	}
 	L.Push(table)

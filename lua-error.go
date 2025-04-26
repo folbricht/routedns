@@ -8,9 +8,11 @@ import (
 
 // Error functions
 
+const luaErrorMetatableName = "Error"
+
 func (s *LuaScript) RegisterErrorType() {
 	L := s.L
-	mt := L.NewTypeMetatable(luaErrorTypeName)
+	mt := L.NewTypeMetatable(luaErrorMetatableName)
 	L.SetGlobal("Error", mt)
 	// static attributes
 	L.SetField(mt, "new", L.NewFunction(newError))
@@ -22,7 +24,8 @@ func (s *LuaScript) RegisterErrorType() {
 
 func newError(L *lua.LState) int {
 	err := errors.New(L.CheckString(1))
-	L.Push(userDataWithType(L, luaErrorTypeName, err))
+	L.Push(userDataWithMetatable(L, luaErrorMetatableName, err))
 	return 1
 }
+
 func errorGetError(L *lua.LState, r error) { L.Push(lua.LString(r.Error())) }

@@ -61,7 +61,7 @@ func (r *Lua) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(r.id, q, ci)
 
 	// Call the "resolve" function in the script. It should return 2 values.
-	ret, err := s.Call("resolve", 2, q, ci)
+	ret, err := s.Call("Resolve", 2, q, ci)
 	if err != nil {
 		log.Error("failed to run lua script", "error", err)
 		return nil, err
@@ -103,9 +103,9 @@ func (r *Lua) newScript() (*LuaScript, error) {
 	// Inject the resolvers into the state (so they can be used in the script)
 	s.InjectResolvers(r.resolvers)
 
-	// The script must contain a resolve() function which is the entry point
-	if !s.HasFunction("resolve") {
-		return nil, errors.New("no resolve() function found in lua script")
+	// The script must contain a Resolve() function which is the entry point
+	if !s.HasFunction("Resolve") {
+		return nil, errors.New("no Resolve() function found in lua script")
 	}
 
 	return s, nil
