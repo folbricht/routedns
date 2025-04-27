@@ -1,9 +1,6 @@
 package rdns
 
 import (
-	"fmt"
-	"reflect"
-
 	"github.com/miekg/dns"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -61,14 +58,4 @@ func resolverResolve(L *lua.LState) int {
 	}
 
 	return 2
-}
-
-func getUserDataArg[T any](L *lua.LState, n int) (T, bool) {
-	ud := L.CheckUserData(n)
-	v, ok := ud.Value.(T)
-	if !ok {
-		L.ArgError(n, fmt.Sprintf("expected %v, got %T", reflect.TypeFor[T](), ud.Value))
-		return v, false
-	}
-	return v, true
 }

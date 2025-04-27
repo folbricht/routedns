@@ -96,6 +96,7 @@ func (r *Lua) newScript() (*LuaScript, error) {
 	}
 
 	// Register types and methods
+	s.RegisterConstants()
 	s.RegisterMessageType()
 	s.RegisterQuestionType()
 	s.RegisterErrorType()

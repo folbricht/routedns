@@ -10,8 +10,6 @@ import (
 func TestLuaSimplePassthrough(t *testing.T) {
 	opt := LuaOptions{
 		Script: `
-function resolve(msg, ci)
-		end
 function Resolve(msg, ci)
 	local resolver = Resolvers[1]
 	local answer, err = resolver:resolve(msg, ci)
@@ -70,28 +68,61 @@ end`,
 }
 
 func TestLuaStaticAnswer(t *testing.T) {
-	opt := LuaOptions{
-		Script: `
+	tests := map[string]LuaOptions{
+		"set_questions": {
+			Script: `
 function Resolve(msg, ci)
+	local question = Question.new("example.com.", TypeA)
 	local answer = Message.new()
-	local question = Question.new()
-	question:set_name("example.com.")
-	answer:set_question({question})
+	answer:set_id(msg:get_id()) 
+	answer:set_questions({question})
+	answer:set_response(true)
+	answer:set_rcode(RcodeNXDOMAIN)
 	return answer, nil
 end`,
+		},
+		"set_question": {
+			Script: `
+function Resolve(msg, ci)
+	local answer = Message.new()
+	answer:set_question("example.com.", TypeA)
+	answer:set_id(msg:get_id()) 
+	answer:set_response(true) 
+	answer:set_rcode(RcodeNXDOMAIN)
+	return answer, nil
+end`,
+		},
+		"set_reply": {
+			Script: `
+function Resolve(msg, ci)
+	local answer = Message.new()
+	answer:set_reply(msg)
+	answer:set_rcode(RcodeNXDOMAIN)
+	return answer, nil
+end`,
+		},
 	}
 
-	var ci ClientInfo
-	resolver := new(TestResolver)
+	for name, opt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var ci ClientInfo
+			resolver := new(TestResolver)
 
-	r, err := NewLua("test-lua", opt, resolver)
-	require.NoError(t, err)
+			r, err := NewLua("test-lua", opt, resolver)
+			require.NoError(t, err)
 
-	q := new(dns.Msg)
-	q.SetQuestion("example.com.", dns.TypeA)
+			q := new(dns.Msg)
+			q.SetQuestion("example.com.", dns.TypeA)
+			q.Id = 1234
 
-	answer, err := r.Resolve(q, ci)
-	require.NoError(t, err)
-	require.Equal(t, 0, resolver.HitCount())
-	require.Equal(t, "example.com.", answer.Question[0].Name)
+			answer, err := r.Resolve(q, ci)
+			require.NoError(t, err)
+			require.Equal(t, 0, resolver.HitCount())
+			require.Equal(t, "example.com.", answer.Question[0].Name)
+			require.Equal(t, dns.TypeA, answer.Question[0].Qtype)
+			require.Equal(t, uint16(1234), answer.Id)
+			require.Equal(t, dns.RcodeNameError, answer.Rcode)
+			require.True(t, answer.Response)
+		})
+	}
 }
