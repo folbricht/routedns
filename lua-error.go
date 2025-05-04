@@ -25,6 +25,6 @@ func (s *LuaScript) RegisterErrorType() {
 
 	// methods
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"error": getter(func(L *lua.LState, r error) { L.Push(lua.LString(r.Error())) }),
+		"error": method(func(L *lua.LState, r error) { L.Push(lua.LString(r.Error())) }),
 	}))
 }

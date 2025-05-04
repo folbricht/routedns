@@ -1,6 +1,8 @@
 package rdns
 
 import (
+	"fmt"
+
 	"github.com/miekg/dns"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -32,12 +34,44 @@ func (s *LuaScript) RegisterQuestionType() {
 		}))
 
 	// methods
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"get_name":   getter(func(L *lua.LState, r *dns.Question) { L.Push(lua.LString(r.Name)) }),
-		"get_qtype":  getter(func(L *lua.LState, r *dns.Question) { L.Push(lua.LNumber(r.Qtype)) }),
-		"get_qclass": getter(func(L *lua.LState, r *dns.Question) { L.Push(lua.LNumber(r.Qclass)) }),
-		"set_name":   setter(func(L *lua.LState, r *dns.Question) { r.Name = L.CheckString(2) }),
-		"set_qtype":  setter(func(L *lua.LState, r *dns.Question) { r.Qtype = uint16(L.CheckInt(2)) }),
-		"set_qclass": setter(func(L *lua.LState, r *dns.Question) { r.Qclass = uint16(L.CheckInt(2)) }),
-	}))
+	L.SetField(mt, "__index", L.NewFunction(
+		func(L *lua.LState) int {
+			question, ok := getUserDataArg[*dns.Question](L, 1)
+			if !ok {
+				return 0
+			}
+			fieldName := L.CheckString(2)
+			switch fieldName {
+			case "name":
+				L.Push(lua.LString(question.Name))
+			case "qtype":
+				L.Push(lua.LNumber(question.Qtype))
+			case "qclass":
+				L.Push(lua.LNumber(question.Qclass))
+			default:
+				L.ArgError(2, fmt.Sprintf("question does not have field %q", fieldName))
+				return 0
+			}
+			return 1
+		}))
+	L.SetField(mt, "__newindex", L.NewFunction(
+		func(L *lua.LState) int {
+			question, ok := getUserDataArg[*dns.Question](L, 1)
+			if !ok {
+				return 0
+			}
+			fieldName := L.CheckString(2)
+			switch fieldName {
+			case "name":
+				question.Name = L.CheckString(3)
+			case "qtype":
+				question.Qtype = uint16(L.CheckNumber(3))
+			case "qclass":
+				question.Qclass = uint16(L.CheckNumber(3))
+			default:
+				L.ArgError(2, fmt.Sprintf("question does not have field %q", fieldName))
+				return 0
+			}
+			return 0
+		}))
 }

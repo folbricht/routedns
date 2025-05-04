@@ -1,6 +1,8 @@
 package rdns
 
 import (
+	"fmt"
+
 	"github.com/miekg/dns"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -19,80 +21,96 @@ func (s *LuaScript) RegisterMessageType() {
 		return 1
 	}))
 	// methods
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"get_questions": getter(func(L *lua.LState, msg *dns.Msg) {
-			table := L.CreateTable(len(msg.Question), 0)
-			for _, q := range msg.Question {
-				lv := userDataWithMetatable(L, luaQuestionMetatableName, &q)
-				table.Append(lv)
-			}
-			L.Push(table)
-		}),
-		"set_questions": setter(func(L *lua.LState, msg *dns.Msg) {
-			table := L.CheckTable(2)
-			n := table.Len()
-			questions := make([]dns.Question, 0, n)
-			for i := range n {
-				element := table.RawGetInt(i + 1)
-				if element.Type() != lua.LTUserData {
-					L.ArgError(1, "invalid type, expected userdata")
-					return
-				}
-				lq := element.(*lua.LUserData)
-				q, ok := lq.Value.(*dns.Question)
-				if !ok {
-					L.ArgError(1, "invalid type, expected question")
-					return
-				}
-				questions = append(questions, *q)
-			}
-			msg.Question = questions
-		}),
-		"set_question": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.SetQuestion(L.CheckString(2), uint16(L.CheckNumber(3)))
-		}),
-		"set_id": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.Id = uint16(L.CheckInt(2))
-		}),
-		"get_id": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LNumber(msg.Id))
-		}),
-		"set_response": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.Response = L.CheckBool(2)
-		}),
-		"get_response": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LBool(msg.Response))
-		}),
-		"set_reply": setter(func(L *lua.LState, msg *dns.Msg) {
-			request, ok := getUserDataArg[*dns.Msg](L, 2)
+	L.SetField(mt, "__index", L.NewFunction(
+		func(L *lua.LState) int {
+			msg, ok := getUserDataArg[*dns.Msg](L, 1)
 			if !ok {
-				return
+				return 0
 			}
-			msg.SetReply(request)
-		}),
-		"set_rcode": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.Rcode = L.CheckInt(2)
-		}),
-		"get_rcode": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LNumber(msg.Rcode))
-		}),
-		"set_rd": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.RecursionDesired = L.CheckBool(2)
-		}),
-		"get_rd": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LBool(msg.RecursionDesired))
-		}),
-		"set_ra": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.RecursionAvailable = L.CheckBool(2)
-		}),
-		"get_ra": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LBool(msg.RecursionAvailable))
-		}),
-		"set_ad": setter(func(L *lua.LState, msg *dns.Msg) {
-			msg.AuthenticatedData = L.CheckBool(2)
-		}),
-		"get_ad": getter(func(L *lua.LState, msg *dns.Msg) {
-			L.Push(lua.LBool(msg.AuthenticatedData))
-		}),
-	}))
+			fieldName := L.CheckString(2)
+			switch fieldName {
+			case "questions":
+				table := L.CreateTable(len(msg.Question), 0)
+				for _, q := range msg.Question {
+					lv := userDataWithMetatable(L, luaQuestionMetatableName, &q)
+					table.Append(lv)
+				}
+				L.Push(table)
+			case "id":
+				L.Push(lua.LNumber(msg.Id))
+			case "response":
+				L.Push(lua.LBool(msg.Response))
+			case "rcode":
+				L.Push(lua.LNumber(msg.Rcode))
+			case "recursion_desired":
+				L.Push(lua.LBool(msg.RecursionDesired))
+			case "recursion_available":
+				L.Push(lua.LBool(msg.RecursionAvailable))
+			case "authenticated_data":
+				L.Push(lua.LBool(msg.AuthenticatedData))
+			case "set_reply":
+				L.Push(L.NewFunction(
+					method(func(L *lua.LState, msg *dns.Msg) {
+						request, ok := getUserDataArg[*dns.Msg](L, 2)
+						if !ok {
+							return
+						}
+						msg.SetReply(request)
+					})))
+			case "set_question":
+				L.Push(L.NewFunction(
+					method(func(L *lua.LState, msg *dns.Msg) {
+						msg.SetQuestion(L.CheckString(2), uint16(L.CheckNumber(3)))
+					})))
+			default:
+				L.ArgError(2, fmt.Sprintf("message does not have field %q", fieldName))
+				return 0
+			}
+			return 1
+		}))
+	L.SetField(mt, "__newindex", L.NewFunction(
+		func(L *lua.LState) int {
+			msg, ok := getUserDataArg[*dns.Msg](L, 1)
+			if !ok {
+				return 0
+			}
+			fieldName := L.CheckString(2)
+			switch fieldName {
+			case "questions":
+				table := L.CheckTable(3)
+				n := table.Len()
+				questions := make([]dns.Question, 0, n)
+				for i := range n {
+					element := table.RawGetInt(i + 1)
+					if element.Type() != lua.LTUserData {
+						L.ArgError(3, "invalid type, expected userdata")
+						return 0
+					}
+					lq := element.(*lua.LUserData)
+					q, ok := lq.Value.(*dns.Question)
+					if !ok {
+						L.ArgError(3, "invalid type, expected question")
+						return 0
+					}
+					questions = append(questions, *q)
+				}
+				msg.Question = questions
+			case "id":
+				msg.Id = uint16(L.CheckInt(3))
+			case "response":
+				msg.Response = L.CheckBool(3)
+			case "rcode":
+				msg.Rcode = L.CheckInt(3)
+			case "recursion_desired":
+				msg.RecursionDesired = L.CheckBool(3)
+			case "recursion_available":
+				msg.RecursionAvailable = L.CheckBool(3)
+			case "authenticated_data":
+				msg.AuthenticatedData = L.CheckBool(3)
+			default:
+				L.ArgError(2, fmt.Sprintf("question does not have field %q", fieldName))
+				return 0
+			}
+			return 0
+		}))
 }

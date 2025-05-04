@@ -74,10 +74,10 @@ func TestLuaStaticAnswer(t *testing.T) {
 function Resolve(msg, ci)
 	local question = Question.new("example.com.", TypeA)
 	local answer = Message.new()
-	answer:set_id(msg:get_id()) 
-	answer:set_questions({question})
-	answer:set_response(true)
-	answer:set_rcode(RcodeNXDOMAIN)
+	answer.id = msg.id
+	answer.questions = { question }
+	answer.response = true
+	answer.rcode = RcodeNXDOMAIN
 	return answer, nil
 end`,
 		},
@@ -86,9 +86,9 @@ end`,
 function Resolve(msg, ci)
 	local answer = Message.new()
 	answer:set_question("example.com.", TypeA)
-	answer:set_id(msg:get_id()) 
-	answer:set_response(true) 
-	answer:set_rcode(RcodeNXDOMAIN)
+	answer.id = msg.id
+	answer.response = true
+	answer.rcode = RcodeNXDOMAIN
 	return answer, nil
 end`,
 		},
@@ -97,7 +97,7 @@ end`,
 function Resolve(msg, ci)
 	local answer = Message.new()
 	answer:set_reply(msg)
-	answer:set_rcode(RcodeNXDOMAIN)
+	answer.rcode = RcodeNXDOMAIN
 	return answer, nil
 end`,
 		},
@@ -125,6 +125,36 @@ end`,
 			require.True(t, answer.Response)
 		})
 	}
+}
+
+func TestLuaQuestionOperations(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- Create a new Question record and test value set/get operations
+	local question = Question.new("example.com.", TypeA)
+	if question.name ~= "example.com." or question.qtype ~= TypeA then
+		return nil, Error.new("unexpected name value")
+	end
+	question.name = "testing."
+	if question.name ~= "testing." then
+		return nil, Error.new("unexpected name value")
+	end
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeMX)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
 }
 
 func TestLuaRROperations(t *testing.T) {

@@ -92,8 +92,6 @@ func (s *LuaScript) RegisterRRTypes() {
 			}
 			value := L.CheckAny(3)
 
-			// TODO: handle header fields directly
-
 			if err := rrDB.set(rr, fieldName, value); err != nil {
 				L.ArgError(1, err.Error()) // TODO: figure out arg position
 				return 0
