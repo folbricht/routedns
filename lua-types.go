@@ -13,7 +13,7 @@ func (s *LuaScript) RegisterConstants() {
 		L.SetGlobal("Type"+name, lua.LNumber(value))
 	}
 
-	// Register ClassINET, etc
+	// Register ClassIN, etc
 	for value, name := range dns.ClassToString {
 		L.SetGlobal("Class"+name, lua.LNumber(value))
 	}

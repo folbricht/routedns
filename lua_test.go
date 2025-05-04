@@ -126,3 +126,43 @@ end`,
 		})
 	}
 }
+
+func TestLuaRROperations(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- Create a new TXT record and test value set/get operations
+	rr = RR.new({rtype=TypeTXT, name="example.com.", class=ClassIN, ttl=60, txt={"hello", "world"}})
+	if rr.txt[1] ~= "hello" then
+		return nil, Error.new("unexpected value")
+	end
+	rr.txt = {"bla"}
+	if rr.txt[1] ~= "bla" then
+		return nil, Error.new("unexpected value in txt")
+	end
+
+	-- Create a new A record and test value set/get operations
+	rr = RR.new({rtype=TypeA, name="example.com.", class=ClassIN, ttl=60, a="1.2.3.4"})
+	if rr.rtype ~= TypeA or rr.name ~= "example.com." then
+		return nil, Error.new("unexpected name value")
+	end
+	rr.a = "1.1.1.1"
+	if rr.a ~= "1.1.1.1" then
+		return nil, Error.new("unexpected ip value")
+	end
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeMX)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+}
