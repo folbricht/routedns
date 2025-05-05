@@ -16,6 +16,7 @@ func TestDomainDB(t *testing.T) {
 		"x.x.domain3.com", // more general wildcard above should take precedence
 		"domain4.com",     // the more general rule below wins
 		".domain4.com",
+		".DOMAIN5.com",
 	})
 
 	m, err := NewDomainDB("testlist", loader)
@@ -44,6 +45,12 @@ func TestDomainDB(t *testing.T) {
 		// not matching
 		{"unblocked.test.", false},
 		{"com.", false},
+
+		// capitalized query
+		{"Domain1.com.", true},
+
+		// match capital blocklist item
+		{"domain5.com.", true},
 	}
 	for _, test := range tests {
 		msg := new(dns.Msg)

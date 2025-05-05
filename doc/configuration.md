@@ -519,6 +519,7 @@ Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a switch to the next resolver. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -539,8 +540,9 @@ Fail-Back groups are instantiated with `type = "fail-back"` in the groups sectio
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
-- `reset-after` - Time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
+- `reset-after` - Non-zero time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), or a negative number to switch back immediately, default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -561,8 +563,9 @@ Random groups are instantiated with `type = "random"` in the groups section of t
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
-- `reset-after` - Time in seconds to disable a failed resolver, default 60.
+- `reset-after` - Non-zero time in seconds to disable a failed resolver, or a negative number to disable only for a single request, default 60.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure which will take the resolver temporarily out of the group. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -632,7 +635,7 @@ Query blocklists can be added to resolver-chains to prevent further processing o
 
 The blocklist group supports 4 types of blocklist formats:
 
-- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found.
+- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details on what is supported.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
   - `domain.com` matches just domain.com and no sub-domains.
   - `.domain.com` matches domain.com and all sub-domains.
@@ -675,7 +678,7 @@ type             = "blocklist-v2"
 resolvers        = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
 blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
 blocklist        = [                     # Define the names to be blocked
-  '(^|\.)evil\.com\.$',
+  '(?i)(^|\.)evil\.com\.$',
   '(^|\.)unsafe[123]\.org\.$',
 ]
 ```
@@ -1254,7 +1257,7 @@ A route has the following fields:
 - `type` - If defined, only matches queries of this type, `A`, `AAAA`, `MX`, etc. Optional.
 - `types` - List of types. If defined, only matches queries whose type is in this list. Optional.
 - `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
-- `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. Optional.
+- `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details. Optional.
 - `source` - Network in CIDR notation. Used to route based on client IP. Optional.
 - `weekdays` - List of weekdays this route should match on. Possible values: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. Uses local time, not UTC.
 - `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`. Note that together with the `before` parameter it is possible to accidentally write routes that can never trigger. For example `after=12:00 before=11:00` can never match as both conditions have to be met for the route to be used.
@@ -1264,6 +1267,8 @@ A route has the following fields:
 - `listener` - Regexp that matches on the ID of the listener that first received.
 - `servername` - Regexp that matches on the TLS server name used in the TLS handshake with the listener.
 - `resolver` - The identifier of a resolver, group, or another router. Required.
+
+For all regular expressions, see [Syntax](https://github.com/google/re2/wiki/Syntax) on what is supported. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`.
 
 Examples:
 

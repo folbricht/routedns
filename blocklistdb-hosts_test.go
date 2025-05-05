@@ -18,6 +18,7 @@ func TestHostsDB(t *testing.T) {
 		"::          domain5.com",
 		"::1         domain6.com",
 		"192.168.1.1 domain6.com",
+		"127.0.0.1   DOMAIN7.com",
 	})
 
 	m, err := NewHostsDB("testlist", loader)
@@ -36,6 +37,8 @@ func TestHostsDB(t *testing.T) {
 		{"domain6.com.", dns.TypeA, true, []net.IP{net.ParseIP("192.168.1.1")}},
 		{"domain6.com.", dns.TypeAAAA, true, []net.IP{net.ParseIP("::1")}},
 		{"domainX.com.", dns.TypeA, false, nil},
+		{"Domain1.com.", dns.TypeA, true, []net.IP{net.ParseIP("127.0.0.1")}},
+		{"domain7.com.", dns.TypeA, true, []net.IP{net.ParseIP("127.0.0.1")}},
 	}
 	for _, test := range tests {
 		msg := new(dns.Msg)

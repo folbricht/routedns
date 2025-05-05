@@ -1,0 +1,12 @@
+# This config starts a UDP  resolver on the loopback interface for plain DNS.
+# All queries are forwarded to a local DNS-over-DOT server.
+
+[resolvers.local-dot]
+address = "127.0.0.1:853"
+protocol = "dot"
+ca = "example-config/server.crt"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "local-dot"

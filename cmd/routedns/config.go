@@ -109,8 +109,9 @@ type group struct {
 	EDNS0Data  []byte                  `toml:"edns0-data"`  // EDNS0 modifier option data
 
 	// Failover/Failback options
-	ResetAfter    int  `toml:"reset-after"`    // Time in seconds after which to reset resolvers in fail-back and random groups, default 60.
+	ResetAfter    *int `toml:"reset-after"`    // Time in seconds after which to reset resolvers in fail-back and random groups, or 0 to reset immediately, default 60.
 	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
+	EmptyError    bool `toml:"empty-error"`    // If true, empty responses are considered errors and cause failover etc.
 
 	// Cache options
 	Backend                  *cacheBackend

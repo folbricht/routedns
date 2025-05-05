@@ -1,0 +1,12 @@
+# Server-side of a simple DNS-over-TLS proxy.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[listeners.local-dot]
+address = "127.0.0.1:853"
+protocol = "dot"
+resolver = "cloudflare-dot"
+server-crt = "example-config/server.crt"
+server-key = "example-config/server.key"
