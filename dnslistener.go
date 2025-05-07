@@ -82,7 +82,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			a, err = r.Resolve(req, ci)
 			if err != nil {
 				metrics.err.Add("resolve", 1)
-				log.Error("failed to resolve", "error", err)
+				log.Warn("failed to resolve", "error", err)
 				a = servfail(req)
 			}
 		} else {

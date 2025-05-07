@@ -148,7 +148,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	var length uint16
 	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
 		s.metrics.err.Add("read", 1)
-		log.Error("failed to read query", "error", err)
+		log.Warn("failed to read query", "error", err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	if _, err := io.ReadFull(stream, b); err != nil {
 		s.metrics.err.Add("read", 1)
-		log.Error("failed to read query", "error", err)
+		log.Warn("failed to read query", "error", err)
 		return
 	}
 
@@ -165,7 +165,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
 		s.metrics.err.Add("unpack", 1)
-		log.Error("failed to decode query", "error", err)
+		log.Warn("failed to decode query", "error", err)
 		return
 	}
 	log = log.With("qname", qName(q))
@@ -177,7 +177,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	if edns0 != nil {
 		for _, opt := range edns0.Option {
 			if opt.Option() == dns.EDNS0TCPKEEPALIVE {
-				log.Error("received edns-tcp-keepalive, aborting")
+				log.Warn("received edns-tcp-keepalive, aborting")
 				s.metrics.err.Add("keepalive", 1)
 				return
 			}
@@ -187,14 +187,14 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	// Resolve the query using the next hop
 	a, err := s.r.Resolve(q, ci)
 	if err != nil {
-		log.Error("failed to resolve", "error", err)
+		log.Warn("failed to resolve", "error", err)
 		a = new(dns.Msg)
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
 
 	p, err := a.Pack()
 	if err != nil {
-		log.Error("failed to encode response", "error", err)
+		log.Warn("failed to encode response", "error", err)
 		s.metrics.err.Add("encode", 1)
 		return
 	}
@@ -208,7 +208,7 @@ func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci Clien
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	if _, err = stream.Write(out); err != nil {
 		s.metrics.err.Add("send", 1)
-		log.Error("failed to send response", "error", err)
+		log.Warn("failed to send response", "error", err)
 	}
 	s.metrics.response.Add(rCode(a), 1)
 }

@@ -61,7 +61,7 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if r.opt.LogRequest {
 		msg = fmt.Sprintf("id=%s qid=%d type=query client=%s qtype=%s qname=%s", r.id, q.Id, ci.SourceIP.String(), qType(q), qName(q))
 		if _, err := r.writer.Write([]byte(msg)); err != nil {
-			logger(r.id, q, ci).Error("failed to send syslog",
+			logger(r.id, q, ci).Warn("failed to send syslog",
 				"error", err)
 		}
 	}
@@ -85,7 +85,7 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 				s := strings.ReplaceAll(rr.String(), "\t", " ")
 				msg = fmt.Sprintf("id=%s qid=%d type=answer answer-num=%d/%d qtype=%s qname=%s answer=%q", r.id, q.Id, i+1, len(answerRRs), qType(q), qName(q), s)
 				if _, err := r.writer.Write([]byte(msg)); err != nil {
-					logger(r.id, q, ci).Error("failed to send syslog",
+					logger(r.id, q, ci).Warn("failed to send syslog",
 						"error", err)
 				}
 			}
@@ -93,14 +93,14 @@ func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			if len(answerRRs) == 0 {
 				msg = fmt.Sprintf("id=%s qid=%d type=answer qtype=%s qname=%s rcode=NODATA", r.id, q.Id, qType(q), qName(q))
 				if _, err := r.writer.Write([]byte(msg)); err != nil {
-					logger(r.id, q, ci).Error("failed to send syslog",
+					logger(r.id, q, ci).Warn("failed to send syslog",
 						"error", err)
 				}
 			}
 		} else {
 			msg = fmt.Sprintf("id=%s qid=%d type=answer qtype=%s qname=%s rcode=%s", r.id, q.Id, qType(q), qName(q), dns.RcodeToString[a.Rcode])
 			if _, err := r.writer.Write([]byte(msg)); err != nil {
-				logger(r.id, q, ci).Error("failed to send syslog",
+				logger(r.id, q, ci).Warn("failed to send syslog",
 					"error", err)
 			}
 		}
