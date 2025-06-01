@@ -20,7 +20,7 @@ func (s *LuaScript) RegisterMessageType() {
 		L.Push(userDataWithMetatable(L, luaMessageMetatableName, new(dns.Msg)))
 		return 1
 	}))
-	// methods
+	// methods and fields
 	L.SetField(mt, "__index", L.NewFunction(
 		func(L *lua.LState) int {
 			msg, ok := getUserDataArg[*dns.Msg](L, 1)
@@ -50,17 +50,44 @@ func (s *LuaScript) RegisterMessageType() {
 				L.Push(lua.LBool(msg.AuthenticatedData))
 			case "set_reply":
 				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) {
+					method(func(L *lua.LState, msg *dns.Msg) int {
 						request, ok := getUserDataArg[*dns.Msg](L, 2)
 						if !ok {
-							return
+							return 0
 						}
 						msg.SetReply(request)
+						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
+						L.Push(lv)
+						return 1
 					})))
 			case "set_question":
 				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) {
+					method(func(L *lua.LState, msg *dns.Msg) int {
 						msg.SetQuestion(L.CheckString(2), uint16(L.CheckNumber(3)))
+						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
+						L.Push(lv)
+						return 1
+					})))
+			case "is_edns0":
+				L.Push(L.NewFunction(
+					method(func(L *lua.LState, msg *dns.Msg) int {
+						opt := msg.IsEdns0()
+						if opt == nil {
+							L.Push(lua.LNil)
+							return 1
+						}
+						// TODO: Return an OPT metatable name here, not generic RR
+						lv := userDataWithMetatable(L, luaRRHeaderMetatableName, opt)
+						L.Push(lv)
+						return 1
+					})))
+			case "set_edns0":
+				L.Push(L.NewFunction(
+					method(func(L *lua.LState, msg *dns.Msg) int {
+						msg.SetEdns0(uint16(L.CheckNumber(2)), L.CheckBool(3))
+						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
+						L.Push(lv)
+						return 1
 					})))
 			default:
 				L.ArgError(2, fmt.Sprintf("message does not have field %q", fieldName))

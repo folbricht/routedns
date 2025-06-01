@@ -50,7 +50,7 @@ func (s *LuaScript) RegisterRRTypes() {
 					rr.Header().Rrtype = rtype
 					return
 				}
-				if setErr := rrDB.set(rr, k.String(), v); setErr != nil && err == nil {
+				if setErr := rrDB.set(L, rr, k.String(), v); setErr != nil && err == nil {
 					err = setErr
 				}
 			})
@@ -72,7 +72,7 @@ func (s *LuaScript) RegisterRRTypes() {
 			}
 			fieldName := L.CheckString(2)
 
-			lv, err := rrDB.get(rr, fieldName)
+			lv, err := rrDB.get(L, rr, fieldName)
 			if err != nil {
 				L.ArgError(1, err.Error()) // TODO: figure out arg position
 				return 0
@@ -92,7 +92,7 @@ func (s *LuaScript) RegisterRRTypes() {
 			}
 			value := L.CheckAny(3)
 
-			if err := rrDB.set(rr, fieldName, value); err != nil {
+			if err := rrDB.set(L, rr, fieldName, value); err != nil {
 				L.ArgError(1, err.Error()) // TODO: figure out arg position
 				return 0
 			}
@@ -104,8 +104,8 @@ type rrFieldDB map[reflect.Type]map[string]rrFieldAccessors
 
 type rrFieldAccessors struct {
 	index []int
-	get   func(reflect.Value) (lua.LValue, error)
-	set   func(reflect.Value, lua.LValue) error
+	get   func(*lua.LState, reflect.Value) (lua.LValue, error)
+	set   func(*lua.LState, reflect.Value, lua.LValue) error
 }
 
 var rrDB = func() rrFieldDB {
@@ -164,7 +164,7 @@ func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors 
 		case reflect.TypeOf([]dns.SVCBKeyValue{}): // interface
 			a.get, a.set = getUnsupported(field.Name), setUnsupported(field.Name)
 		case reflect.TypeOf([]dns.EDNS0{}): // in OPT
-		// TODO:implement
+			a.get, a.set = getEDNS0SliceField, setEDNS0SliceField
 		default:
 			panic(fmt.Errorf("unsupported RR field value type %v in %s", field.Type, typ))
 		}
@@ -174,7 +174,7 @@ func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors 
 	return fields
 }
 
-func (db rrFieldDB) get(rr dns.RR, name string) (lua.LValue, error) {
+func (db rrFieldDB) get(L *lua.LState, rr dns.RR, name string) (lua.LValue, error) {
 	// If the field is in the header, we handle that directly
 	switch name {
 	case "name":
@@ -199,10 +199,10 @@ func (db rrFieldDB) get(rr dns.RR, name string) (lua.LValue, error) {
 		return nil, luaArgError{2, fmt.Errorf("unknown field name %q for type %v", name, reflect.TypeOf(rr).String())}
 	}
 	fieldValue := reflect.ValueOf(rr).Elem().FieldByIndex(a.index)
-	return a.get(fieldValue)
+	return a.get(L, fieldValue)
 }
 
-func (db rrFieldDB) set(rr dns.RR, name string, value lua.LValue) error {
+func (db rrFieldDB) set(L *lua.LState, rr dns.RR, name string, value lua.LValue) error {
 	// If the field is in the header, we handle that directly
 	switch name {
 	case "name":
@@ -239,7 +239,7 @@ func (db rrFieldDB) set(rr dns.RR, name string, value lua.LValue) error {
 		return luaArgError{2, fmt.Errorf("unknown field name %q for type %v", name, reflect.TypeOf(rr).String())}
 	}
 	fieldValue := reflect.ValueOf(rr).Elem().FieldByIndex(a.index)
-	return a.set(fieldValue, value)
+	return a.set(L, fieldValue, value)
 }
 
 type luaArgError struct {
@@ -247,12 +247,12 @@ type luaArgError struct {
 	error
 }
 
-func getStringField(fieldValue reflect.Value) (lua.LValue, error) {
+func getStringField(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(string)
 	return lua.LString(field), nil
 }
 
-func setStringField(fieldValue reflect.Value, value lua.LValue) error {
+func setStringField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTString {
 		return luaArgError{3, fmt.Errorf("expected string value, got %v", value.Type().String())}
 	}
@@ -260,16 +260,16 @@ func setStringField(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getStringSliceField(fieldValue reflect.Value) (lua.LValue, error) {
+func getStringSliceField(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().([]string)
-	table := (*lua.LState)(nil).CreateTable(len(field), 0)
+	table := L.CreateTable(len(field), 0)
 	for _, v := range field {
 		table.Append(lua.LString(v))
 	}
 	return table, nil
 }
 
-func setStringSliceField(fieldValue reflect.Value, value lua.LValue) error {
+func setStringSliceField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTTable {
 		return luaArgError{3, fmt.Errorf("expected array, got %v", value.Type().String())}
 	}
@@ -289,16 +289,16 @@ func setStringSliceField(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUint16SliceField(fieldValue reflect.Value) (lua.LValue, error) {
+func getUint16SliceField(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().([]uint16)
-	table := (*lua.LState)(nil).CreateTable(len(field), 0)
+	table := L.CreateTable(len(field), 0)
 	for _, v := range field {
 		table.Append(lua.LNumber(v))
 	}
 	return table, nil
 }
 
-func setUint16SliceField(fieldValue reflect.Value, value lua.LValue) error {
+func setUint16SliceField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTTable {
 		return luaArgError{3, fmt.Errorf("expected array, got %v", value.Type().String())}
 	}
@@ -318,12 +318,12 @@ func setUint16SliceField(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUint8Field(fieldValue reflect.Value) (lua.LValue, error) {
+func getUint8Field(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(uint8)
 	return lua.LNumber(field), nil
 }
 
-func setUint8Field(fieldValue reflect.Value, value lua.LValue) error {
+func setUint8Field(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTNumber {
 		return luaArgError{3, fmt.Errorf("expected number, got %v", value.Type().String())}
 	}
@@ -331,12 +331,12 @@ func setUint8Field(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUint16Field(fieldValue reflect.Value) (lua.LValue, error) {
+func getUint16Field(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(uint16)
 	return lua.LNumber(field), nil
 }
 
-func setUint16Field(fieldValue reflect.Value, value lua.LValue) error {
+func setUint16Field(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTNumber {
 		return luaArgError{3, fmt.Errorf("expected number, got %v", value.Type().String())}
 	}
@@ -344,12 +344,12 @@ func setUint16Field(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUint32Field(fieldValue reflect.Value) (lua.LValue, error) {
+func getUint32Field(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(uint32)
 	return lua.LNumber(field), nil
 }
 
-func setUint32Field(fieldValue reflect.Value, value lua.LValue) error {
+func setUint32Field(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTNumber {
 		return luaArgError{3, fmt.Errorf("expected number, got %v", value.Type().String())}
 	}
@@ -357,12 +357,12 @@ func setUint32Field(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUint64Field(fieldValue reflect.Value) (lua.LValue, error) {
+func getUint64Field(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(uint64)
 	return lua.LNumber(field), nil
 }
 
-func setUint64Field(fieldValue reflect.Value, value lua.LValue) error {
+func setUint64Field(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	if value.Type() != lua.LTNumber {
 		return luaArgError{3, fmt.Errorf("expected number, got %v", value.Type().String())}
 	}
@@ -370,7 +370,7 @@ func setUint64Field(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getIPField(fieldValue reflect.Value) (lua.LValue, error) {
+func getIPField(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
 	field := fieldValue.Interface().(net.IP)
 	if field == nil {
 		return lua.LNil, nil
@@ -378,7 +378,7 @@ func getIPField(fieldValue reflect.Value) (lua.LValue, error) {
 	return lua.LString(field.String()), nil
 }
 
-func setIPField(fieldValue reflect.Value, value lua.LValue) error {
+func setIPField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
 	switch value.Type() {
 	case lua.LTString:
 		ip := net.ParseIP(value.String())
@@ -394,14 +394,55 @@ func setIPField(fieldValue reflect.Value, value lua.LValue) error {
 	return nil
 }
 
-func getUnsupported(name string) func(v reflect.Value) (lua.LValue, error) {
-	return func(v reflect.Value) (lua.LValue, error) {
+func getEDNS0SliceField(L *lua.LState, fieldValue reflect.Value) (lua.LValue, error) {
+	field := fieldValue.Interface().([]dns.EDNS0)
+	table := L.CreateTable(len(field), 0)
+	for _, v := range field {
+		// TODO: This is a hacky way to determine the name of the
+		// metatable for EDNS0 recods. Ideally we reference some name
+		// constant or function exposed by the code that registers the
+		// EDNS0 types.
+		mtName := reflect.TypeOf(v).String()
+		if i := strings.LastIndex(mtName, "."); i >= 0 {
+			mtName = mtName[i+1:]
+		}
+		lv := userDataWithMetatable(L, mtName, v)
+		table.Append(lv)
+	}
+	return table, nil
+}
+
+func setEDNS0SliceField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error {
+	if value.Type() != lua.LTTable {
+		return luaArgError{3, fmt.Errorf("expected array, got %v", value.Type().String())}
+	}
+	table := value.(*lua.LTable)
+	n := table.Len()
+	stringValues := make([]dns.EDNS0, 0, n)
+	for i := range n {
+		element := table.RawGetInt(i + 1)
+		ud, ok := element.(*lua.LUserData)
+		if !ok {
+			return luaArgError{3, fmt.Errorf("expected userdata, got %v", element.Type().String())}
+		}
+		value, ok := ud.Value.(dns.EDNS0)
+		if !ok {
+			return luaArgError{3, fmt.Errorf("expected EDNS0, got %T", ud)}
+		}
+		stringValues = append(stringValues, value)
+	}
+	newVal := reflect.ValueOf(stringValues)
+	fieldValue.Set(newVal)
+	return nil
+}
+func getUnsupported(name string) func(L *lua.LState, v reflect.Value) (lua.LValue, error) {
+	return func(L *lua.LState, v reflect.Value) (lua.LValue, error) {
 		return nil, luaArgError{2, fmt.Errorf("getting %q not supported", name)}
 	}
 }
 
-func setUnsupported(name string) func(v reflect.Value, value lua.LValue) error {
-	return func(v reflect.Value, value lua.LValue) error {
+func setUnsupported(name string) func(L *lua.LState, v reflect.Value, value lua.LValue) error {
+	return func(L *lua.LState, v reflect.Value, value lua.LValue) error {
 		return luaArgError{2, fmt.Errorf("setting %q not supported", name)}
 	}
 }
