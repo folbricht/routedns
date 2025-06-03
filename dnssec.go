@@ -33,13 +33,13 @@ func NewDNSSECvalidator(id string, resolver Resolver, opt DNSSECvalidatorOptions
 
 	var rk *RRSet
 	if len(opt.TrustAnchorFile) != 0 {
-		rk, err := loadRootKeysFromXML(opt.TrustAnchorFile)
+		var err error
+		rk, err = loadRootKeysFromXML(opt.TrustAnchorFile)
 		if err != nil || len(rk.RrSet) == 0 {
 			Log.Error("Error loading root keys", slog.String("error", err.Error()))
 			return nil
 		}
-
-		Log.Debug("Succesfully Loaded Root Keys")
+		Log.Debug("Successfully Loaded Root Keys")
 	}
 
 	return &DNSSECvalidator{id: id, resolver: resolver, fwdUnsigned: mode, rootKeys: rk}
@@ -52,8 +52,10 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	var response *dns.Msg
 	var nsecs []dns.RR
 
-	doIsSet := q.IsEdns0().Do()
-
+	doIsSet := false
+	if edns := q.IsEdns0(); edns != nil {
+		doIsSet = edns.Do()
+	}
 	// Resolve the A query with RRSIG option
 	g.Go(func() error {
 		res, err := d.resolver.Resolve(setDNSSECdo(q), ci)
@@ -64,7 +66,7 @@ func (d *DNSSECvalidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		rrSet = extractRRset(response, q.Question[0].Qtype)
 		if !rrSet.isSigned() {
 			nsecs, err = extractNSEC(res)
-		} else if rrSet.RrSig.Header().Name != qName(q) {
+		} else if !strings.EqualFold(rrSet.RrSig.Header().Name, qName(q)) {
 			return errors.New("forged RRSIG header")
 		}
 		return err
