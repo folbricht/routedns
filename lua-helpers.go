@@ -35,6 +35,13 @@ func getUserDataArg[T any](L *lua.LState, n int) (T, bool) {
 	return v, true
 }
 
+func userDataWithMetatable(L *lua.LState, mtName string, value any) *lua.LUserData {
+	ud := L.NewUserData()
+	ud.Value = value
+	L.SetMetatable(ud, L.GetTypeMetatable(mtName))
+	return ud
+}
+
 type numbers interface {
 	int | int8 | int16 | int32 | int64 | float32 | float64 | uint | uint8 | uint16 | uint32 | uint64
 }

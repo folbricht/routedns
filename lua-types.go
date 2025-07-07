@@ -42,10 +42,3 @@ func (s *LuaScript) RegisterConstants() {
 		L.SetGlobal(name, lua.LNumber(value))
 	}
 }
-
-func userDataWithMetatable(L *lua.LState, mtName string, value any) *lua.LUserData {
-	ud := L.NewUserData()
-	ud.Value = value
-	L.SetMetatable(ud, L.GetTypeMetatable(mtName))
-	return ud
-}
