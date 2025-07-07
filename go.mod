@@ -42,6 +42,7 @@ require (
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/txthinking/runnergroup v0.0.0-20230325130830-408dc5853f86 // indirect
+	github.com/yuin/gopher-lua v1.1.2-0.20241109074121-ccacf662c9d2 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
