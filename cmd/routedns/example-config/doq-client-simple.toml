@@ -3,6 +3,7 @@
 [resolvers.adguard-doq]
 address = "dns-unfiltered.adguard.com:8853"
 protocol = "doq"
+enable-0rtt = true
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

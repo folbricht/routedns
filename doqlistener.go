@@ -103,7 +103,7 @@ func (s DoQListener) Stop() error {
 	return s.ln.Close()
 }
 
-func (s DoQListener) handleConnection(connection quic.Connection) {
+func (s DoQListener) handleConnection(connection *quic.Conn) {
 	tlsServerName := connection.ConnectionState().TLS.ServerName
 
 	ci := ClientInfo{
@@ -139,7 +139,7 @@ func (s DoQListener) handleConnection(connection quic.Connection) {
 	}
 }
 
-func (s DoQListener) handleStream(stream quic.Stream, log *slog.Logger, ci ClientInfo) {
+func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)
