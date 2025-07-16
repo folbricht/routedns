@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -28,7 +29,7 @@ type DoQClient struct {
 	log      *slog.Logger
 	metrics  *ListenerMetrics
 
-	connection quicConnection
+	connection *quicConnection
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -89,23 +90,22 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		"protocol", "doq",
 		"endpoint", endpoint,
 	)
+	config := &quic.Config{
+		TokenStore:           quic.NewLRUTokenStore(10, 10),
+		HandshakeIdleTimeout: opt.QueryTimeout,
+	}
+	qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT)
+	if err != nil {
+		return nil, err
+	}
 	return &DoQClient{
 		id:               id,
 		endpoint:         endpoint,
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		connection: quicConnection{
-			hostname:  host,
-			lAddr:     lAddr,
-			tlsConfig: tlsConfig,
-			config: &quic.Config{
-				TokenStore:           quic.NewLRUTokenStore(10, 10),
-				HandshakeIdleTimeout: opt.QueryTimeout,
-			},
-			Use0RTT: opt.Use0RTT,
-		},
-		metrics: NewListenerMetrics("client", id),
+		connection:       qConn,
+		metrics:          NewListenerMetrics("client", id),
 	}, nil
 }
 
@@ -208,35 +208,78 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
-func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stream, error) {
+// QUIC connection that automatically restarts when it's used after having
+// timed out. Needed since the quic.Transport doesn't have any connection
+// management and timed out connections aren't restarted. This one uses
+// EarlyConnection so we can use 0-RTT if the server supports it (lower
+// latency)
+type quicConnection struct {
+	*quic.Conn
+
+	lAddr     net.IP
+	tlsConfig *tls.Config
+	config    *quic.Config
+	mu        sync.Mutex
+	udpConn   *net.UDPConn
+	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
+}
+
+func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool) (*quicConnection, error) {
+	// Initialize the local UDP connection, it'll be re-used for all connections
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	if err != nil {
+		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
+		return nil, err
+	}
+	quicTransport := &quic.Transport{Conn: udpConn}
+
+	dialFunc := quicTransport.Dial
+	if use0RTT {
+		dialFunc = quicTransport.DialEarly
+	}
+
+	return &quicConnection{
+		lAddr:     lAddr,
+		tlsConfig: tlsConfig,
+		config:    config,
+		udpConn:   udpConn,
+		dialFunc:  dialFunc,
+	}, nil
+}
+
+func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (*quic.Stream, error) {
+	rAddr, err := net.ResolveUDPAddr("udp", endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// If we don't have a connection yet, make one
-	if s.EarlyConnection == nil {
+	if s.Conn == nil {
 		var err error
-		s.EarlyConnection, s.udpConn, err = quicDial(context.TODO(), endpoint, s.lAddr, s.tlsConfig, s.config, s.Use0RTT)
+		s.Conn, err = s.dialFunc(context.Background(), rAddr, s.tlsConfig, s.config)
 		if err != nil {
 			log.Warn("failed to open connection",
-				"hostname", s.hostname,
+				"hostname", endpoint,
 				"error", err,
 			)
 			return nil, err
 		}
-		s.rAddr = endpoint
 	}
 
 	// If we can't get a stream then restart the connection and try again once
-	stream, err := s.EarlyConnection.OpenStream()
+	stream, err := s.Conn.OpenStream()
 	if err != nil {
 		log.Debug("temporary fail when trying to open stream, attempting new connection",
 			"error", err,
 		)
-		if err = quicRestart(s); err != nil {
-			log.Warn("failed to open connection", "hostname", s.hostname, "error", err)
+		if err = s.restart(rAddr); err != nil {
+			log.Warn("failed to open connection", "hostname", endpoint, "error", err)
 			return nil, err
 		}
-		stream, err = s.EarlyConnection.OpenStream()
+		stream, err = s.Conn.OpenStream()
 		if err != nil {
 			log.Warn("failed to open stream",
 				"error", err,
@@ -244,4 +287,24 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (quic.Stre
 		}
 	}
 	return stream, err
+}
+
+// Try to open a new connection. This function should be called with the mutex
+// locked.
+func (s *quicConnection) restart(rAddr *net.UDPAddr) error {
+	_ = s.Conn.CloseWithError(DOQNoError, "")
+
+	Log.Debug("attempt reconnect", slog.String("protocol", "quic"),
+		slog.String("local", s.lAddr.String()),
+		slog.String("remote", rAddr.String()),
+	)
+	conn, err := s.dialFunc(context.TODO(), rAddr, s.tlsConfig, s.config)
+	if err != nil {
+		Log.Warn("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("remote", rAddr.String()), slog.String("local", s.lAddr.String())), "error", err)
+		return err
+	}
+	Log.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("remote", rAddr.String()), slog.String("local", s.lAddr.String())))
+
+	s.Conn = conn
+	return nil
 }
