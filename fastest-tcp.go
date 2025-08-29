@@ -3,7 +3,6 @@ package rdns
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"strconv"
@@ -70,8 +69,6 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if question.Qtype != dns.TypeA && question.Qtype != dns.TypeAAAA {
 		return a, nil
 	}
-	fmt.Println("Responses")
-	fmt.Println(a)
 
 	// Extract the IP responses
 	var ipRRs []dns.RR

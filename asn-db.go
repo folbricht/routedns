@@ -75,8 +75,6 @@ func (m *ASNDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 		return nil, false
 	}
 
-	fmt.Println(record)
-
 	// Check if the ASN is on the blocklist
 	if _, ok := m.db[record.ASN]; ok {
 		return &BlocklistMatch{
