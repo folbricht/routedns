@@ -1,5 +1,3 @@
-# Simple proxy using a cache.
-
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"
