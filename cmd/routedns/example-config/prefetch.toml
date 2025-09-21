@@ -1,0 +1,21 @@
+# Simple proxy using a cache.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+
+[groups.cloudflare-prefetch]
+type = "prefetch"
+resolvers = ["cloudflare-cached"]
+prefetch-window = "15m"  # Minimum time between queries to remain eligible for prefetch
+prefetch-threshold = 3   # Min number of queries to enable prefetch
+prefetch-max-items = 100 # Max number of items to track for prefetch
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-prefetch"
