@@ -17,7 +17,7 @@ Features:
 - Support for plain DNS, UDP and TCP for incoming and outgoing requests
 - Connection reuse and pipelining queries for efficiency
 - Multiple failover and load-balancing algorithms, caching, in-line query/response modification and translation (full list [here](doc/configuration.md))
-- Routing of queries based on query type, class, query name, time, or client IP
+- Routing of queries based on query type, class, query name, time, client IP, or EDNS Client Subnet (ECS)
 - EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
 - EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
 - Support for bootstrap addresses to avoid the initial service name lookup
@@ -144,6 +144,16 @@ These blocklists are loaded and refreshed daily by RouteDNS daily over HTTP. Ref
 ![use-case-6](doc/use-case-6.svg)
 
 The configuration can be found [here](cmd/routedns/example-config/use-case-6.toml)
+
+### Use case 7: Per-client filtering with an EDNS-aware frontend
+
+This use case addresses applying different DNS policies to individual clients when using a frontend resolver that forwards the original client IP using an EDNS Client Subnet (ECS) option (e.g., `add-subnet=32` for dnsmasq). When a frontend resolver forwards a query, the source IP of the DNS packet becomes the IP of the resolver itself, hiding the original client's IP. As a result, RouteDNS's standard `source` routing rule cannot be used to differentiate between the individual clients behind the resolver.
+
+The `ecs-source` routing option allows RouteDNS to inspect the ECS data in the query and route based on the original client's IP address. In this example, we apply a strict ad-blocking policy to a child's device (`192.168.1.10`) while giving an adult's device (`192.168.1.20`) unfiltered resolution, even though both queries are forwarded by the same DNS frontend resolver (e.g. dnsmasq).
+
+![use-case-7](doc/use-case-7.svg)
+
+The configuration can be found [here](cmd/routedns/example-config/use-case-7.toml)
 
 ## Links
 
