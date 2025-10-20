@@ -117,6 +117,8 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		var ecsIP net.IP
 		opt := q.IsEdns0()
 		if opt != nil {
+			// According to RFC 7871, there should be only one EDNS0_SUBNET option per query.
+            // This code checks only the first found EDNS0_SUBNET option.
 			for _, s := range opt.Option {
 				if e, ok := s.(*dns.EDNS0_SUBNET); ok {
 					ecsIP = e.Address
