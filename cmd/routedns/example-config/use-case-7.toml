@@ -1,0 +1,34 @@
+# RouteDNS config demonstrating routing based on EDNS Client Subnet (ECS).
+# This allows for per-client policies even when RouteDNS is behind another
+# resolver that forwards the original client IP in an ECS record.
+
+# Listener for the local network, receiving queries from the frontend resolver.
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "ecs-router"
+
+# A router that inspects the ECS data in incoming queries.
+[routers.ecs-router]
+routes = [
+    # Route 1: Queries with an ECS source of 192.168.1.10/32 are sent to the adblocker.
+    { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
+
+    # Route 2: Queries with an ECS source of 192.168.1.20/32 are sent to the unfiltered resolver.
+    { ecs-source = "192.168.1.20/32", resolver = "unfiltered-resolver" },
+
+    # Route 3 (Default): All other queries (including those without ECS) go to the unfiltered resolver.
+    { resolver = "unfiltered-resolver" },
+]
+
+# A simple blocklist resolver for the "strict" policy.
+# It blocks queries for "doubleclick.net" and forwards others.
+[groups.adblock-resolver]
+type = "blocklist-v2"
+resolvers = ["unfiltered-resolver"]
+blocklist = ["doubleclick.net"]
+
+# An unfiltered, secure upstream resolver (Cloudflare DoT).
+[resolvers.unfiltered-resolver]
+address = "1.1.1.1:853"
+protocol = "dot"

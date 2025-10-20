@@ -17,6 +17,7 @@ type route struct {
 	class         uint16
 	name          *regexp.Regexp
 	source        *net.IPNet
+	ecsSource     *net.IPNet
 	weekdays      []time.Weekday
 	before        *TimeOfDay
 	after         *TimeOfDay
@@ -28,7 +29,7 @@ type route struct {
 }
 
 // NewRoute initializes a route from string parameters.
-func NewRoute(name, class string, types, weekdays []string, before, after, source, dohPath, listenerID, tlsServerName string, resolver Resolver) (*route, error) {
+func NewRoute(name, class string, types, weekdays []string, before, after, source, ecsSource, dohPath, listenerID, tlsServerName string, resolver Resolver) (*route, error) {
 	if resolver == nil {
 		return nil, errors.New("no resolver defined for route")
 	}
@@ -75,6 +76,13 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 			return nil, err
 		}
 	}
+	var ecsNet *net.IPNet
+	if ecsSource != "" {
+		_, ecsNet, err = net.ParseCIDR(ecsSource)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &route{
 		types:         t,
 		class:         c,
@@ -83,6 +91,7 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 		before:        b,
 		after:         a,
 		source:        sNet,
+		ecsSource:     ecsNet,
 		dohPath:       dohRe,
 		listenerID:    listenerRe,
 		tlsServerName: tlsRe,
@@ -103,6 +112,23 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 	}
 	if r.source != nil && !r.source.Contains(ci.SourceIP) {
 		return r.inverted
+	}
+	if r.ecsSource != nil {
+		var ecsIP net.IP
+		opt := q.IsEdns0()
+		if opt != nil {
+			// According to RFC 7871, there should be only one EDNS0_SUBNET option per query.
+            // This code checks only the first found EDNS0_SUBNET option.
+			for _, s := range opt.Option {
+				if e, ok := s.(*dns.EDNS0_SUBNET); ok {
+					ecsIP = e.Address
+					break
+				}
+			}
+		}
+		if ecsIP == nil || !r.ecsSource.Contains(ecsIP) {
+			return r.inverted
+		}
 	}
 	if !r.dohPath.MatchString(ci.DoHPath) {
 		return r.inverted
@@ -165,6 +191,9 @@ func (r *route) String() string {
 	}
 	if r.source != nil {
 		fragments = append(fragments, "source="+r.source.String())
+	}
+	if r.ecsSource != nil {
+		fragments = append(fragments, "ecs-source="+r.ecsSource.String())
 	}
 	if r.dohPath.String() != "" {
 		fragments = append(fragments, "doh-path="+r.dohPath.String())
