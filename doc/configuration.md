@@ -438,6 +438,40 @@ backend = {type = "redis", redis-address = "127.0.0.1:6379", redis-key-prefix = 
 
 Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml), [cache-redis.toml](../cmd/routedns/example-config/cache-redis.toml)
 
+### Prefetch
+
+While [Cache](#cache) has built-in prefetch capabilities, a the dedicated `prefetch` group may be more appropriate for some use cases. Its tracks the number of queries made and actively prefetches frequenty requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
+
+#### Configuration
+
+Prefetch groups are instantiated with `type = "prefetch"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+- `prefetch-window` - Minimum time between queries to remain eligible for prefetching. Supports time units `s`, `m`, and `h`. Default: 1h.
+- `prefetch-threshold` - Minimum number of queries for a name to enable prefetch. Default: 5.
+- `prefetch-max-items` - Maximum number of items to track for prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0 or not set. 
+
+#### Examples
+
+Simple cache without size-limit:
+
+```toml
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+
+[groups.cloudflare-prefetch]
+type = "prefetch"
+resolvers = ["cloudflare-cached"]
+prefetch-window = "15m"
+prefetch-threshold = 3
+prefetch-max-items = 100
+```
+
+Example config files: [prefetch.toml](../cmd/routedns/example-config/prefetch.toml)
+
 ### TTL modifier
 
 A TTL modifier is used to adjust the time-to-live (TTL) of DNS responses. This is used to avoid frequently making the same queries to upstream because many responses have a value that is unreasonably low as outlined in this [blog](https://blog.apnic.net/2019/11/12/stop-using-ridiculously-low-dns-ttls). It's also possible to restrict very high TTL values that might be used in DNS poisoning attacks.

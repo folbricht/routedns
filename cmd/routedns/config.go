@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	rdns "github.com/folbricht/routedns"
@@ -187,6 +188,11 @@ type group struct {
 	// Query logging options
 	OutputFile   string `toml:"output-file"`   // Log filename or blank for STDOUT
 	OutputFormat string `toml:"output-format"` // "text" or "json"
+
+	// Prefetch options
+	PrefetchWindow    time.Duration `toml:"prefetch-window"`    // Time period to track queries for prefetching, default 1h
+	PrefetchThreshold uint64        `toml:"prefetch-threshold"` // Minimum number of queries per window to enable prefetching, default 5
+	PrefetchMaxItems  int           `toml:"prefetch-max-items"` // Maximum number of items to track prefetch, default (0) unlimited
 }
 
 // Block/Allowlist items for blocklist-v2
