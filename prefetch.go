@@ -43,9 +43,8 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 	}
 	r.nameCache = expirationcache.NewCache[atomic.Uint64](context.Background(), expirationcache.Options{
 		MaxSize: uint(opt.PrefetchMaxItems),
-		// OnAfterPutFn: options.OnPrefetchAfterPut,
 	})
-	r.queryCache = expirationcache.NewCacheWithOnExpired[dns.Msg](context.Background(), expirationcache.Options{
+	r.queryCache = expirationcache.NewCacheWithOnExpired(context.Background(), expirationcache.Options{
 		MaxSize: uint(opt.PrefetchMaxItems),
 	},
 		func(ctx context.Context, key string) (val *dns.Msg, ttl time.Duration) {
