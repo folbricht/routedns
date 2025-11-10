@@ -18,8 +18,9 @@ type redisBackend struct {
 }
 
 type RedisBackendOptions struct {
-	RedisOptions redis.Options
-	KeyPrefix    string
+	RedisOptions   redis.Options
+	KeyPrefix      string
+	AsyncSetOnMiss bool
 }
 
 var _ CacheBackend = (*redisBackend)(nil)
@@ -33,6 +34,12 @@ func NewRedisBackend(opt RedisBackendOptions) *redisBackend {
 }
 
 func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
+	// TTL guard: skip storing if already expired
+	ttl := time.Until(item.Expiry)
+	if ttl <= 0 {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	key := b.keyFromQuery(query)
@@ -41,7 +48,7 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 		Log.Error("failed to marshal cache record", "error", err)
 		return
 	}
-	if err := b.client.Set(ctx, key, value, time.Until(item.Expiry)).Err(); err != nil {
+	if err := b.client.Set(ctx, key, value, ttl).Err(); err != nil {
 		Log.Error("failed to write to redis", "error", err)
 	}
 }
