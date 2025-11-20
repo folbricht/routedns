@@ -16,7 +16,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/pion/dtls/v2 v2.2.11
 	github.com/pkg/errors v0.9.1
-	github.com/quic-go/quic-go v0.54.1
+	github.com/quic-go/quic-go v0.56.0
 	github.com/redis/go-redis/v9 v9.5.5
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.9.0
@@ -41,7 +41,7 @@ require (
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/txthinking/runnergroup v0.0.0-20230325130830-408dc5853f86 // indirect
-	go.uber.org/mock v0.5.0 // indirect
+	go.uber.org/mock v0.5.2 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
