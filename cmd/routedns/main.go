@@ -671,6 +671,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				if g.Backend.RedisMaxRetryBackoff == -1 {
 					maxRetryBackoff = -1
 				}
+				// Default async-set-on-miss to true unless explicitly disabled
+				asyncSetOnMiss := true
+				if g.Backend.RedisAsyncSetOnMiss != nil {
+					asyncSetOnMiss = *g.Backend.RedisAsyncSetOnMiss
+				}
 				backend = rdns.NewRedisBackend(rdns.RedisBackendOptions{
 					RedisOptions: redis.Options{
 						Network:               g.Backend.RedisNetwork,
@@ -683,7 +688,8 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 						MinRetryBackoff:       minRetryBackoff,
 						MaxRetryBackoff:       maxRetryBackoff,
 					},
-					KeyPrefix: g.Backend.RedisKeyPrefix,
+					KeyPrefix:      g.Backend.RedisKeyPrefix,
+					AsyncSetOnMiss: asyncSetOnMiss,
 				})
 			default:
 				return fmt.Errorf("unsupported cache backend %q", g.Backend.Type)
