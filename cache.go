@@ -13,11 +13,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-const (
-	// asyncWriteSemCapacity limits concurrent background Redis writes on cache miss.
-	asyncWriteSemCapacity = 256
-)
-
 // Cache stores results received from its upstream resolver for
 // up to TTL seconds in memory.
 type Cache struct {
@@ -26,8 +21,6 @@ type Cache struct {
 	resolver Resolver
 	metrics  *CacheMetrics
 	backend  CacheBackend
-	// Semaphore to limit concurrent async Redis writes (buffered channel).
-	asyncWriteSem chan struct{}
 }
 
 type CacheMetrics struct {
@@ -37,8 +30,6 @@ type CacheMetrics struct {
 	miss *expvar.Int
 	// Current cache entry count.
 	entries *expvar.Int
-	// Count of async stores skipped due to semaphore saturation.
-	asyncSkipped *expvar.Int
 }
 
 var _ Resolver = &Cache{}
@@ -105,15 +96,13 @@ type CacheBackend interface {
 // NewCache returns a new instance of a Cache resolver.
 func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 	c := &Cache{
-		CacheOptions:  opt,
-		id:            id,
-		resolver:      resolver,
-		asyncWriteSem: make(chan struct{}, asyncWriteSemCapacity),
+		CacheOptions: opt,
+		id:           id,
+		resolver:     resolver,
 		metrics: &CacheMetrics{
-			hit:          getVarInt("cache", id, "hit"),
-			miss:         getVarInt("cache", id, "miss"),
-			entries:      getVarInt("cache", id, "entries"),
-			asyncSkipped: getVarInt("cache", id, "async-skipped"),
+			hit:     getVarInt("cache", id, "hit"),
+			miss:    getVarInt("cache", id, "miss"),
+			entries: getVarInt("cache", id, "entries"),
 		},
 	}
 	if c.NegativeTTL == 0 {
@@ -219,27 +208,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Put the upstream response into the cache and return it. Need to store
 	// a copy since other elements might modify the response, like the replacer.
-	// For Redis backends with async-set-on-miss enabled, store asynchronously
-	// to reduce miss-path latency.
-	if rb, ok := r.backend.(*redisBackend); ok && rb.opt.AsyncSetOnMiss {
-		// Async path: non-blocking semaphore acquire
-		select {
-		case r.asyncWriteSem <- struct{}{}:
-			// Copy query and answer to avoid data races
-			qCopy := q.Copy()
-			aCopy := a.Copy()
-			go func() {
-				defer func() { <-r.asyncWriteSem }() // Release semaphore
-				r.storeInCache(qCopy, aCopy)
-			}()
-		default:
-			// Semaphore full, skip async store (best-effort caching)
-			r.metrics.asyncSkipped.Add(1)
-		}
-	} else {
-		// Sync path for non-Redis backends or when async is disabled
-		r.storeInCache(q, a.Copy())
-	}
+	r.storeInCache(q, a.Copy())
 	return a, nil
 }
 

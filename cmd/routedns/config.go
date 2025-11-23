@@ -91,8 +91,8 @@ type cacheBackend struct {
 	RedisKeyPrefix       string `toml:"redis-key-prefix"`        // Prefix any cache entry
 	RedisMaxRetries      int    `toml:"redis-max-retries"`       // Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
 	RedisMinRetryBackoff int    `toml:"redis-min-retry-backoff"` // Minimum back-off between each retry. Default is 8 milliseconds; -1 disables back-off.
-	RedisMaxRetryBackoff int    `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
-	RedisAsyncSetOnMiss  *bool  `toml:"redis-async-set-on-miss"` // When true (default), perform Redis SET asynchronously on cache miss to reduce latency.
+	RedisMaxRetryBackoff int  `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
+	RedisSyncSet         bool `toml:"redis-sync-set"`          // When true, perform Redis SET synchronously. Default is false (async writes).
 }
 
 type group struct {
