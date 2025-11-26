@@ -91,7 +91,8 @@ type cacheBackend struct {
 	RedisKeyPrefix       string `toml:"redis-key-prefix"`        // Prefix any cache entry
 	RedisMaxRetries      int    `toml:"redis-max-retries"`       // Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
 	RedisMinRetryBackoff int    `toml:"redis-min-retry-backoff"` // Minimum back-off between each retry. Default is 8 milliseconds; -1 disables back-off.
-	RedisMaxRetryBackoff int    `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
+	RedisMaxRetryBackoff int  `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
+	RedisSyncSet         bool `toml:"redis-sync-set"`          // When true, perform Redis SET synchronously. Default is false (async writes).
 }
 
 type group struct {
@@ -214,7 +215,7 @@ type route struct {
 	Class         string
 	Name          string
 	Source        string
-	ECSSource     string `toml:"ecs-source"`
+	ECSSource     string   `toml:"ecs-source"`
 	Weekdays      []string // 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'
 	After, Before string   // Hour:Minute in 24h format, for example "14:30"
 	Invert        bool     // Invert the result of the match
