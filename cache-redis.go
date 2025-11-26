@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"strings"
 	"time"
@@ -12,27 +13,51 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	// asyncWriteSemCapacity limits concurrent background Redis writes.
+	redisAsyncWriteSemCapacity = 256
+)
+
 type redisBackend struct {
-	client *redis.Client
-	opt    RedisBackendOptions
+	client        *redis.Client
+	opt           RedisBackendOptions
+	asyncWriteSem chan struct{}
+	asyncSkipped  *expvar.Int
 }
 
 type RedisBackendOptions struct {
 	RedisOptions redis.Options
 	KeyPrefix    string
+	SyncSet      bool // When true, perform Redis SET synchronously. Default is false (async writes).
 }
 
 var _ CacheBackend = (*redisBackend)(nil)
 
 func NewRedisBackend(opt RedisBackendOptions) *redisBackend {
 	b := &redisBackend{
-		client: redis.NewClient(&opt.RedisOptions),
-		opt:    opt,
+		client:        redis.NewClient(&opt.RedisOptions),
+		opt:           opt,
+		asyncWriteSem: make(chan struct{}, redisAsyncWriteSemCapacity),
+		asyncSkipped:  getVarInt("cache", "redis", "async-skipped"),
 	}
 	return b
 }
 
 func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
+	// TTL guard: skip storing if already expired
+	ttl := time.Until(item.Expiry)
+	if ttl <= 0 {
+		return
+	}
+
+	if b.opt.SyncSet {
+		b.storeSync(query, item, ttl)
+	} else {
+		b.storeAsync(query, item, ttl)
+	}
+}
+
+func (b *redisBackend) storeSync(query *dns.Msg, item *cacheAnswer, ttl time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	key := b.keyFromQuery(query)
@@ -41,8 +66,22 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 		Log.Error("failed to marshal cache record", "error", err)
 		return
 	}
-	if err := b.client.Set(ctx, key, value, time.Until(item.Expiry)).Err(); err != nil {
+	if err := b.client.Set(ctx, key, value, ttl).Err(); err != nil {
 		Log.Error("failed to write to redis", "error", err)
+	}
+}
+
+func (b *redisBackend) storeAsync(query *dns.Msg, item *cacheAnswer, ttl time.Duration) {
+	// Non-blocking semaphore acquire
+	select {
+	case b.asyncWriteSem <- struct{}{}:
+		go func() {
+			defer func() { <-b.asyncWriteSem }()
+			b.storeSync(query, item, ttl)
+		}()
+	default:
+		// Semaphore full, skip async store (best-effort caching)
+		b.asyncSkipped.Add(1)
 	}
 }
 

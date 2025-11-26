@@ -393,6 +393,7 @@ The `redis` backend stores cached items in a Redis database. This allows multipl
 - `redis-max-retries` - Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
 - `redis-min-retry-backoff` - Minimum back-off between each retry in milliseconds. Default is 8 milliseconds; -1 disables back-off.
 - `redis-max-retry-backoff` - Maximum back-off between each retry in milliseconds. Default is 512 milliseconds; -1 disables back-off.
+- `redis-sync-set` - When true, performs Redis SET operations synchronously. Default is false (async writes), meaning the response is returned immediately while the cache entry is written in the background. Note: With async mode, there is a brief window where a second identical query may also result in a miss until the background write completes.
 
 #### Examples
 

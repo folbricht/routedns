@@ -684,6 +684,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 						MaxRetryBackoff:       maxRetryBackoff,
 					},
 					KeyPrefix: g.Backend.RedisKeyPrefix,
+					SyncSet:   g.Backend.RedisSyncSet,
 				})
 			default:
 				return fmt.Errorf("unsupported cache backend %q", g.Backend.Type)
