@@ -64,21 +64,23 @@ func encodeCacheAnswer(item *cacheAnswer) ([]byte, error) {
 	}()
 
 	if cap(buf) == 0 {
-		buf = make([]byte, 2048)
+		buf = make([]byte, 0, 2048)
 	}
 
-	// Use the full capacity of the buffer for PackBuffer so it can reuse it.
+	// Pack DNS message first into the scratch buffer
 	buf = buf[:cap(buf)]
-	packed, err := item.Msg.PackBuffer(buf)
+	dnsWire, err := item.Msg.PackBuffer(buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
 	}
 
-	// Keep the (potentially grown) buffer in the pool for future calls.
-	buf = packed
+	// Keep the (potentially grown) buffer for cleanup
+	buf = dnsWire
 
-	// Allocate result buffer: header (10 bytes) + packed DNS message.
-	result := make([]byte, headerSize+len(packed))
+	// Allocate result with header + DNS wire bytes
+	result := make([]byte, headerSize+len(dnsWire))
+
+	// Write header
 	result[0] = binaryFormatVersion
 
 	var flags byte
@@ -90,7 +92,8 @@ func encodeCacheAnswer(item *cacheAnswer) ([]byte, error) {
 	timestamp := uint64(item.Timestamp.Unix())
 	binary.BigEndian.PutUint64(result[2:10], timestamp)
 
-	copy(result[headerSize:], packed)
+	// Copy DNS wire bytes after header
+	copy(result[headerSize:], dnsWire)
 
 	return result, nil
 }
