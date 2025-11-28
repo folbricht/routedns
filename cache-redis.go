@@ -2,11 +2,13 @@ package rdns
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -33,6 +35,102 @@ type RedisBackendOptions struct {
 
 var _ CacheBackend = (*redisBackend)(nil)
 
+// Buffer pool for dns.Msg.PackBuffer to minimize allocations.
+var packBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 2048)
+		return &b
+	},
+}
+
+const (
+	binaryFormatVersion = 1
+	headerSize          = 10
+	flagPrefetchBit     = 1 << 0
+)
+
+// encodeCacheAnswer encodes a cacheAnswer into a compact binary format:
+// - byte 0: version (1)
+// - byte 1: flags (bit0: prefetchEligible)
+// - bytes 2..9: timestamp (uint64 seconds from Unix epoch, big endian)
+// - bytes 10..N: dns.Msg wire bytes
+func encodeCacheAnswer(item *cacheAnswer) ([]byte, error) {
+	bufPtr := packBufPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	defer func() {
+		*bufPtr = buf[:0]
+		packBufPool.Put(bufPtr)
+	}()
+
+	if cap(buf) == 0 {
+		buf = make([]byte, 0, 2048)
+	}
+
+	// Pack DNS message first into the scratch buffer
+	buf = buf[:cap(buf)]
+	dnsWire, err := item.Msg.PackBuffer(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
+	}
+
+	// Keep the (potentially grown) buffer for cleanup
+	buf = dnsWire
+
+	// Allocate result with header + DNS wire bytes
+	result := make([]byte, headerSize+len(dnsWire))
+
+	// Write header
+	result[0] = binaryFormatVersion
+
+	var flags byte
+	if item.PrefetchEligible {
+		flags |= flagPrefetchBit
+	}
+	result[1] = flags
+
+	timestamp := uint64(item.Timestamp.Unix())
+	binary.BigEndian.PutUint64(result[2:10], timestamp)
+
+	// Copy DNS wire bytes after header
+	copy(result[headerSize:], dnsWire)
+
+	return result, nil
+}
+
+// decodeCacheAnswer decodes a binary-encoded cacheAnswer.
+// Returns an error if the format is invalid or unsupported.
+func decodeCacheAnswer(b []byte) (*cacheAnswer, error) {
+	if len(b) < headerSize {
+		return nil, fmt.Errorf("binary data too short: %d bytes", len(b))
+	}
+
+	// Check version
+	version := b[0]
+	if version != binaryFormatVersion {
+		return nil, fmt.Errorf("unsupported binary format version: %d", version)
+	}
+
+	// Parse flags
+	flags := b[1]
+	prefetchEligible := (flags & flagPrefetchBit) != 0
+
+	// Parse timestamp
+	timestamp := int64(binary.BigEndian.Uint64(b[2:10]))
+
+	// Unpack DNS message
+	msg := new(dns.Msg)
+	if err := msg.Unpack(b[headerSize:]); err != nil {
+		return nil, fmt.Errorf("failed to unpack DNS message: %w", err)
+	}
+
+	return &cacheAnswer{
+		Timestamp:        time.Unix(timestamp, 0),
+		PrefetchEligible: prefetchEligible,
+		Msg:              msg,
+	}, nil
+}
+
 func NewRedisBackend(opt RedisBackendOptions) *redisBackend {
 	b := &redisBackend{
 		client:        redis.NewClient(&opt.RedisOptions),
@@ -58,14 +156,15 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 }
 
 func (b *redisBackend) storeSync(query *dns.Msg, item *cacheAnswer, ttl time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
 	key := b.keyFromQuery(query)
-	value, err := json.Marshal(item)
+	value, err := encodeCacheAnswer(item)
 	if err != nil {
-		Log.Error("failed to marshal cache record", "error", err)
+		Log.Error("failed to encode cache record", "error", err)
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 	if err := b.client.Set(ctx, key, value, ttl).Err(); err != nil {
 		Log.Error("failed to write to redis", "error", err)
 	}
@@ -89,7 +188,9 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	key := b.keyFromQuery(q)
-	value, err := b.client.Get(ctx, key).Result()
+
+	// Fetch raw bytes to avoid string conversion overhead
+	valueBytes, err := b.client.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) { // Return a cache-miss if there's no such key
 			return nil, false, false
@@ -97,10 +198,16 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		Log.Error("failed to read from redis", "error", err)
 		return nil, false, false
 	}
+
+	// Try binary decode first, with JSON fallback for backward compatibility
 	var a *cacheAnswer
-	if err := json.Unmarshal([]byte(value), &a); err != nil {
-		Log.Error("failed to unmarshal cache record from redis", "error", err)
-		return nil, false, false
+	a, err = decodeCacheAnswer(valueBytes)
+	if err != nil {
+		// Fallback to JSON for backward compatibility with existing cached entries
+		if jsonErr := json.Unmarshal(valueBytes, &a); jsonErr != nil {
+			Log.Error("failed to decode cache record from redis", "binary_error", err, "json_error", jsonErr)
+			return nil, false, false
+		}
 	}
 
 	answer := a.Msg
