@@ -1349,6 +1349,12 @@ The `ecs-source` field allows routing based on the IP address provided in the ED
 
 **Important:** To prevent leaking ECS data to upstream resolvers, use an `ecs-modifier` with `ecs-op = "delete"` before forwarding queries. ECS data contains information about the original client's IP address, which may compromise privacy if shared with upstream resolvers. Removing ECS data ensures that upstream resolvers only see the proxy's IP address.
 
+#### Route Evaluation Order
+
+Routes are evaluated sequentially, and the first matching route is used. **Order matters** when defining routes:
+- More specific routes (e.g., `192.168.1.10/32`) should be placed **before** broader routes (e.g., `192.168.1.0/24`).
+- If a broader route is placed first, it will match all queries within that subnet, and the more specific route will never be evaluated.
+
 #### Examples
 
 Route queries based on ECS data:
@@ -1359,8 +1365,8 @@ routes = [
   # Route 1: Queries with an ECS source of 192.168.1.10/32 are sent to the adblocker.
   { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
 
-  # Route 2: Queries with an ECS source of 192.168.1.20/32 are sent to the unfiltered resolver.
-  { ecs-source = "192.168.1.20/32", resolver = "unfiltered-resolver" },
+  # Route 2: Queries with an ECS source of 192.168.1.0/24 are sent to the unfiltered resolver.
+  { ecs-source = "192.168.1.0/24", resolver = "unfiltered-resolver" },
 
   # Route 3 (Default): All other queries (including those without ECS) go to the unfiltered resolver.
   { resolver = "unfiltered-resolver" },
