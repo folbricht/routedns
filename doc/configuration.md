@@ -33,6 +33,7 @@
   - [Response Minimizer](#response-minimizer)
   - [Response Collapse](#response-collapse)
   - [Router](#router)
+  - [ECS Source Routing](#ecs-source-routing)
   - [Rate Limiter](#rate-limiter)
   - [Fastest TCP Probe](#fastest-tcp-probe)
   - [Retrying Truncated Responses](#retrying-truncated-responses)
@@ -1013,6 +1014,8 @@ ecs-prefix6 = 64
 
 Example config files: [ecs-modifier-add.toml](../cmd/routedns/example-config/ecs-modifier-add.toml), [ecs-modifier-delete.toml](../cmd/routedns/example-config/ecs-modifier-delete.toml), [ecs-modifier-privacy.toml](../cmd/routedns/example-config/ecs-modifier-privacy.toml)
 
+**Related Feature**: If you want to route queries based on ECS data, see [ECS Source Routing](#ecs-source-routing). While `EDNS0 Client Subnet Modifier` focuses on modifying ECS data before forwarding it upstream, `ECS Source Routing` enables routing decisions based on the original client's IP address in ECS data.
+
 ### EDNS0 Modifier
 
 EDNS0 Modifier allows low-level operations on the EDNS0 option records in queries. It can be used to add or remove custom option codes with arbitrary data.
@@ -1270,6 +1273,7 @@ A route has the following fields:
 - `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
 - `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details. Optional.
 - `source` - Network in CIDR notation. Used to route based on client IP. Optional.
+- `ecs-source` - Network in CIDR notation. Used to route based on the IP address in the EDNS Client Subnet (ECS) option. Optional.
 - `weekdays` - List of weekdays this route should match on. Possible values: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. Uses local time, not UTC.
 - `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`. Note that together with the `before` parameter it is possible to accidentally write routes that can never trigger. For example `after=12:00 before=11:00` can never match as both conditions have to be met for the route to be used.
 - `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
@@ -1338,6 +1342,53 @@ routes = [
 ```
 
 Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [router.toml](../cmd/routedns/example-config/router.toml), [router-time.toml](../cmd/routedns/example-config/router-time.toml)
+
+### ECS Source Routing
+
+The `ecs-source` field allows routing based on the IP address provided in the EDNS Client Subnet (ECS) option ([RFC 7871](https://tools.ietf.org/html/rfc7871)). This is useful when RouteDNS is behind a resolver or proxy that forwards the original client IP using ECS, such as Dnsmasq with `add-subnet=32`. Since all queries arrive at RouteDNS from the same source IP (the proxy), standard `source` routing cannot differentiate between clients.
+
+**Important:** To prevent leaking ECS data to upstream resolvers, use an `ecs-modifier` with `ecs-op = "delete"` before forwarding queries. ECS data contains information about the original client's IP address, which may compromise privacy if shared with upstream resolvers. Removing ECS data ensures that upstream resolvers only see the proxy's IP address.
+
+#### Route Evaluation Order
+
+Routes are evaluated sequentially, and the first matching route is used. **Order matters** when defining routes:
+- More specific routes (e.g., `192.168.1.10/32`) should be placed **before** broader routes (e.g., `192.168.1.0/24`).
+- If a broader route is placed first, it will match all queries within that subnet, and the more specific route will never be evaluated.
+
+#### Examples
+
+Route queries based on ECS data:
+
+```toml
+[routers.ecs-router]
+routes = [
+  # Route 1: Queries with an ECS source of 192.168.1.10/32 are sent to the adblocker.
+  { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
+
+  # Route 2: Queries with an ECS source of 192.168.1.0/24 are sent to the unfiltered resolver.
+  { ecs-source = "192.168.1.0/24", resolver = "unfiltered-resolver" },
+
+  # Route 3 (Default): All other queries (including those without ECS) go to the unfiltered resolver.
+  { resolver = "unfiltered-resolver" },
+]
+```
+
+Combine ECS routing with ECS removal:
+
+```toml
+[routers.ecs-router]
+routes = [
+  { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
+  { resolver = "remove-ecs" },
+]
+
+[groups.remove-ecs]
+type = "ecs-modifier"
+resolvers = ["upstream-resolver"]
+ecs-op = "delete"
+```
+
+**Related Feature**: If you want to control what ECS data is sent to upstream resolvers, see [EDNS0 Client Subnet modifier](#edns0-client-subnet-modifier). While `ECS Source Routing` focuses on routing decisions based on ECS data, `EDNS0 Client Subnet Modifier` allows you to add, remove, or restrict ECS data for privacy or compatibility.
 
 ### Rate Limiter
 
