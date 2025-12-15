@@ -133,7 +133,7 @@ func (r *FailBack) errorFrom(i int) {
 		r.failCh = r.startResetTimer()
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.Debug("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
+	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 	r.mu.Unlock()
 	r.metrics.failover.Add(1)
 	r.metrics.available.Add(-1)
