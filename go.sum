@@ -1,7 +1,7 @@
 github.com/0xERR0R/expiration-cache v0.1.0 h1:K0G8UmwX4ncKHw5u/Ka5/k46G7/qXPtU9rWPbImk80k=
 github.com/0xERR0R/expiration-cache v0.1.0/go.mod h1:JW3Pj+nzWK0ak630rxv/aIVTlGOshArmP1f1xfF+mAQ=
-github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
-github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
+github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91 h1:vX+gnvBc56EbWYrmlhYbFYRaeikAke1GL84N4BEYOFE=
 github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91/go.mod h1:cDLGBht23g0XQdLjzn6xOGXDkLK182YfINAaZEQLCHQ=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

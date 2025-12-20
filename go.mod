@@ -6,7 +6,7 @@ toolchain go1.24.7
 
 require (
 	github.com/0xERR0R/expiration-cache v0.1.0
-	github.com/BurntSushi/toml v1.5.0
+	github.com/BurntSushi/toml v1.6.0
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/cisco/go-hpke v0.0.0-20230407100446-246075f83609
 	github.com/cloudflare/odoh-go v1.0.1-0.20230926114050-f39fa019b017
