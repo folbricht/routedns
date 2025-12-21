@@ -699,6 +699,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		opt := rdns.PrefetchOptions{
 			PrefetchWindow:    g.PrefetchWindow,
 			PrefetchThreshold: g.PrefetchThreshold,
+			PrefetchCacheSize: g.PrefetchCacheSize,
 			PrefetchMaxItems:  g.PrefetchMaxItems,
 		}
 		resolvers[id] = rdns.NewPrefetch(id, gr[0], opt)

@@ -25,6 +25,7 @@ var _ Resolver = &RoundRobin{}
 type PrefetchOptions struct {
 	PrefetchWindow    time.Duration
 	PrefetchThreshold uint64
+	PrefetchCacheSize int
 	PrefetchMaxItems  int
 }
 
@@ -35,6 +36,9 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 	if opt.PrefetchThreshold == 0 {
 		opt.PrefetchThreshold = 5
 	}
+	if opt.PrefetchCacheSize == 0 {
+		opt.PrefetchCacheSize = opt.PrefetchMaxItems * 3
+	}
 
 	r := &Prefetch{
 		id:       id,
@@ -42,7 +46,7 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 		options:  opt,
 	}
 	r.nameCache = expirationcache.NewCache[atomic.Uint64](context.Background(), expirationcache.Options{
-		MaxSize: uint(opt.PrefetchMaxItems),
+		MaxSize: uint(opt.PrefetchCacheSize),
 	})
 	r.queryCache = expirationcache.NewCacheWithOnExpired(context.Background(), expirationcache.Options{
 		MaxSize: uint(opt.PrefetchMaxItems),
