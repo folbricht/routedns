@@ -116,6 +116,7 @@ func (c *Pipeline) start() {
 						return
 					}
 				case <-done: // the reader ran into an error and we want to stop using this connection
+					conn.Close()
 					wg.Done()
 					return
 				}
