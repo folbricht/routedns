@@ -10,8 +10,9 @@ resolvers = ["cloudflare-dot"]
 type = "prefetch"
 resolvers = ["cloudflare-cached"]
 prefetch-window = "15m"  # Minimum time between queries to remain eligible for prefetch
-prefetch-threshold = 3   # Min number of queries to enable prefetch
-prefetch-max-items = 100 # Max number of items to track for prefetch
+prefetch-threshold = 3   # Min number of queries required to enable prefetch
+prefetch-cache-size = 150 # Max number of queries to track for prefetch
+prefetch-max-items = 50  # Max number of items to prefetch
 
 [listeners.local-udp]
 address = "127.0.0.1:53"
