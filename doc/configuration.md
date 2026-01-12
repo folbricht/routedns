@@ -1740,6 +1740,7 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 
 DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
 DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. When 0-RTT is enabled, the resolver will disregard the configured method and always use GET instead. This means the configured address nees to contain a URL template (with the `{?dns}` part).
+The idle connection timeout can be configured with `doh = { idle-timeout = 60 }` (in seconds). This controls how long idle HTTP connections are kept open before being closed. For TCP transport, the default is 30 seconds. For QUIC transport, the default is determined by the quic-go library. Note that for QUIC, the actual idle timeout is the minimum of the client and server values.
 
 Examples:
 
@@ -1768,6 +1769,15 @@ address = "https://cloudflare-dns.com/dns-query{?dns}"
 protocol = "doh"
 transport = "quic"
 enable-0rtt = true
+```
+
+DoH resolver with extended idle timeout.
+
+```toml
+[resolvers.cloudflare-doh-long-idle]
+address = "https://1.1.1.1/dns-query"
+protocol = "doh"
+doh = { idle-timeout = 60 }
 ```
 
 Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [simple-doh.toml](../cmd/routedns/example-config/simple-doh.toml), [mutual-tls-doh-client.toml](../cmd/routedns/example-config/mutual-tls-doh-client.toml)

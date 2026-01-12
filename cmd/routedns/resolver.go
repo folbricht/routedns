@@ -81,6 +81,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
 			Use0RTT:       r.Use0RTT,
 		}
@@ -100,6 +101,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewODoHClient(id, r.Address, r.Target, r.TargetConfig, opt)
 		if err != nil {

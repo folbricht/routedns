@@ -73,7 +73,8 @@ type resolver struct {
 
 // DoH-specific resolver options
 type doh struct {
-	Method string
+	Method      string
+	IdleTimeout int `toml:"idle-timeout"` // Idle connection timeout in seconds. TCP default: 30s. QUIC: uses library default if not set.
 }
 
 // Cache backend options
