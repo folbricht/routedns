@@ -23,6 +23,9 @@ import (
 	"golang.org/x/net/http2"
 )
 
+// defaultDoHIdleTimeout is the default idle connection timeout for DoH TCP transport.
+const defaultDoHIdleTimeout = 30 * time.Second
+
 // DoHClientOptions contains options used by the DNS-over-HTTP resolver.
 type DoHClientOptions struct {
 	// Query method, either GET or POST. If empty, POST is used.
@@ -41,6 +44,12 @@ type DoHClientOptions struct {
 	TLSConfig *tls.Config
 
 	QueryTimeout time.Duration
+
+	// IdleTimeout is the maximum amount of time an idle connection will remain
+	// open before being closed. For TCP transport, defaults to 30 seconds if not set.
+	// For QUIC transport, defaults to the quic-go library default if not set. Note
+	// that for QUIC, the actual timeout is the minimum of client and server values.
+	IdleTimeout time.Duration
 
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
@@ -61,6 +70,11 @@ type DoHClient struct {
 var _ Resolver = &DoHClient{}
 
 func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error) {
+	// Validate options
+	if opt.IdleTimeout < 0 {
+		return nil, fmt.Errorf("idle-timeout must not be negative")
+	}
+
 	// Parse the URL template
 	template, err := uritemplates.Parse(endpoint)
 	if err != nil {
@@ -237,12 +251,16 @@ func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 }
 
 func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
+	idleTimeout := opt.IdleTimeout
+	if idleTimeout == 0 {
+		idleTimeout = defaultDoHIdleTimeout
+	}
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
 		ResponseHeaderTimeout: 10 * time.Second,
-		IdleConnTimeout:       30 * time.Second,
+		IdleConnTimeout:       idleTimeout,
 	}
 	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
 	// the HTTP library. Turn it on for this transport.
@@ -320,12 +338,17 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		return dialFunc(ctx, rAddr, tlsConfig, config)
 	}
 
+	quicConfig := &quic.Config{
+		TokenStore: quic.NewLRUTokenStore(10, 10),
+	}
+	if opt.IdleTimeout > 0 {
+		quicConfig.MaxIdleTimeout = opt.IdleTimeout
+	}
+
 	tr := &http3.Transport{
 		TLSClientConfig: tlsConfig,
-		QUICConfig: &quic.Config{
-			TokenStore: quic.NewLRUTokenStore(10, 10),
-		},
-		Dial: dialer,
+		QUICConfig:      quicConfig,
+		Dial:            dialer,
 	}
 	return tr, nil
 }
