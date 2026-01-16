@@ -365,6 +365,11 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		gr = append(gr, resolver)
 	}
 	switch g.Type {
+    case "lock-duplicate-request":
+		if len(gr) != 1 {
+			return fmt.Errorf("type lock-duplicate-request only supports one resolver in '%s'", id)
+		}
+		resolvers[id] = rdns.NewlockDuplicateRequest(id, gr[0])
 	case "round-robin":
 		resolvers[id] = rdns.NewRoundRobin(id, gr...)
 	case "fail-rotate":
