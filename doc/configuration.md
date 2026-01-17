@@ -442,7 +442,7 @@ Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [
 
 ### Prefetch
 
-While [Cache](#cache) has built-in prefetch capabilities, a the dedicated `prefetch` group may be more appropriate for some use cases. Its tracks the number of queries made and actively prefetches frequenty requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
+While [Cache](#cache) has built-in prefetch capabilities, a the dedicated `prefetch` group may be more appropriate for some use cases. Its tracks the number of queries made within a time window and actively prefetches frequenty requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
 
 #### Configuration
 
@@ -452,8 +452,9 @@ Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `prefetch-window` - Minimum time between queries to remain eligible for prefetching. Supports time units `s`, `m`, and `h`. Default: 1h.
-- `prefetch-threshold` - Minimum number of queries for a name to enable prefetch. Default: 5.
-- `prefetch-max-items` - Maximum number of items to track for prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0 or not set. 
+- `prefetch-threshold` - Minimum number of queries required for a name to enable prefetch. Default: 5.
+- `prefetch-cache-size` - Maximum number of queries to track for prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0. Default: `prefetch-max-items * 3`.
+- `prefetch-max-items` - Maximum number of items to prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0 or not set.
 
 #### Examples
 
@@ -469,7 +470,8 @@ type = "prefetch"
 resolvers = ["cloudflare-cached"]
 prefetch-window = "15m"
 prefetch-threshold = 3
-prefetch-max-items = 100
+prefetch-cache-size = 150
+prefetch-max-items = 50
 ```
 
 Example config files: [prefetch.toml](../cmd/routedns/example-config/prefetch.toml)

@@ -194,6 +194,7 @@ type group struct {
 	// Prefetch options
 	PrefetchWindow    time.Duration `toml:"prefetch-window"`    // Time period to track queries for prefetching, default 1h
 	PrefetchThreshold uint64        `toml:"prefetch-threshold"` // Minimum number of queries per window to enable prefetching, default 5
+	PrefetchCacheSize int			`toml:"prefetch-cache-size"` // Maximum number of items to cache
 	PrefetchMaxItems  int           `toml:"prefetch-max-items"` // Maximum number of items to track prefetch, default (0) unlimited
 }
 
