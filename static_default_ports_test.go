@@ -23,6 +23,11 @@ func TestDefaultPort(t *testing.T) {
 		{"https://localhost/dns-query{?dns}", DoHPort, "https://localhost:443/dns-query{?dns}"},
 		{"https://1.1.1.1:443/dns-query{?dns}", DoHPort, "https://1.1.1.1:443/dns-query{?dns}"},
 
+		// IPv6 addresses
+		{"https://[2620:fe::fe:11]/dns-query", DoHPort, "https://[2620:fe::fe:11]:443/dns-query"},
+		{"https://[2620:fe::fe:11]:443/dns-query", DoHPort, "https://[2620:fe::fe:11]:443/dns-query"},
+		{"https://[::1]/dns-query{?dns}", DoHPort, "https://[::1]:443/dns-query{?dns}"},
+
 		// Invalid endpoints should ideally not be changed
 		{"localhost:", DoTPort, "localhost:"},
 		{"localhost::123", DoTPort, "localhost::123"},
