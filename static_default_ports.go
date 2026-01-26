@@ -34,7 +34,7 @@ func AddressWithDefault(addr, defaultPort string) string {
 			return addr
 		}
 		if u.Port() == "" {
-			u.Host = net.JoinHostPort(u.Host, defaultPort)
+			u.Host = net.JoinHostPort(u.Hostname(), defaultPort)
 		}
 		return u.String() + templatePart
 	}
