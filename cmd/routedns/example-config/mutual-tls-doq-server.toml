@@ -1,4 +1,4 @@
-# This is the server-side of a secure DOH-over-QUIC proxy where the server
+# This is the server-side of a secure DoH-over-QUIC proxy where the server
 # expects the client to present a signed certificate it trusts (mutual-TLS).
 # Any query received from the client this way, will then be forwarded to
 # Cloudflare via DoT by the server.

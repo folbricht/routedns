@@ -1,4 +1,4 @@
-# Rate-limiting queries.
+# Logging DNS queries and responses to syslog.
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

@@ -1,5 +1,5 @@
 # Simple configuration for "blocklist-v2" which supports optional allow-lists that take precedence
-# over itens on the block-list. In this example, static local lists are used for both, but either
+# over items on the block-list. In this example, static local lists are used for both, but either
 # can be read from files or remote URLs with optional refresh period.
 
 [resolvers.cloudflare-dot]

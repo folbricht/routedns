@@ -1,4 +1,4 @@
-# Server-side of a simple DNS-over QUIC proxy without mutual TLS.
+# Server-side of a simple DNS-over-QUIC proxy without mutual TLS.
 
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"

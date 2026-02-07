@@ -1,5 +1,5 @@
 # Uses TCP connection probes to determine which of the response IPs
-# is fastests. Only the fastest IP is then cached.
+# is fastest. Only the fastest IP is then cached.
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

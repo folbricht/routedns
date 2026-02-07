@@ -1,5 +1,5 @@
 # Shows how to use an alternative blocklist-resolver with a response blocklist.
-# 1) the query is sent to the default resolver ("default-do")
+# 1) the query is sent to the default resolver ("default-dot")
 # 2) if the response contains an item on the blocklist and a blocklist-resolver
 #    is configured, the query will be sent there instead. Note, the response from
 #    blocklist-resolver is not re-evaluated.

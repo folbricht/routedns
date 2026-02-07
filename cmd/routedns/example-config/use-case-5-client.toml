@@ -1,5 +1,5 @@
 # Local proxy receiving queries from the local machine only and forwarding
-# over DoH with mututal TLS using a custom CA.
+# over DoH with mutual TLS using a custom CA.
 
 [resolvers.proxy-doh]
 address = "https://<Proxy-IP>:443/dns-query"

@@ -1,4 +1,4 @@
-# DoH coonfiguration that connects to the upstream server via SOCKS5 proxy.
+# DoH configuration that connects to the upstream server via SOCKS5 proxy.
 
 [resolvers.cloudflare-doh]
 address = "https://cloudflare-dns.com/dns-query"
