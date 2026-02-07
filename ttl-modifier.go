@@ -44,7 +44,7 @@ func NewTTLModifier(id string, resolver Resolver, opt TTLModifierOptions) *TTLMo
 	}
 }
 
-// Resolve a DNS query by first resoling it upstream, then applying TTL limits
+// Resolve a DNS query by first resolving it upstream, then applying TTL limits
 // on the response.
 func (r *TTLModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	a, err := r.resolver.Resolve(q, ci)

@@ -10,7 +10,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// MACDB holds a list of MAC addresses used to clients with the given MAC (as per
+// MACDB holds a list of MAC addresses used to match clients with the given MAC (as per
 // EDNS0 option 65001).
 type MACDB struct {
 	name   string

@@ -1,6 +1,6 @@
 /*
-Package rdns implements a variety of functionality to make DNS resulution configurable
-and extensible. It offers DNS resolvers as well as listeners with a number of protcols
+Package rdns implements a variety of functionality to make DNS resolution configurable
+and extensible. It offers DNS resolvers as well as listeners with a number of protocols
 such as DNS-over-TLS, DNS-over-HTTP, and plain wire format DNS. In addition it is
 possible to route queries based on the query name or type. There are 4 fundamental types
 of objects available in this library.
@@ -13,7 +13,7 @@ reuse as well as pipelining (sending multiple queries and receiving them out-of-
 Groups
 
 Groups typically wrap multiple resolvers and implement failover or load-balancing algorithms
-accross all resolvers in the group. Groups too are resolvers and can therefore be nested
+across all resolvers in the group. Groups too are resolvers and can therefore be nested
 into other groups for more complex query routing.
 
 Routers

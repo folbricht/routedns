@@ -29,7 +29,7 @@ func NewTruncateRetry(id string, resolver, retryResolver Resolver, opt TruncateR
 	}
 }
 
-// Resolve a DNS query by first resoling it upstream, if the response is truncated, the
+// Resolve a DNS query by first resolving it upstream, if the response is truncated, the
 // retry resolver is used to resolve the same query again.
 func (r *TruncateRetry) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	a, err := r.resolver.Resolve(q, ci)

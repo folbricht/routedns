@@ -37,8 +37,8 @@ type FailBackOptions struct {
 	// error response and trigger a failover.
 	ServfailError bool
 
-	// Determines if an empty reponse returned by a resolver should be considered an
-	// error respone and trigger a failover.
+	// Determines if an empty response returned by a resolver should be considered an
+	// error response and trigger a failover.
 	EmptyError bool
 }
 
@@ -167,7 +167,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 	return failCh
 }
 
-// Returns true is the response is considered successful given the options.
+// Returns true if the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
 		return true

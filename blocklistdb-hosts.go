@@ -7,7 +7,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// HostsDB holds a list of hosts-file entries that are used in blocklists to spoof or bloc requests.
+// HostsDB holds a list of hosts-file entries that are used in blocklists to spoof or block requests.
 // IP4 and IP6 records can be spoofed independently, however it's not possible to block only one type. If
 // IP4 is given but no IP6, then a domain match will still result in an NXDOMAIN for the IP6 address.
 type HostsDB struct {

@@ -23,7 +23,7 @@ type DTLSListener struct {
 
 var _ Listener = &DTLSListener{}
 
-// DoTListenerOptions contains options used by the DNS-over-DTLS server.
+// DTLSListenerOptions contains options used by the DNS-over-DTLS server.
 type DTLSListenerOptions struct {
 	ListenOptions
 

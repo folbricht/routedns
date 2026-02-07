@@ -220,7 +220,7 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 	chain := strings.Split(xForwardedFor, ", ")
 	if clientIP != nil && s.opt.HTTPProxyNet.Contains(clientIP) {
 		if ip := net.ParseIP(chain[len(chain)-1]); ip != nil {
-			// Ignore XFF whe the client is local to the proxy.
+			// Ignore XFF when the client is local to the proxy.
 			if !ip.IsLoopback() {
 				return ip
 			}

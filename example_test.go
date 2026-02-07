@@ -25,7 +25,7 @@ func Example_group() {
 	r1, _ := rdns.NewDNSClient("google1", "8.8.8.8:53", "udp", rdns.DNSClientOptions{})
 	r2, _ := rdns.NewDNSClient("google2", "8.8.4.4:53", "udp", rdns.DNSClientOptions{})
 
-	// Combine them int a group that does round-robin over the two resolvers
+	// Combine them into a group that does round-robin over the two resolvers
 	g := rdns.NewRoundRobin("test-rr", r1, r2)
 
 	// Build a query

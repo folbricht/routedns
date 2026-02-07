@@ -142,7 +142,7 @@ func (l *HTTPLoader) writeToDisk(rules []string) (err error) {
 	return nil
 }
 
-// Returns the name of the list cache file, which is the SHA265 of url in the cache-dir.
+// Returns the name of the list cache file, which is the SHA256 of url in the cache-dir.
 func (l *HTTPLoader) cacheFilename() string {
 	name := fmt.Sprintf("%x", sha256.Sum256([]byte(l.url)))
 	return filepath.Join(l.opt.CacheDir, name)

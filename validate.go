@@ -24,7 +24,7 @@ func validEndpoint(addr string) error {
 	return validHostname(host)
 }
 
-// Returns nil if the given name is a valid hostnam as per https://tools.ietf.org/html/rfc3696#section-2
+// Returns nil if the given name is a valid hostname as per https://tools.ietf.org/html/rfc3696#section-2
 // and https://tools.ietf.org/html/rfc1123#page-13
 func validHostname(name string) error {
 	if name == "" {

@@ -15,7 +15,7 @@ type EDNS0Modifier struct {
 
 var _ Resolver = &EDNS0Modifier{}
 
-// EDNS0ModifierFunc takes a DNS query and modifies its EDN0 records
+// EDNS0ModifierFunc takes a DNS query and modifies its EDNS0 records
 type EDNS0ModifierFunc func(q *dns.Msg, ci ClientInfo)
 
 // NewEDNS0Modifier initializes an EDNS0 modifier.

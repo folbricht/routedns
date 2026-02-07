@@ -19,7 +19,7 @@ type DoTClient struct {
 
 // DoTClientOptions contains options used by the DNS-over-TLS resolver.
 type DoTClientOptions struct {
-	// Bootstrap address - IP to use for the serivce instead of looking up
+	// Bootstrap address - IP to use for the service instead of looking up
 	// the service's hostname with potentially plain DNS.
 	BootstrapAddr string
 

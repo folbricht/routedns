@@ -9,7 +9,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Random is a resolver group that randomly picks a resolver from it's list
+// Random is a resolver group that randomly picks a resolver from its list
 // of resolvers. If one resolver fails, it is removed from the list of active
 // resolvers for a period of time and the query retried.
 type Random struct {
@@ -31,8 +31,8 @@ type RandomOptions struct {
 	// error response and cause the resolver to be removed from the group temporarily.
 	ServfailError bool
 
-	// Determines if an empty reponse returned by a resolver should be considered an
-	// error respone and trigger a failover.
+	// Determines if an empty response returned by a resolver should be considered an
+	// error response and trigger a failover.
 	EmptyError bool
 }
 
@@ -119,7 +119,7 @@ func (r *Random) reactivateLater(resolver Resolver) {
 	r.metrics.available.Set(int64(len(r.resolvers)))
 }
 
-// Returns true is the response is considered successful given the options.
+// Returns true if the response is considered successful given the options.
 func (r *Random) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
 		return true

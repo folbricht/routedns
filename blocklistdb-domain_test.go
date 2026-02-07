@@ -11,7 +11,7 @@ func TestDomainDB(t *testing.T) {
 	loader := NewStaticLoader([]string{
 		"domain1.com.",    // exact match
 		".domain2.com.",   // exact match and subdomains
-		"x.domain2.com",   // above rule should take precendence
+		"x.domain2.com",   // above rule should take precedence
 		"*.domain3.com",   // subdomains only
 		"x.x.domain3.com", // more general wildcard above should take precedence
 		"domain4.com",     // the more general rule below wins
