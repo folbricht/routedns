@@ -28,8 +28,8 @@ type FailRotateOptions struct {
 	// error response and trigger a failover.
 	ServfailError bool
 
-	// Determines if an empty reponse returned by a resolver should be considered an
-	// error respone and trigger a failover.
+	// Determines if an empty response returned by a resolver should be considered an
+	// error response and trigger a failover.
 	EmptyError bool
 }
 
@@ -96,7 +96,7 @@ func (r *FailRotate) errorFrom(i int) {
 	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 }
 
-// Returns true is the response is considered successful given the options.
+// Returns true if the response is considered successful given the options.
 func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
 		return true

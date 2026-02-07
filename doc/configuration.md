@@ -39,7 +39,7 @@
   - [Retrying Truncated Responses](#retrying-truncated-responses)
   - [Request Deduplication](#request-deduplication)
   - [Syslog](#syslog)
-  - [Qyery Log](#query-log)
+  - [Query Log](#query-log)
 - [Resolvers](#resolvers)
   - [Plain DNS](#plain-dns-resolver)
   - [DNS-over-TLS](#dns-over-tls-resolver)
@@ -60,7 +60,7 @@ RouteDNS uses a config file in [TOML](https://github.com/toml-lang/toml) format 
 - `groups` - [Groups](#Modifiers-Groups-and-Routers) contain a range of failover and load-balancing algorithms as well as elements that modify queries or responses.
 - `resolvers` - [Resolvers](#Resolvers) forward queries to upstream resolvers. They are in effect DNS client implementations that connect to other servers using a variety of protocols.
 
-Not all of these are required to make a working configuration. A most basic configuration could contain a listener (receiver) and a resolver (sender) which would be a simple proxy. The listener and the resolver could use different protocols, making this proxy also a converter.
+Not all of these are required to make a working configuration. The most basic configuration could contain a listener (receiver) and a resolver (sender) which would be a simple proxy. The listener and the resolver could use different protocols, making this proxy also a converter.
 
 A more complex configuration could contain multiple listeners in different protocols, a router, several modifiers, and passing queries to multiple resolvers upstream, forming a pipeline like UDP listener -> router -> cache -> DoT resolver. A single configuration can hold more than one independent pipeline.
 
@@ -116,7 +116,7 @@ Example [split-config](../cmd/routedns/example-config/split-config).
 
 ## Listeners
 
-Listers are query receivers that form the start of a query pipeline. Queries received by a listener are then forwarded to routers, groups, or to resolvers directly. Several DNS protocols are supported.
+Listeners are query receivers that form the start of a query pipeline. Queries received by a listener are then forwarded to routers, groups, or to resolvers directly. Several DNS protocols are supported.
 
 While nothing in the configuration references a listener (since it's the first element in a pipeline), it still requires a name that is defined like so `[listeners.NAME]`.
 
@@ -128,14 +128,14 @@ Common options for all listeners:
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 
-Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificate, keys and peer validation
+Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificates, keys and peer validation.
 
 - `server-crt` - Server certificate file. Required.
 - `server-key` - Server key file. Required.
-- `ca` - CA to validate client certificated. Optional. Uses the operating system's CA store by default.
+- `ca` - CA to validate client certificates. Optional. Uses the operating system's CA store by default.
 - `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional.
 
-The DNS-over-HTTPS listener also accepts the client IP address from trusted reverse proxies in a particular subnet. X-Forwarded-For headers are only used if they are provided from this subnet
+The DNS-over-HTTPS listener also accepts the client IP address from trusted reverse proxies in a particular subnet. X-Forwarded-For headers are only used if they are provided from this subnet.
 
 - `trusted-proxy` - CIDR address of trusted reverse proxy. Optional.
 
@@ -259,7 +259,7 @@ Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-cli
 
 ### DNS-over-DTLS
 
-Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC9894](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
+Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
 
 Examples:
 
@@ -344,7 +344,7 @@ Example config files: [admin.toml](../cmd/routedns/example-config/admin.toml), [
 
 ### Cache
 
-A cache will store the responses to queries in memory and respond to further identical queries with the same response. To determine how long an item is kept in memory, the cache uses the lowest TTL of the RRs in the response. Responses served from the cache have their TTL updated according to the time the records spent in memory. If a query has an [ECS Subnet](https://tools.ietf.org/html/rfc7871) option, the subnet address forms part of they key to support subnet-specific answers.
+A cache will store the responses to queries in memory and respond to further identical queries with the same response. To determine how long an item is kept in memory, the cache uses the lowest TTL of the RRs in the response. Responses served from the cache have their TTL updated according to the time the records spent in memory. If a query has an [ECS Subnet](https://tools.ietf.org/html/rfc7871) option, the subnet address forms part of the key to support subnet-specific answers.
 
 Caches can be combined with a [TTL Modifier](#TTL-Modifier) to avoid too many cache-misses due to excessively low TTL values.
 
@@ -365,9 +365,9 @@ Options:
 - `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
 - `cache-harden-below-nxdomain` - Return NXDOMAIN for domain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
 - `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
-- `cache-prefetch-trigger`- If a query is received for a record with less that `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
+- `cache-prefetch-trigger`- If a query is received for a record with less than `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
 - `cache-prefetch-eligible` - Only records with at least `prefetch-eligible` seconds TTL are eligible to be prefetched.
-- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to `memory` backend if not configued.
+- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to `memory` backend if not configured.
 
 Backends:
 
@@ -428,7 +428,7 @@ cache-flush-query = "flush.cache."
 backend = {type = "memory", filename = "/var/tmp/cache.json"}
 ```
 
-Cache that is uses Redis as backend.
+Cache that uses Redis as backend.
 
 ```toml
 [groups.cloudflare-cached]
@@ -442,7 +442,7 @@ Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [
 
 ### Prefetch
 
-While [Cache](#cache) has built-in prefetch capabilities, a the dedicated `prefetch` group may be more appropriate for some use cases. Its tracks the number of queries made within a time window and actively prefetches frequenty requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
+While [Cache](#cache) has built-in prefetch capabilities, the dedicated `prefetch` group may be more appropriate for some use cases. It tracks the number of queries made within a time window and actively prefetches frequently requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
 
 #### Configuration
 
@@ -484,7 +484,7 @@ The limits are applied to all RRs in a response.
 
 #### Configuration
 
-Caches are instantiated with `type = "ttl-modifier"` in the groups section of the configuration.
+TTL modifiers are instantiated with `type = "ttl-modifier"` in the groups section of the configuration.
 
 Options:
 
@@ -497,7 +497,7 @@ Options:
   - `last` - Last TTL.
   - `random` - Random TTL between `ttl-min` and `ttl-max`. Note that not setting `ttl-max` will result in very high TTL values.
 - `ttl-min` - TTL minimum (in seconds) to apply to responses.
-- `ttl-max` - TTL minimum (in seconds) to apply to responses.
+- `ttl-max` - TTL maximum (in seconds) to apply to responses.
 
 `ttl-min` and `ttl-max` are optional, but if configured define a floor/ceiling regardless of what `ttl-select` function is given.
 
@@ -551,13 +551,13 @@ In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and
 
 #### Configuration
 
-Round-Robin groups are instantiated with `type = "fail-rotate"` in the groups section of the configuration.
+Fail-Rotate groups are instantiated with `type = "fail-rotate"` in the groups section of the configuration.
 
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a switch to the next resolver. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
+- `empty-error` - If `true`, an empty response from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -580,7 +580,7 @@ Options:
 - `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
 - `reset-after` - Non-zero time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), or a negative number to switch back immediately, default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
+- `empty-error` - If `true`, an empty response from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -592,7 +592,7 @@ type = "fail-back"
 
 ### Random group
 
-This group will pick a resolver from it's list of upstream resolvers at random. Resolvers that fail will be deactivated for an amount of time before being re-tried.
+This group will pick a resolver from its list of upstream resolvers at random. Resolvers that fail will be deactivated for an amount of time before being re-tried.
 
 #### Configuration
 
@@ -603,7 +603,7 @@ Options:
 - `resolvers` - An array of upstream resolvers or modifiers.
 - `reset-after` - Non-zero time in seconds to disable a failed resolver, or a negative number to disable only for a single request, default 60.
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure which will take the resolver temporarily out of the group. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty reponse from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
+- `empty-error` - If `true`, an empty response from an upstream resolver is considered a failure triggering a switch to the next resolver. Default `false`.
 
 #### Examples
 
@@ -643,13 +643,13 @@ The replace modifier applies regular expressions to query strings and replaces t
 
 #### Configuration
 
-Caches are instantiated with `type = "replace"` in the groups section of the configuration.
+Replace groups are instantiated with `type = "replace"` in the groups section of the configuration.
 
 Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `replace` - Array of maps with `from` and `to` to represent the mapping.
-  - `from` - Regular expression that is applied to the query name. Can contain regexp groups `(...)` which can be used in the `from` expression.
+  - `from` - Regular expression that is applied to the query name. Can contain regexp groups `(...)` which can be used in the `to` expression.
   - `to` - Expression to replace any matches in `from` with. Can reference regexp groups with `${1}`.
 
 #### Examples
@@ -757,7 +757,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {name = "cbuijs/blocklist" format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
    {format = "regexp", source = "/path/to/local/regexp.list"},
 ]
 ```
@@ -798,8 +798,8 @@ Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blo
 
 Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-ip` and `response-blocklist-name`.
 
-- `response-blocklist-ip` blocks backed on IP addresses in the response, by network IP (in CIDR notation) or geographical location.
-- `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PRT and SRV records.
+- `response-blocklist-ip` blocks based on IP addresses in the response, by network IP (in CIDR notation) or geographical location.
+- `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PTR and SRV records.
 
 #### Configuration
 
@@ -815,13 +815,13 @@ Options:
   - For `response-blocklist-ip`, the value can be `cidr`, or `location`. Defaults to `cidr`.
   - For `response-blocklist-name`, the value can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `cache-dir` (see notes for [Query Blockists](#Query-Blocklist)) as well as `name` which assigns a name to the list used in logs (defaults to `source`).
+- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `cache-dir` (see notes for [Query Blocklist](#Query-Blocklist)) as well as `name` which assigns a name to the list used in logs (defaults to `source`).
 - `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned unless an alternative `blocklist-resolver` is defined.
 - `inverted` - Inverts the behavior of the blocklist. If set to `true`, only IPs that are on the blocklist are allowed and responses containing an IP not on the blocklist are blocked. Can be combined with `filter` to remove any IPs not on the blocklist from the response.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
-Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP resonses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
+Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP responses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
 
 Examples:
 
@@ -913,11 +913,11 @@ Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-confi
 
 ### Client Blocklist
 
-Client blocklists match the IP of the client instead of responses. By default, a client on the blocklist will receive a REFUSED, though other responses can be configured by combining it with a `static-responder` The same options as with [response-blocklist-ip](#Response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
+Client blocklists match the IP of the client instead of responses. By default, a client on the blocklist will receive a REFUSED, though other responses can be configured by combining it with a `static-responder`. The same options as with [response-blocklist-ip](#Response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
 
 #### Configuration
 
-The configuration options of client blocklists are very similar to that of [query blocklists](#Response-Blocklist) with the exception of the `filter` option.
+The configuration options of client blocklists are very similar to that of [response blocklists](#Response-Blocklist) with the exception of the `filter` option.
 
 Client blocklists are instantiated with `type = "client-blocklist"`.
 
@@ -1057,7 +1057,7 @@ A static responder can be used to terminate every query made to it with a fixed 
 
 #### Configuration
 
-Round-Robin groups are instantiated with `type = "static-responder"` in the groups section of the configuration.
+Static responders are instantiated with `type = "static-responder"` in the groups section of the configuration.
 
 Options:
 
@@ -1143,7 +1143,7 @@ See [Static Responder](#static-responder) for a list of options. The values are 
 
 Examples:
 
-A fixed responder that can respond to queries like `192.168.1.12.rebind.` by striping the `.rebind.` suffix and treating the remaining string as IP. Note that the template in this case has to produce a valid IP or it will fail. To ensure the queries reaching this responder are always valid it may be best to combine with a router or blocklist in front of it.
+A fixed responder that can respond to queries like `192.168.1.12.rebind.` by stripping the `.rebind.` suffix and treating the remaining string as IP. Note that the template in this case has to produce a valid IP or it will fail. To ensure the queries reaching this responder are always valid it may be best to combine with a router or blocklist in front of it.
 
 ```toml
 [groups.static]
@@ -1258,7 +1258,7 @@ Example config files: [response-collapse.toml](../cmd/routedns/example-config/re
 
 ### Router
 
-Routers are used to direct queries to specific upstream resolvers, modifiers, or to other routers based on the query type, name, time of day, or client information. Each router contains at least one route. Routes are are evaluated in the order they are defined and the first match will be used. Routes that match on the query name are regular expressions. Typically the last route should not have a class, type or name, making it the default route.
+Routers are used to direct queries to specific upstream resolvers, modifiers, or to other routers based on the query type, name, time of day, or client information. Each router contains at least one route. Routes are evaluated in the order they are defined and the first match will be used. Routes that match on the query name are regular expressions. Typically the last route should not have a class, type or name, making it the default route.
 
 #### Configuration
 
@@ -1501,7 +1501,7 @@ edns0-udp-size = 1232
 address = "1.1.1.1:53"
 protocol = "tcp"
 
-# Try UDP first, if truncated use the alernative (TCP)
+# Try UDP first, if truncated use the alternative (TCP)
 [groups.retry]
 type = "truncate-retry"
 resolvers = ["cloudflare-udp"]
@@ -1621,7 +1621,7 @@ Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.tom
 
 ## Resolvers
 
-Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers requires a unique identifier to reference them from other elements. The following protocols are supported:
+Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers require a unique identifier to reference them from other elements. The following protocols are supported:
 
 - udp - Plain (un-encrypted) DNS over UDP
 - tcp - Plain (un-encrypted) DNS over TCP
@@ -1686,7 +1686,7 @@ bootstrap-address = "8.8.8.8"
 
 ### Plain DNS Resolver
 
-Plain, un-encrypted DNS protocol clients for UDP or TCP. Use `protocol = "udp"` or `protocol = "tcp"`. Note that UDP responses can be truncated so it is common to use use it in combination with a [truncate-retry](#Retrying-Truncated-Responses) group to define a fallback.
+Plain, un-encrypted DNS protocol clients for UDP or TCP. Use `protocol = "udp"` or `protocol = "tcp"`. Note that UDP responses can be truncated so it is common to use it in combination with a [truncate-retry](#Retrying-Truncated-Responses) group to define a fallback.
 
 Examples:
 
@@ -1741,7 +1741,7 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 ### DNS-over-HTTPS Resolver
 
 DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
-DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. When 0-RTT is enabled, the resolver will disregard the configured method and always use GET instead. This means the configured address nees to contain a URL template (with the `{?dns}` part).
+DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. When 0-RTT is enabled, the resolver will disregard the configured method and always use GET instead. This means the configured address needs to contain a URL template (with the `{?dns}` part).
 The idle connection timeout can be configured with `doh = { idle-timeout = 60 }` (in seconds). This controls how long idle HTTP connections are kept open before being closed. For TCP transport, the default is 30 seconds. For QUIC transport, the default is determined by the quic-go library. Note that for QUIC, the actual idle timeout is the minimum of the client and server values.
 
 Examples:
@@ -1821,7 +1821,7 @@ Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-cli
 
 ### DNS-over-DTLS Resolver
 
-Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC9894](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
+Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
 
 Examples:
 
@@ -1857,7 +1857,7 @@ Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-clien
 
 ### Bootstrap Resolver
 
-Some configuration contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
+Some configurations contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
 Note: Resolvers (including the bootstrap resolver itself) also support a `bootstrap-address` property that sets the IP directly and bypasses the bootstrap resolver.
 
 Examples:

@@ -13,7 +13,7 @@ protocol = "udp"
 address = "10.0.0.1:53"
 protocol = "tcp"
 
-# Try UDP first, if truncated use the alernative TCP one
+# Try UDP first, if truncated use the alternative TCP one
 [groups.mycompany-dns-a]
 type = "truncate-retry"
 resolvers = ["mycompany-dns-a-udp"]

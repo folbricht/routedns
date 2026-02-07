@@ -1,6 +1,6 @@
 # This config shows how to deal with multiple VPNs having their own DNS. It
 # supports modifying queries for short hostnames such as prod-server1 into
-# queries for server1.prod-domain.com and are routint to the correct DNS server.
+# queries for server1.prod-domain.com and are routed to the correct DNS server.
 
 # Lab DNS servers. Define both UDP and TCP, with TCP only used when responses
 # are truncated.
@@ -20,7 +20,7 @@ protocol = "udp"
 address = "10.2.1.1:53"
 protocol = "tcp"
 
-# Try UDP first, if truncated use the alernative TCP one
+# Try UDP first, if truncated use the alternative TCP one
 [groups.prod-dns]
 type = "truncate-retry"
 resolvers = ["prod-dns-udp"]

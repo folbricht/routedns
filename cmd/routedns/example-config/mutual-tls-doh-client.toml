@@ -1,6 +1,6 @@
 # This is the client-half of a fully secure DoH configuration where the
 # server is private and expects the client to present a cert by a CA it
-# trusts. All queries received locally will be forwarded over Doh to the
+# trusts. All queries received locally will be forwarded over DoH to the
 # server, which then passes it on to its upstream servers.
 
 [resolvers.myserver-doh]

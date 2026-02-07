@@ -1,4 +1,4 @@
-# This configration prevents duplicate queries from being sent upstream. All
+# This configuration prevents duplicate queries from being sent upstream. All
 # duplicate requests get the same answer (that of the first).
 
 [listeners.local-udp]

@@ -1,4 +1,4 @@
-# Simple example showing how to to use a router containing multi-type routes as well as
+# Simple example showing how to use a router containing multi-type routes as well as
 # inverted routes. The first route only allows A, AAAA, MX record lookups past it. Then
 # everything under .google.com will be sent to Google DoT while everything else goes to
 # Cloudflare.

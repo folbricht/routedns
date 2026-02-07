@@ -57,7 +57,7 @@ type DoHClientOptions struct {
 	Use0RTT bool
 }
 
-// DoHClient is a DNS-over-HTTP resolver with support fot HTTP/2.
+// DoHClient is a DNS-over-HTTP resolver with support for HTTP/2.
 type DoHClient struct {
 	id       string
 	endpoint string

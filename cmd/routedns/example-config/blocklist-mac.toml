@@ -5,7 +5,7 @@ protocol = "dot"
 [groups.cloudflare-blocklist]
 type             = "blocklist-v2"
 resolvers        = ["cloudflare-dot"] # Anything that passes the filter is sent on to this resolver
-blocklist-format = "mac"              # "mac, "domain", "hosts" or "regexp", defaults to "regexp"
+blocklist-format = "mac"              # "mac", "domain", "hosts" or "regexp", defaults to "regexp"
 blocklist        = [                  # Define the MAC addresses to be blocked, these are expected to be supplied by the client in EDNS0 option 65001
   '01:23:45:ab:cd:ef',
   '01:01:01:ff:ff:ff',

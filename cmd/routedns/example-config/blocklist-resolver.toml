@@ -3,8 +3,8 @@
 # return NXDOMAIN for any item that matches the blocklist but not the allowlist.
 # With resolvers, it's possible to send queries to different resolvers based
 # on them matching the allowlist or blocklist, similar to a router. This is
-# useful when the blocklist should return something other than NXDOMAIN, the
-# query can be routed to a statis-responder instead, providing more control
+# useful when the blocklist should return something other than NXDOMAIN. The
+# query can be routed to a static-responder instead, providing more control
 # over what is returned.
 
 [resolvers.cloudflare-dot]

@@ -216,7 +216,7 @@ func (r *Cache) String() string {
 	return r.id
 }
 
-// Returns an answer from the cache with it's TTL updated or false in case of a cache-miss.
+// Returns an answer from the cache with its TTL updated or false in case of a cache-miss.
 func (r *Cache) answerFromCache(q *dns.Msg) (*dns.Msg, bool, bool) {
 	a, prefetchEligible, ok := r.backend.Lookup(q)
 	if ok {

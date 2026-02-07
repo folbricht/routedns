@@ -25,7 +25,7 @@ type RateLimiter struct {
 var _ Resolver = &RateLimiter{}
 
 type RateLimiterOptions struct {
-	Requests      uint     // Number of requests allwed per time period
+	Requests      uint     // Number of requests allowed per time period
 	Window        uint     // Time period in seconds
 	Prefix4       uint8    // Netmask to identify IP4 clients
 	Prefix6       uint8    // Netmask to identify IP6 clients
