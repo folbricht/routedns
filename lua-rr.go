@@ -134,37 +134,37 @@ func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors 
 			index: append(slices.Clone(index), field.Index...),
 		}
 		switch field.Type {
-		case reflect.TypeOf(net.IP{}):
+		case reflect.TypeFor[net.IP]():
 			a.get, a.set = getIPField, setIPField
-		case reflect.TypeOf(""):
+		case reflect.TypeFor[string]():
 			a.get, a.set = getStringField, setStringField
-		case reflect.TypeOf(uint8(0)):
+		case reflect.TypeFor[uint8]():
 			a.get, a.set = getUint8Field, setUint8Field
-		case reflect.TypeOf(uint16(0)):
+		case reflect.TypeFor[uint16]():
 			a.get, a.set = getUint16Field, setUint16Field
-		case reflect.TypeOf(uint32(0)):
+		case reflect.TypeFor[uint32]():
 			a.get, a.set = getUint32Field, setUint32Field
-		case reflect.TypeOf(uint64(0)):
+		case reflect.TypeFor[uint64]():
 			a.get, a.set = getUint64Field, setUint64Field
-		case reflect.TypeOf([]uint16{}):
+		case reflect.TypeFor[[]uint16]():
 			a.get, a.set = getUint16SliceField, setUint16SliceField
-		case reflect.TypeOf([]string{}):
+		case reflect.TypeFor[[]string]():
 			a.get, a.set = getStringSliceField, setStringSliceField
-		case reflect.TypeOf(dns.DS{}): // Composed in DLV
-			return rrFieldsForType(reflect.TypeOf(dns.DS{}), field.Index)
-		case reflect.TypeOf(dns.SVCB{}): // Composed in HTTPS
-			return rrFieldsForType(reflect.TypeOf(dns.SVCB{}), field.Index)
-		case reflect.TypeOf(dns.NSEC{}): // Composed in NXT
-			return rrFieldsForType(reflect.TypeOf(dns.NSEC{}), field.Index)
-		case reflect.TypeOf([]dns.APLPrefix{}): // Used in APL
+		case reflect.TypeFor[dns.DS](): // Composed in DLV
+			return rrFieldsForType(reflect.TypeFor[dns.DS](), field.Index)
+		case reflect.TypeFor[dns.SVCB](): // Composed in HTTPS
+			return rrFieldsForType(reflect.TypeFor[dns.SVCB](), field.Index)
+		case reflect.TypeFor[dns.NSEC](): // Composed in NXT
+			return rrFieldsForType(reflect.TypeFor[dns.NSEC](), field.Index)
+		case reflect.TypeFor[[]dns.APLPrefix](): // Used in APL
 			a.get, a.set = getUnsupported(field.Name), setUnsupported(field.Name)
-		case reflect.TypeOf(dns.RRSIG{}): // Composed in SIG
-			return rrFieldsForType(reflect.TypeOf(dns.RRSIG{}), field.Index)
-		case reflect.TypeOf(dns.DNSKEY{}): // Composed in KEY
-			return rrFieldsForType(reflect.TypeOf(dns.DNSKEY{}), field.Index)
-		case reflect.TypeOf([]dns.SVCBKeyValue{}): // interface
+		case reflect.TypeFor[dns.RRSIG](): // Composed in SIG
+			return rrFieldsForType(reflect.TypeFor[dns.RRSIG](), field.Index)
+		case reflect.TypeFor[dns.DNSKEY](): // Composed in KEY
+			return rrFieldsForType(reflect.TypeFor[dns.DNSKEY](), field.Index)
+		case reflect.TypeFor[[]dns.SVCBKeyValue](): // interface
 			a.get, a.set = getUnsupported(field.Name), setUnsupported(field.Name)
-		case reflect.TypeOf([]dns.EDNS0{}): // in OPT
+		case reflect.TypeFor[[]dns.EDNS0](): // in OPT
 			a.get, a.set = getEDNS0SliceField, setEDNS0SliceField
 		default:
 			panic(fmt.Errorf("unsupported RR field value type %v in %s", field.Type, typ))
