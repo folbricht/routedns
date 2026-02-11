@@ -22,6 +22,7 @@ var _ Resolver = &Lua{}
 type LuaOptions struct {
 	Script      string
 	Concurrency uint
+	NoSandbox   bool // Disables the sandbox. When false (default), scripts cannot access os/io/debug/etc.
 }
 
 func NewLua(id string, opt LuaOptions, resolvers ...Resolver) (*Lua, error) {
@@ -97,7 +98,7 @@ func (r *Lua) Close() {
 }
 
 func (r *Lua) newScript() (*LuaScript, error) {
-	s, err := NewScriptFromByteCode(r.bytecode)
+	s, err := NewScriptFromByteCode(r.bytecode, !r.opt.NoSandbox)
 	if err != nil {
 		return nil, err
 	}

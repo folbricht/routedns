@@ -31,12 +31,43 @@ func LuaCompile(reader io.Reader, name string) (ByteCode, error) {
 	return ByteCode{proto}, nil
 }
 
-// NewScriptFromByteCode creates a new lua script from bytecode.
-func NewScriptFromByteCode(b ByteCode) (*LuaScript, error) {
-	L := lua.NewState()
+// NewScriptFromByteCode creates a new lua script from bytecode. When sandbox
+// is true, only safe libraries are loaded (no io, os, debug, package, channel).
+func NewScriptFromByteCode(b ByteCode, sandbox bool) (*LuaScript, error) {
+	var L *lua.LState
+	if sandbox {
+		L = lua.NewState(lua.Options{SkipOpenLibs: true})
+		openSandboxedLibs(L)
+	} else {
+		L = lua.NewState()
+	}
 	lfunc := L.NewFunctionFromProto(b.FunctionProto)
 	L.Push(lfunc)
 	return &LuaScript{L: L}, L.PCall(0, lua.MultRet, nil)
+}
+
+// openSandboxedLibs opens only safe Lua libraries and removes dangerous base functions.
+func openSandboxedLibs(L *lua.LState) {
+	// Open safe libraries
+	for _, lib := range []struct {
+		name string
+		fn   lua.LGFunction
+	}{
+		{lua.BaseLibName, lua.OpenBase},
+		{lua.TabLibName, lua.OpenTable},
+		{lua.StringLibName, lua.OpenString},
+		{lua.MathLibName, lua.OpenMath},
+		{lua.CoroutineLibName, lua.OpenCoroutine},
+	} {
+		L.Push(L.NewFunction(lib.fn))
+		L.Push(lua.LString(lib.name))
+		L.Call(1, 0)
+	}
+
+	// Remove dangerous base functions
+	for _, name := range []string{"dofile", "loadfile", "load", "loadstring", "module", "require"} {
+		L.SetGlobal(name, lua.LNil)
+	}
 }
 
 func (s *LuaScript) HasFunction(name string) bool {

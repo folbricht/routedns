@@ -606,3 +606,180 @@ end`,
 	require.Equal(t, uint16(15), ede.InfoCode)
 	require.Equal(t, "totally blocked", ede.ExtraText)
 }
+
+func TestLuaSandboxBlocksIO(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	local f = io.open("/etc/passwd", "r")
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.Error(t, err)
+}
+
+func TestLuaSandboxBlocksOS(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	os.execute("echo pwned")
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.Error(t, err)
+}
+
+func TestLuaSandboxBlocksDangerousBase(t *testing.T) {
+	dangerous := []struct {
+		name   string
+		script string
+	}{
+		{"loadstring", `function Resolve(msg, ci) loadstring("return 1")() return nil, nil end`},
+		{"dofile", `function Resolve(msg, ci) dofile("/etc/passwd") return nil, nil end`},
+		{"loadfile", `function Resolve(msg, ci) loadfile("/etc/passwd") return nil, nil end`},
+		{"load", `function Resolve(msg, ci) load("return 1")() return nil, nil end`},
+		{"require", `function Resolve(msg, ci) require("os") return nil, nil end`},
+	}
+
+	for _, tc := range dangerous {
+		t.Run(tc.name, func(t *testing.T) {
+			opt := LuaOptions{Script: tc.script}
+			resolver := new(TestResolver)
+
+			r, err := NewLua("test-lua", opt, resolver)
+			if err != nil {
+				// Script failed at load time (function doesn't exist), that's fine
+				return
+			}
+
+			q := new(dns.Msg)
+			q.SetQuestion("example.com.", dns.TypeA)
+			_, err = r.Resolve(q, ClientInfo{})
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestLuaSandboxAllowsSafeLibs(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- Test string library
+	local s = string.upper("hello")
+	if s ~= "HELLO" then
+		return nil, Error.new("string.upper failed")
+	end
+
+	-- Test math library
+	local n = math.floor(3.7)
+	if n ~= 3 then
+		return nil, Error.new("math.floor failed")
+	end
+
+	-- Test table library
+	local t = {}
+	table.insert(t, "a")
+	if t[1] ~= "a" then
+		return nil, Error.new("table.insert failed")
+	end
+
+	-- Test safe base functions
+	local s2 = tostring(42)
+	if s2 ~= "42" then
+		return nil, Error.new("tostring failed")
+	end
+	if type(s2) ~= "string" then
+		return nil, Error.new("type failed")
+	end
+
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+}
+
+func TestLuaSandboxDisabled(t *testing.T) {
+	opt := LuaOptions{
+		NoSandbox: true,
+		Script: `
+function Resolve(msg, ci)
+	local t = os.time()
+	if t == nil or t == 0 then
+		return nil, Error.new("os.time failed")
+	end
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+}
+
+func TestLuaSandboxWithResolvers(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	local resolver = Resolvers[1]
+	local answer, err = resolver:resolve(msg, ci)
+	if err ~= nil then
+		return nil, err
+	end
+	return answer, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, resolver.HitCount())
+}
