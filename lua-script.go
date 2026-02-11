@@ -44,12 +44,6 @@ func (s *LuaScript) HasFunction(name string) bool {
 }
 
 func (s *LuaScript) Call(fnName string, nret int, params ...any) ([]any, error) {
-	// args := make([]lua.LValue, 0, len(params))
-	// TODO: implement
-	// for _, p := range params {
-	// 	args = append(args, userDataWithType(s.L, "", p))
-	// }
-
 	args := []lua.LValue{
 		userDataWithMetatable(s.L, luaMessageMetatableName, params[0]),
 		userDataWithMetatable(s.L, "", params[1]),

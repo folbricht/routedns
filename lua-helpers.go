@@ -67,6 +67,5 @@ func numberSliceToTable[T numbers](L *lua.LState, values []T) *lua.LTable {
 	for _, value := range values {
 		table.Append(lua.LNumber(value))
 	}
-	L.Push(table)
 	return table
 }

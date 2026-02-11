@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -40,8 +41,8 @@ func (s *LuaScript) RegisterRRTypes() {
 			var err error
 			table.ForEach(func(k, v lua.LValue) {
 				if k.Type() != lua.LTString {
-					if err != nil { // Only record the first error
-						err = fmt.Errorf("expecte string keys, got %s", k.Type().String())
+					if err == nil { // Only record the first error
+						err = fmt.Errorf("expected string keys, got %s", k.Type().String())
 					}
 					return
 				}
@@ -130,7 +131,7 @@ func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors 
 			continue
 		}
 		a := rrFieldAccessors{
-			index: append(index, field.Index...),
+			index: append(slices.Clone(index), field.Index...),
 		}
 		switch field.Type {
 		case reflect.TypeOf(net.IP{}):
@@ -383,7 +384,7 @@ func setIPField(L *lua.LState, fieldValue reflect.Value, value lua.LValue) error
 	case lua.LTString:
 		ip := net.ParseIP(value.String())
 		if ip == nil {
-			return nil
+			return luaArgError{3, fmt.Errorf("invalid IP address %q", value.String())}
 		}
 		fieldValue.SetBytes(ip)
 	case lua.LTNil:
@@ -427,7 +428,7 @@ func setEDNS0SliceField(L *lua.LState, fieldValue reflect.Value, value lua.LValu
 		}
 		value, ok := ud.Value.(dns.EDNS0)
 		if !ok {
-			return luaArgError{3, fmt.Errorf("expected EDNS0, got %T", ud)}
+			return luaArgError{3, fmt.Errorf("expected EDNS0, got %T", ud.Value)}
 		}
 		stringValues = append(stringValues, value)
 	}

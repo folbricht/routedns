@@ -48,7 +48,11 @@ func resolverResolve(L *lua.LState) int {
 	resp, err := r.Resolve(msg, ci)
 
 	// Return the answer
-	L.Push(userDataWithMetatable(L, luaMessageMetatableName, resp))
+	if resp == nil {
+		L.Push(lua.LNil)
+	} else {
+		L.Push(userDataWithMetatable(L, luaMessageMetatableName, resp))
+	}
 
 	// Return the error
 	if err != nil {

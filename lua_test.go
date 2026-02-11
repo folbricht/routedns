@@ -380,6 +380,153 @@ end`,
 	require.NoError(t, err)
 }
 
+func TestLuaMessageAnswerNsExtra(t *testing.T) {
+	t.Run("construct_response", func(t *testing.T) {
+		// Test that Lua scripts can set answer, ns, and extra sections
+		opt := LuaOptions{
+			Script: `
+function Resolve(msg, ci)
+	local answer = Message.new()
+	answer:set_reply(msg)
+
+	-- Add an A record to the answer section
+	local a = RR.new({rtype=TypeA, name="example.com.", class=ClassIN, ttl=300, a="1.2.3.4"})
+	answer.answer = { a }
+
+	-- Add an NS record to the authority section
+	local ns = RR.new({rtype=TypeNS, name="example.com.", class=ClassIN, ttl=3600, ns="ns1.example.com."})
+	answer.ns = { ns }
+
+	-- Add an A record to the additional section
+	local extra = RR.new({rtype=TypeA, name="ns1.example.com.", class=ClassIN, ttl=300, a="5.6.7.8"})
+	answer.extra = { extra }
+
+	return answer, nil
+end`,
+		}
+
+		var ci ClientInfo
+		resolver := new(TestResolver)
+
+		r, err := NewLua("test-lua", opt, resolver)
+		require.NoError(t, err)
+
+		q := new(dns.Msg)
+		q.SetQuestion("example.com.", dns.TypeA)
+
+		a, err := r.Resolve(q, ci)
+		require.NoError(t, err)
+
+		// Verify answer section
+		require.Len(t, a.Answer, 1)
+		aRR, ok := a.Answer[0].(*dns.A)
+		require.True(t, ok)
+		require.Equal(t, "example.com.", aRR.Hdr.Name)
+		require.Equal(t, net.ParseIP("1.2.3.4").To4(), aRR.A.To4())
+		require.Equal(t, uint32(300), aRR.Hdr.Ttl)
+
+		// Verify ns section
+		require.Len(t, a.Ns, 1)
+		nsRR, ok := a.Ns[0].(*dns.NS)
+		require.True(t, ok)
+		require.Equal(t, "example.com.", nsRR.Hdr.Name)
+		require.Equal(t, "ns1.example.com.", nsRR.Ns)
+
+		// Verify extra section
+		require.Len(t, a.Extra, 1)
+		extraRR, ok := a.Extra[0].(*dns.A)
+		require.True(t, ok)
+		require.Equal(t, "ns1.example.com.", extraRR.Hdr.Name)
+		require.Equal(t, net.ParseIP("5.6.7.8").To4(), extraRR.A.To4())
+	})
+
+	t.Run("read_incoming", func(t *testing.T) {
+		// Test that Lua scripts can read answer/ns/extra from an upstream response
+		opt := LuaOptions{
+			Script: `
+function Resolve(msg, ci)
+	-- Forward to upstream
+	local resp, err = Resolvers[1]:resolve(msg, ci)
+	if err ~= nil then
+		return nil, err
+	end
+
+	-- Read the answer section and verify values
+	local answers = resp.answer
+	if #answers ~= 1 then
+		return nil, Error.new("expected 1 answer, got " .. #answers)
+	end
+	if answers[1].a ~= "10.0.0.1" then
+		return nil, Error.new("unexpected answer IP: " .. answers[1].a)
+	end
+
+	-- Read the ns section
+	local ns = resp.ns
+	if #ns ~= 1 then
+		return nil, Error.new("expected 1 ns, got " .. #ns)
+	end
+	if ns[1].ns ~= "ns1.test." then
+		return nil, Error.new("unexpected ns: " .. ns[1].ns)
+	end
+
+	-- Read the extra section
+	local extra = resp.extra
+	if #extra ~= 1 then
+		return nil, Error.new("expected 1 extra, got " .. #extra)
+	end
+	if extra[1].a ~= "10.0.0.2" then
+		return nil, Error.new("unexpected extra IP: " .. extra[1].a)
+	end
+
+	return resp, nil
+end`,
+		}
+
+		var ci ClientInfo
+
+		// Build a response with all sections populated
+		response := new(dns.Msg)
+		response.SetQuestion("test.example.", dns.TypeA)
+		response.Response = true
+		response.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: "test.example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.ParseIP("10.0.0.1"),
+			},
+		}
+		response.Ns = []dns.RR{
+			&dns.NS{
+				Hdr: dns.RR_Header{Name: "test.example.", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 3600},
+				Ns:  "ns1.test.",
+			},
+		}
+		response.Extra = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: "ns1.test.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.ParseIP("10.0.0.2"),
+			},
+		}
+
+		resolver := &TestResolver{
+			ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+				return response, nil
+			},
+		}
+
+		r, err := NewLua("test-lua", opt, resolver)
+		require.NoError(t, err)
+
+		q := new(dns.Msg)
+		q.SetQuestion("test.example.", dns.TypeA)
+
+		a, err := r.Resolve(q, ci)
+		require.NoError(t, err)
+		require.Len(t, a.Answer, 1)
+		require.Len(t, a.Ns, 1)
+		require.Len(t, a.Extra, 1)
+	})
+}
+
 func TestLuaRREDNS0(t *testing.T) {
 	opt := LuaOptions{
 		Script: `

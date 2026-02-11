@@ -89,6 +89,13 @@ func (r *Lua) String() string {
 	return r.id
 }
 
+func (r *Lua) Close() {
+	close(r.scripts)
+	for s := range r.scripts {
+		s.L.Close()
+	}
+}
+
 func (r *Lua) newScript() (*LuaScript, error) {
 	s, err := NewScriptFromByteCode(r.bytecode)
 	if err != nil {

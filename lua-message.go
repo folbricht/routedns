@@ -48,6 +48,12 @@ func (s *LuaScript) RegisterMessageType() {
 				L.Push(lua.LBool(msg.RecursionAvailable))
 			case "authenticated_data":
 				L.Push(lua.LBool(msg.AuthenticatedData))
+			case "answer":
+				L.Push(rrSliceToTable(L, msg.Answer))
+			case "ns":
+				L.Push(rrSliceToTable(L, msg.Ns))
+			case "extra":
+				L.Push(rrSliceToTable(L, msg.Extra))
 			case "set_reply":
 				L.Push(L.NewFunction(
 					method(func(L *lua.LState, msg *dns.Msg) int {
@@ -134,10 +140,58 @@ func (s *LuaScript) RegisterMessageType() {
 				msg.RecursionAvailable = L.CheckBool(3)
 			case "authenticated_data":
 				msg.AuthenticatedData = L.CheckBool(3)
+			case "answer":
+				rrs, ok := tableToRRSlice(L, 3)
+				if !ok {
+					return 0
+				}
+				msg.Answer = rrs
+			case "ns":
+				rrs, ok := tableToRRSlice(L, 3)
+				if !ok {
+					return 0
+				}
+				msg.Ns = rrs
+			case "extra":
+				rrs, ok := tableToRRSlice(L, 3)
+				if !ok {
+					return 0
+				}
+				msg.Extra = rrs
 			default:
-				L.ArgError(2, fmt.Sprintf("question does not have field %q", fieldName))
+				L.ArgError(2, fmt.Sprintf("message does not have field %q", fieldName))
 				return 0
 			}
 			return 0
 		}))
+}
+
+func rrSliceToTable(L *lua.LState, rrs []dns.RR) *lua.LTable {
+	table := L.CreateTable(len(rrs), 0)
+	for _, rr := range rrs {
+		lv := userDataWithMetatable(L, luaRRHeaderMetatableName, rr)
+		table.Append(lv)
+	}
+	return table
+}
+
+func tableToRRSlice(L *lua.LState, n int) ([]dns.RR, bool) {
+	table := L.CheckTable(n)
+	size := table.Len()
+	rrs := make([]dns.RR, 0, size)
+	for i := range size {
+		element := table.RawGetInt(i + 1)
+		if element.Type() != lua.LTUserData {
+			L.ArgError(n, "invalid type, expected RR userdata")
+			return nil, false
+		}
+		ud := element.(*lua.LUserData)
+		rr, ok := ud.Value.(dns.RR)
+		if !ok {
+			L.ArgError(n, fmt.Sprintf("invalid type, expected RR, got %T", ud.Value))
+			return nil, false
+		}
+		rrs = append(rrs, rr)
+	}
+	return rrs, true
 }
