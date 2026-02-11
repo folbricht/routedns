@@ -196,6 +196,12 @@ type group struct {
 	PrefetchThreshold uint64        `toml:"prefetch-threshold"` // Minimum number of queries per window to enable prefetching, default 5
 	PrefetchCacheSize int			`toml:"prefetch-cache-size"` // Maximum number of items to cache
 	PrefetchMaxItems  int           `toml:"prefetch-max-items"` // Maximum number of items to track prefetch, default (0) unlimited
+
+	// Lua scripting options
+	LuaScript       string `toml:"lua-script"`        // Inline Lua script
+	LuaScriptSource string `toml:"lua-script-source"` // Path to external Lua script file
+	LuaConcurrency  uint   `toml:"lua-concurrency"`   // Number of concurrent Lua instances, default 4
+	LuaNoSandbox    bool   `toml:"lua-no-sandbox"`    // Disable sandbox for trusted scripts
 }
 
 // Block/Allowlist items for blocklist-v2

@@ -1,0 +1,23 @@
+# Lua script that passes queries through to an upstream resolver.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.lua-proxy]
+type = "lua"
+resolvers = ["cloudflare-dot"]
+lua-script = """
+function Resolve(msg, ci)
+    local answer, err = Resolvers[1]:resolve(msg, ci)
+    if err ~= nil then
+        return nil, err
+    end
+    return answer, nil
+end
+"""
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "lua-proxy"

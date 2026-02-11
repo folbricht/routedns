@@ -1,0 +1,33 @@
+# Lua script that routes queries to different upstream resolvers
+# based on query name patterns.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"
+
+[groups.lua-router]
+type = "lua"
+resolvers = ["cloudflare-dot", "google-dot"]
+lua-script = """
+function Resolve(msg, ci)
+    local q = msg.questions[1]
+    local name = q.name
+
+    -- Route .google.com queries to Google DNS
+    if string.find(name, "google%.com%.$") then
+        return Resolvers[2]:resolve(msg, ci)
+    end
+
+    -- Everything else goes to Cloudflare
+    return Resolvers[1]:resolve(msg, ci)
+end
+"""
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "lua-router"
