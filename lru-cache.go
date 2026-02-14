@@ -146,7 +146,7 @@ func (c *lruCache) resize() {
 		return
 	}
 	drop := len(c.items) - c.maxItems
-	for i := 0; i < drop; i++ {
+	for range drop {
 		item := c.tail.prev
 		item.prev.next = c.tail
 		c.tail.prev = item.prev

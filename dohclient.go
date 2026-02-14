@@ -184,7 +184,7 @@ func (d *DoHClient) do(req *http.Request) (*http.Response, error) {
 
 func (d *DoHClient) buildPostRequest(ctx context.Context, msg []byte) (*http.Request, error) {
 	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
-	u, err := d.template.Expand(map[string]interface{}{})
+	u, err := d.template.Expand(map[string]any{})
 	if err != nil {
 		d.metrics.err.Add("template", 1)
 		return nil, err
@@ -205,7 +205,7 @@ func (d *DoHClient) buildGetRequest(ctx context.Context, msg []byte) (*http.Requ
 	b64 := base64.RawURLEncoding.EncodeToString(msg)
 
 	// The URL must be a template. Process it with the "dns" param containing the encoded query.
-	u, err := d.template.Expand(map[string]interface{}{"dns": b64})
+	u, err := d.template.Expand(map[string]any{"dns": b64})
 	if err != nil {
 		d.metrics.err.Add("template", 1)
 		return nil, err

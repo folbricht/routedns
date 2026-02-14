@@ -65,7 +65,7 @@ arguments.
 
 type Node struct {
 	id    string
-	value interface{}
+	value any
 }
 
 var _ dag.IDInterface = Node{}

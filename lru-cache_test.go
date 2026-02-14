@@ -18,7 +18,7 @@ func TestLRUAddGet(t *testing.T) {
 	}
 	var items []item
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		msg := new(dns.Msg)
 		msg.SetQuestion(fmt.Sprintf("test%d.com.", i), dns.TypeA)
 		msg.Answer = []dns.RR{
