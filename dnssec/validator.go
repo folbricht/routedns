@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -227,7 +228,7 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 	}
 
 	// Cache the validated keys
-	allDNSKEYs := append(fetchedZSK, fetchedKSK...)
+	allDNSKEYs := slices.Concat(fetchedZSK, fetchedKSK)
 	v.ks.addDNSKEY(zone, allDNSKEYs)
 
 	return fetchedZSK, fetchedKSK, nil
@@ -250,9 +251,10 @@ func (v *Validator) lookupDNSKEY(name string) (zsk, ksk []*dns.DNSKEY, sigs []*d
 	for _, rr := range a.Answer {
 		switch r := rr.(type) {
 		case *dns.DNSKEY:
-			if r.Flags == 257 {
+			switch r.Flags {
+			case 257:
 				ksk = append(ksk, r)
-			} else if r.Flags == 256 {
+			case 256:
 				zsk = append(zsk, r)
 			}
 		case *dns.RRSIG:
@@ -301,12 +303,8 @@ func parentZone(name string) string {
 	if name == "." {
 		return "."
 	}
-	i := strings.Index(name, ".")
-	if i == -1 {
-		return "."
-	}
-	parent := name[i+1:]
-	if parent == "" {
+	_, parent, found := strings.Cut(name, ".")
+	if !found || parent == "" {
 		return "."
 	}
 	return parent

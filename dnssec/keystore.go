@@ -75,9 +75,10 @@ func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
 		if key.Hdr.Ttl < ttl {
 			ttl = key.Hdr.Ttl
 		}
-		if key.Flags == 257 {
+		switch key.Flags {
+		case 257:
 			ksk = append(ksk, key)
-		} else if key.Flags == 256 {
+		case 256:
 			zsk = append(zsk, key)
 		}
 	}

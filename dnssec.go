@@ -42,6 +42,7 @@ type dnssecMetrics struct {
 var _ Resolver = &DNSSECValidator{}
 
 // IANA root trust anchors (KSK-2017 and KSK-2024)
+// From https://data.iana.org/root-anchors/root-anchors.xml
 var defaultTrustAnchors = []TrustAnchor{
 	{
 		Owner:      ".",
