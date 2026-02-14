@@ -82,8 +82,7 @@ func (s *LuaScript) RegisterMessageType() {
 							L.Push(lua.LNil)
 							return 1
 						}
-						// TODO: Return an OPT metatable name here, not generic RR
-						lv := userDataWithMetatable(L, luaRRHeaderMetatableName, opt)
+						lv := userDataWithMetatable(L, luaOPTMetatableName, opt)
 						L.Push(lv)
 						return 1
 					})))

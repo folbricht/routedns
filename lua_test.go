@@ -783,3 +783,120 @@ end`,
 	require.NoError(t, err)
 	require.Equal(t, 1, resolver.HitCount())
 }
+
+func TestLuaOPTOperations(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- Set up EDNS0 and get the OPT record
+	msg:set_edns0(4096, true)
+	local opt = msg:is_edns0()
+	if opt == nil then
+		return nil, Error.new("is_edns0 returned nil")
+	end
+
+	-- Read initial values
+	if opt.udp_size ~= 4096 then
+		return nil, Error.new("unexpected udp_size: " .. tostring(opt.udp_size))
+	end
+	if opt.do_bit ~= true then
+		return nil, Error.new("expected do_bit to be true")
+	end
+	if opt.version ~= 0 then
+		return nil, Error.new("unexpected version: " .. tostring(opt.version))
+	end
+	if opt.extended_rcode ~= 0 then
+		return nil, Error.new("unexpected extended_rcode: " .. tostring(opt.extended_rcode))
+	end
+	if opt.name ~= "." then
+		return nil, Error.new("unexpected name: " .. opt.name)
+	end
+	if opt.rtype ~= TypeOPT then
+		return nil, Error.new("unexpected rtype: " .. tostring(opt.rtype))
+	end
+
+	-- Modify fields
+	opt.udp_size = 1232
+	if opt.udp_size ~= 1232 then
+		return nil, Error.new("udp_size not updated: " .. tostring(opt.udp_size))
+	end
+
+	opt.do_bit = false
+	if opt.do_bit ~= false then
+		return nil, Error.new("do_bit not cleared")
+	end
+
+	opt.do_bit = true
+	if opt.do_bit ~= true then
+		return nil, Error.new("do_bit not set")
+	end
+
+	opt.version = 1
+	if opt.version ~= 1 then
+		return nil, Error.new("version not updated: " .. tostring(opt.version))
+	end
+
+	-- extended_rcode stores upper 8 bits of the 12-bit RCODE (value >> 4)
+	-- so we use a value >= 16 to see it reflected (e.g. BADVERS = 16)
+	opt.extended_rcode = 16
+	if opt.extended_rcode ~= 16 then
+		return nil, Error.new("extended_rcode not updated: " .. tostring(opt.extended_rcode))
+	end
+
+	-- Test option array read/write
+	opt.option = {
+		EDNS0_EDE.new(15, "blocked"),
+		EDNS0_COOKIE.new("testcookie"),
+	}
+	local options = opt.option
+	if #options ~= 2 then
+		return nil, Error.new("expected 2 options, got " .. tostring(#options))
+	end
+
+	-- Test OPT.new() constructor
+	local newopt = OPT.new(2048, false)
+	if newopt.udp_size ~= 2048 then
+		return nil, Error.new("OPT.new udp_size: " .. tostring(newopt.udp_size))
+	end
+	if newopt.do_bit ~= false then
+		return nil, Error.new("OPT.new do_bit should be false")
+	end
+
+	local newopt2 = OPT.new(512, true)
+	if newopt2.udp_size ~= 512 then
+		return nil, Error.new("OPT.new(512,true) udp_size: " .. tostring(newopt2.udp_size))
+	end
+	if newopt2.do_bit ~= true then
+		return nil, Error.new("OPT.new(512,true) do_bit should be true")
+	end
+
+	-- Build the response using the modified opt record
+	local answer = Message.new()
+	answer:set_reply(msg)
+	return answer, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	a, err := r.Resolve(q, ci)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	// Verify the OPT record on the original message was modified
+	edns0 := q.IsEdns0()
+	require.NotNil(t, edns0)
+	require.Equal(t, uint16(1232), edns0.UDPSize())
+	require.True(t, edns0.Do())
+	require.Equal(t, uint8(1), edns0.Version())
+	require.Len(t, edns0.Option, 2)
+	require.Equal(t, uint16(dns.EDNS0EDE), edns0.Option[0].Option())
+	require.Equal(t, uint16(dns.EDNS0COOKIE), edns0.Option[1].Option())
+}

@@ -1,0 +1,36 @@
+# Lua script that blocks a domain with NXDOMAIN and attaches an EDNS0
+# Extended DNS Error (EDE) with info code 15 (Blocked).
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.lua-ede-block]
+type = "lua"
+resolvers = ["cloudflare-dot"]
+lua-script = """
+function Resolve(msg, ci)
+    local q = msg.questions[1]
+
+    if q.name == "blocked.example.com." then
+        local answer = Message.new()
+        answer:set_reply(msg)
+        answer.rcode = RcodeNXDOMAIN
+
+        -- Add EDNS0 OPT with an EDE option (info code 15 = Blocked)
+        answer:set_edns0(4096, false)
+        local opt = answer:is_edns0()
+        local ede = EDNS0_EDE.new(15, "domain blocked by policy")
+        opt.option = { ede }
+
+        return answer, nil
+    end
+
+    return Resolvers[1]:resolve(msg, ci)
+end
+"""
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "lua-ede-block"

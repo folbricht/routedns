@@ -108,6 +108,7 @@ func (r *Lua) newScript() (*LuaScript, error) {
 	s.RegisterMessageType()
 	s.RegisterQuestionType()
 	s.RegisterRRTypes()
+	s.RegisterOPTType()
 	s.RegisterEDNS0Types()
 	s.RegisterErrorType()
 

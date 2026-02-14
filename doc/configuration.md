@@ -1649,6 +1649,7 @@ Scripts have access to the following types and globals:
 - **Message** - DNS message. Create with `Message.new()`. Fields: `id`, `response`, `rcode`, `recursion_desired`, `recursion_available`, `authenticated_data`, `questions`, `answer`, `ns`, `extra`. Methods: `set_reply(request)`, `set_question(name, type)`, `is_edns0()`, `set_edns0(udpsize, do)`.
 - **Question** - DNS question. Create with `Question.new(name, qtype, qclass)`. Fields: `name`, `qtype`, `qclass`.
 - **RR** - Resource record. Create with `RR.new({rtype = TypeA, name = "example.com.", class = ClassIN, ttl = 300, a = "1.2.3.4"})`. Header fields: `name`, `rtype`, `class`, `ttl`, `rdlength`. Data fields are type-specific and use lowercase names (e.g., `a`, `aaaa`, `ns`, `cname`, `mx`, `preference`, `target`, etc.).
+- **OPT** - EDNS0 OPT pseudo-record. Create with `OPT.new(udp_size, do_bit)`. Fields: `udp_size`, `do_bit`, `version`, `extended_rcode`, `option` (array of EDNS0 options), `name`, `rtype`. Also returned by `Message:is_edns0()` and created implicitly by `Message:set_edns0(udp_size, do_bit)`.
 - **Error** - Error value. Create with `Error.new("message")`. Methods: `error()`.
 - **Resolvers** - Table of upstream resolvers. Each resolver has a `resolve(msg, ci)` method that returns `(response, error)`.
 - **DNS constants** - Type constants (`TypeA`, `TypeAAAA`, `TypeMX`, ...), class constants (`ClassIN`, ...), rcode constants (`RcodeNOERROR`, `RcodeNXDOMAIN`, ...).
@@ -1730,7 +1731,36 @@ resolvers = ["cloudflare-dot"]
 lua-script-source = "/etc/routedns/custom.lua"
 ```
 
-Example config files: [lua-passthrough.toml](../cmd/routedns/example-config/lua-passthrough.toml), [lua-static-answer.toml](../cmd/routedns/example-config/lua-static-answer.toml), [lua-routing.toml](../cmd/routedns/example-config/lua-routing.toml)
+Block a domain with NXDOMAIN and attach an EDNS0 Extended DNS Error (EDE):
+
+```toml
+[groups.lua-ede-block]
+type = "lua"
+lua-script = """
+function Resolve(msg, ci)
+    local q = msg.questions[1]
+
+    if q.name == "blocked.example.com." then
+        local answer = Message.new()
+        answer:set_reply(msg)
+        answer.rcode = RcodeNXDOMAIN
+
+        -- Add EDNS0 OPT with an EDE option (info code 15 = Blocked)
+        answer:set_edns0(4096, false)
+        local opt = answer:is_edns0()
+        local ede = EDNS0_EDE.new(15, "domain blocked by policy")
+        opt.option = { ede }
+
+        return answer, nil
+    end
+
+    return Resolvers[1]:resolve(msg, ci)
+end
+"""
+resolvers = ["cloudflare-dot"]
+```
+
+Example config files: [lua-passthrough.toml](../cmd/routedns/example-config/lua-passthrough.toml), [lua-static-answer.toml](../cmd/routedns/example-config/lua-static-answer.toml), [lua-routing.toml](../cmd/routedns/example-config/lua-routing.toml), [lua-opt.toml](../cmd/routedns/example-config/lua-opt.toml)
 
 ## Resolvers
 
