@@ -1,0 +1,46 @@
+# DNSSEC validator with explicit trust anchors and log-only mode.
+#
+# By default the validator uses the built-in IANA root trust anchor.
+# Custom trust anchors can be configured using the
+# [[groups.<id>.dnssec-trust-anchors]] array-of-tables syntax.
+#
+# The values below come from https://data.iana.org/root-anchors/root-anchors.xml
+# and include both the KSK-2017 and KSK-2024 root zone key signing keys.
+#
+# With dnssec-log-only = true, validation failures are logged but responses
+# are still returned to clients (useful for monitoring before enforcing).
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+dnssec-log-only = true
+
+# KSK-2017 (active root zone trust anchor)
+[[groups.dnssec-validated.dnssec-trust-anchors]]
+owner = "."
+key-tag = 20326
+algorithm = 8
+digest-type = 2
+digest = "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
+
+# KSK-2024
+[[groups.dnssec-validated.dnssec-trust-anchors]]
+owner = "."
+key-tag = 38696
+algorithm = 8
+digest-type = 2
+digest = "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dnssec-validated"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "dnssec-validated"
