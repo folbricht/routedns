@@ -916,6 +916,28 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "dnssec-validator":
+		if len(gr) != 1 {
+			return fmt.Errorf("type dnssec-validator only supports one resolver in '%s'", id)
+		}
+		var anchors []rdns.TrustAnchor
+		for _, ta := range g.DNSSECTrustAnchors {
+			anchors = append(anchors, rdns.TrustAnchor{
+				Owner:      ta.Owner,
+				KeyTag:     ta.KeyTag,
+				Algorithm:  ta.Algorithm,
+				DigestType: ta.DigestType,
+				Digest:     ta.Digest,
+			})
+		}
+		opt := rdns.DNSSECValidatorOptions{
+			TrustAnchors: anchors,
+			LogOnly:      g.DNSSECLogOnly,
+		}
+		resolvers[id], err = rdns.NewDNSSECValidator(id, gr[0], opt)
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
 	}
