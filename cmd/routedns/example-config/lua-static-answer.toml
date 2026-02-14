@@ -1,0 +1,32 @@
+# Lua script that returns a static response for a specific domain,
+# forwarding everything else to an upstream resolver.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.lua-static]
+type = "lua"
+resolvers = ["cloudflare-dot"]
+lua-script = """
+function Resolve(msg, ci)
+    local q = msg.questions[1]
+
+    -- Return a static A record for "example.com"
+    if q.name == "example.com." and q.qtype == TypeA then
+        local answer = Message.new()
+        answer:set_reply(msg)
+        local rr = RR.new({rtype = TypeA, name = q.name, class = ClassIN, ttl = 300, a = "192.168.1.1"})
+        answer.answer = { rr }
+        return answer, nil
+    end
+
+    -- Forward everything else upstream
+    return Resolvers[1]:resolve(msg, ci)
+end
+"""
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "lua-static"
