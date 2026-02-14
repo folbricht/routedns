@@ -25,6 +25,7 @@ Features:
 - SOCKS5 proxy support
 - Optional metrics export (expvar) to support monitoring and graphing
 - Lua scripting for custom query handling logic with sandboxed execution
+- DNSSEC validation with configurable trust anchors
 - Written in Go - Platform independent
 
 ## Installation

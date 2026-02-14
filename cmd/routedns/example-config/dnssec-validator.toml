@@ -1,0 +1,17 @@
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dnssec-validated"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "dnssec-validated"
