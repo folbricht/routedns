@@ -247,11 +247,11 @@ The ODoH resolver has all the configuration options as [DoH](#dns-over-https-res
 
 Examples:
 
-ODoH client using Cloudflare as proxy and target (since there aren't any other public proxies as of Dec 2020).
+ODoH client using Cloudflare as target. If a proxy is available, set `address` to the proxy URL.
 
 ```toml
-[resolvers.cloudflare-odoh-proxy]
-address = "https://1.1.1.1/dns-query"
+[resolvers.cloudflare-odoh]
+# address = "https://odoh-proxy.example.com/proxy"
 protocol = "odoh"
 target = "https://odoh.cloudflare-dns.com/dns-query"
 ```
@@ -1941,22 +1941,22 @@ The ODoH resolver has all the configuration options as [DoH](#DNS-over-HTTPS-Res
 
 Examples:
 
-ODoH client using Cloudflare as proxy and target (since there aren't any other public proxies as of Dec 2020).
+ODoH client using Cloudflare as target. If a proxy is available, set `address` to the proxy URL. If omitted, the target is contacted directly.
 
 ```toml
-[resolvers.cloudflare-odoh-proxy]
+[resolvers.cloudflare-odoh]
 protocol = "odoh"
-# Address of the oblivious DNS proxy server
-address = "https://odoh-noads-nl.alekberg.net/proxy"
+# Address of the oblivious DNS proxy server. If omitted, the target is used directly.
+# address = "https://odoh-proxy.example.com/proxy"
 # Address of the target. The hostname and path are passed to the proxy for forwarding
 # of encrypted queries. No cert or bootstrap options for the target since the proxy
 # connects to it on the client's behalf
 target = "https://odoh.cloudflare-dns.com/dns-query"
 
-# The ODoH config/key of the Target. 
+# The ODoH config/key of the Target.
 target-config = "0000000secret...."
-# The ODoH config is usually hosted on the target under https://[target]/.well-known/odohconfigs 
-# If the target-config is not specified here, the resolver will request it automatically. Running the client with debug flags will also print the targets public key/config. This can then be copied to the config file, to avoid repeatedly fetching the key with every new launch of the client. 
+# The ODoH config is usually hosted on the target under https://[target]/.well-known/odohconfigs
+# If the target-config is not specified here, the resolver will request it automatically. Running the client with debug flags will also print the targets public key/config. This can then be copied to the config file, to avoid repeatedly fetching the key with every new launch of the client.
 
 ```
 

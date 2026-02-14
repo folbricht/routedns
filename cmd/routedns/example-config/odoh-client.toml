@@ -1,6 +1,6 @@
-[resolvers.cloudflare-odoh-proxy]
-# Address of the odoh proxy server.
-address = "https://odoh-noads-nl.alekberg.net/proxy"
+[resolvers.cloudflare-odoh]
+# Address of the odoh proxy server. If empty, the target is used directly.
+# address = "https://odoh-proxy.example.com/proxy"
 protocol = "odoh"
 # Address of the target. The hostname and path are passed to the proxy for forwarding
 # of encrypted queries. No cert or bootstrap options for the target since the proxy
@@ -13,9 +13,9 @@ target-config = ""
 [listeners.local-udp]
 address = "127.0.0.1:53"
 protocol = "udp"
-resolver = "cloudflare-odoh-proxy"
+resolver = "cloudflare-odoh"
 
 [listeners.local-tcp]
 address = "127.0.0.1:53"
 protocol = "tcp"
-resolver = "cloudflare-odoh-proxy"
+resolver = "cloudflare-odoh"
