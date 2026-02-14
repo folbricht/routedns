@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -118,7 +119,7 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		opt := q.IsEdns0()
 		if opt != nil {
 			// According to RFC 7871, there should be only one EDNS0_SUBNET option per query.
-            // This code checks only the first found EDNS0_SUBNET option.
+			// This code checks only the first found EDNS0_SUBNET option.
 			for _, s := range opt.Option {
 				if e, ok := s.(*dns.EDNS0_SUBNET); ok {
 					ecsIP = e.Address
@@ -146,11 +147,8 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		if len(r.weekdays) > 0 {
 			weekday := now.Weekday()
 			var weekdayMatch bool
-			for _, wd := range r.weekdays {
-				if weekday == wd {
-					weekdayMatch = true
-					break
-				}
+			if slices.Contains(r.weekdays, weekday) {
+				weekdayMatch = true
 			}
 			if !weekdayMatch {
 				return r.inverted
@@ -227,12 +225,7 @@ func (r *route) matchType(typ uint16) bool {
 	if len(r.types) == 0 {
 		return true
 	}
-	for _, t := range r.types {
-		if t == typ {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.types, typ)
 }
 
 // Convert DNS type strings into the numerical type, for example "A" -> 1.

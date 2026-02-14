@@ -37,7 +37,6 @@ func (r *Fastest) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Send the query to all resolvers. The responses are collected in a buffered channel
 	for _, resolver := range r.resolvers {
-		resolver := resolver
 		go func() {
 			a, err := resolver.Resolve(q, ci)
 			responseCh <- response{resolver, a, err}

@@ -24,7 +24,7 @@ func (t *ipBlocklistTrie) add(n *net.IPNet) {
 	}
 	prefix, _ := n.Mask.Size()
 	p := t.root
-	for i := 0; i < prefix; i++ {
+	for i := range prefix {
 		if p.leaf { // stop if we already have a shorter prefix than this
 			break
 		}

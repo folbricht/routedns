@@ -136,7 +136,7 @@ func (r *FastestTCP) probeFastest(log *slog.Logger, rrs []dns.RR) ([]dns.RR, err
 		// Re-order the list in-place to put the fastest at the top
 		rr := res.rr
 		err := res.err
-		for i := 0; i < len(rrs); i++ {
+		for i := range rrs {
 			if rrs[i] == rr {
 				return rrs, err
 			}
@@ -155,7 +155,7 @@ func (r *FastestTCP) probeAll(log *slog.Logger, rrs []dns.RR) ([]dns.RR, error) 
 	defer cancel()
 	resultCh := r.probe(ctx, log, rrs)
 	results := make([]dns.RR, 0, len(rrs))
-	for i := 0; i < len(rrs); i++ {
+	for range rrs {
 		select {
 		case res := <-resultCh:
 			if res.err != nil {

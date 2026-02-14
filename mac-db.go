@@ -105,7 +105,7 @@ func parseMAC(addr string) ([]byte, error) {
 		return nil, fmt.Errorf("unable to parse mac address %q, expected format 01:23:45:ab:cd:ef", addr)
 	}
 	// Check the format, we need 6 parts with 5 separator characters (:) in it
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if b[(i*3)+2] != ':' {
 			return nil, fmt.Errorf("unable to parse mac address %q, expected format 01:23:45:ab:cd:ef", addr)
 		}

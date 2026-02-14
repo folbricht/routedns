@@ -2,10 +2,10 @@ package rdns
 
 import "github.com/miekg/dns"
 
-//  QueryPaddingBlockSize is used to pad queries sent over DoT and DoH according to rfc8467
+// QueryPaddingBlockSize is used to pad queries sent over DoT and DoH according to rfc8467
 const QueryPaddingBlockSize = 128
 
-//  ResponsePaddingBlockSize is used to pad responses over DoT and DoH according to rfc8467
+// ResponsePaddingBlockSize is used to pad responses over DoT and DoH according to rfc8467
 const ResponsePaddingBlockSize = 468
 
 // Fixed buffers to draw on for padding (rather than allocate every time)
@@ -49,10 +49,9 @@ func padAnswer(q, a *dns.Msg) {
 	// If padding would make the packet larger than the request EDNS0 allows, we need
 	// to truncate it.
 	if len+padLen > int(edns0q.UDPSize()) {
-		padLen = int(edns0q.UDPSize()) - len
-		if padLen < 0 { // Still doesn't fit? Give up on padding
-			padLen = 0
-		}
+		padLen = max(int(edns0q.UDPSize())-len,
+			// Still doesn't fit? Give up on padding
+			0)
 	}
 	paddingOpt.Padding = respPadBuf[0:padLen]
 }

@@ -150,7 +150,7 @@ func TestEncodeDecodePooling(t *testing.T) {
 	}
 
 	// Encode multiple times to test pool reuse
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		encoded, err := encodeCacheAnswer(item)
 		if err != nil {
 			t.Fatalf("iteration %d: encodeCacheAnswer failed: %v", i, err)
@@ -244,7 +244,7 @@ func TestEncodeConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(gid int) {
 			defer wg.Done()
 
@@ -264,7 +264,7 @@ func TestEncodeConcurrent(t *testing.T) {
 				Msg:              msg,
 			}
 
-			for i := 0; i < numIterations; i++ {
+			for i := range numIterations {
 				encoded, err := encodeCacheAnswer(item)
 				if err != nil {
 					errs <- err

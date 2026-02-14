@@ -17,7 +17,7 @@ func TestRoundRobin(t *testing.T) {
 	q.SetQuestion("test.com.", dns.TypeA)
 
 	// Send 10 queries
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := g.Resolve(q, ClientInfo{})
 		require.NoError(t, err)
 	}
