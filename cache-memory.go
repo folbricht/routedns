@@ -83,6 +83,7 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	// elements might make changes.
 	answer = answer.Copy()
 	answer.Id = q.Id
+	answer.Question = q.Question // restore the case used in the question
 
 	// Calculate the time the record spent in the cache. We need to
 	// subtract that from the TTL of each answer record.
