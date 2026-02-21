@@ -900,3 +900,80 @@ end`,
 	require.Equal(t, uint16(dns.EDNS0EDE), edns0.Option[0].Option())
 	require.Equal(t, uint16(dns.EDNS0COOKIE), edns0.Option[1].Option())
 }
+
+func TestLuaClientInfoAccess(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- Verify source_ip
+	if ci.source_ip ~= "192.168.1.100" then
+		return nil, Error.new("unexpected source_ip: " .. tostring(ci.source_ip))
+	end
+
+	-- Verify doh_path
+	if ci.doh_path ~= "/dns-query" then
+		return nil, Error.new("unexpected doh_path: " .. tostring(ci.doh_path))
+	end
+
+	-- Verify tls_server_name
+	if ci.tls_server_name ~= "dns.example.com" then
+		return nil, Error.new("unexpected tls_server_name: " .. tostring(ci.tls_server_name))
+	end
+
+	-- Verify listener
+	if ci.listener ~= "my-listener" then
+		return nil, Error.new("unexpected listener: " .. tostring(ci.listener))
+	end
+
+	return nil, nil
+end`,
+	}
+
+	ci := ClientInfo{
+		SourceIP:      net.ParseIP("192.168.1.100"),
+		DoHPath:       "/dns-query",
+		TLSServerName: "dns.example.com",
+		Listener:      "my-listener",
+	}
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+}
+
+func TestLuaClientInfoNilSourceIP(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	-- source_ip should be nil when not set
+	if ci.source_ip ~= nil then
+		return nil, Error.new("expected nil source_ip")
+	end
+
+	-- Empty string fields should be empty
+	if ci.doh_path ~= "" then
+		return nil, Error.new("expected empty doh_path")
+	end
+
+	return nil, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ci)
+	require.NoError(t, err)
+}

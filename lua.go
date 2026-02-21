@@ -111,6 +111,7 @@ func (r *Lua) newScript() (*LuaScript, error) {
 	s.RegisterOPTType()
 	s.RegisterEDNS0Types()
 	s.RegisterErrorType()
+	s.RegisterClientInfoType()
 
 	// Inject the resolvers into the state (so they can be used in the script)
 	s.InjectResolvers(r.resolvers)
