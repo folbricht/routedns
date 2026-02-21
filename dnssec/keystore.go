@@ -9,43 +9,43 @@ import (
 )
 
 type keystore struct {
-	store map[string]*keystoreItem
+	store map[string]*keystoreEntry
 	mu    sync.RWMutex
 	now   func() time.Time
 }
 
-type keystoreItem struct {
-	keys *dnskeyset
-	ds   *dsset
+type keystoreEntry struct {
+	keys *dnskeySet
+	ds   *dsSet
 	mu   sync.RWMutex
 }
 
-func (item *keystoreItem) setDS(ds *dsset) {
+func (item *keystoreEntry) setDS(ds *dsSet) {
 	item.mu.Lock()
 	defer item.mu.Unlock()
 	item.ds = ds
 }
 
-func (item *keystoreItem) setDNSKEY(keys *dnskeyset) {
+func (item *keystoreEntry) setDNSKEY(keys *dnskeySet) {
 	item.mu.Lock()
 	defer item.mu.Unlock()
 	item.keys = keys
 }
 
-type dnskeyset struct {
-	expiry time.Time
-	zsk    []*dns.DNSKEY
-	ksk    []*dns.DNSKEY
+type dnskeySet struct {
+	expiresAt time.Time
+	zsk       []*dns.DNSKEY
+	ksk       []*dns.DNSKEY
 }
 
-type dsset struct {
-	expiry time.Time
-	ds     []*dns.DS
+type dsSet struct {
+	expiresAt time.Time
+	records   []*dns.DS
 }
 
 func newKeystore(now func() time.Time) *keystore {
 	return &keystore{
-		store: make(map[string]*keystoreItem),
+		store: make(map[string]*keystoreEntry),
 		now:   now,
 	}
 }
@@ -57,12 +57,12 @@ func (s *keystore) addDS(name string, dss ...*dns.DS) {
 			ttl = ds.Hdr.Ttl
 		}
 	}
-	dsset := &dsset{
-		expiry: s.now().Add(time.Duration(ttl) * time.Second),
-		ds:     dss,
+	set := &dsSet{
+		expiresAt: s.now().Add(time.Duration(ttl) * time.Second),
+		records:   dss,
 	}
 	item := s.getItem(name)
-	item.setDS(dsset)
+	item.setDS(set)
 }
 
 func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
@@ -82,8 +82,8 @@ func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
 			zsk = append(zsk, key)
 		}
 	}
-	keyset := &dnskeyset{
-		expiry: s.now().Add(time.Duration(ttl) * time.Second),
+	keyset := &dnskeySet{
+		expiresAt: s.now().Add(time.Duration(ttl) * time.Second),
 		zsk:    zsk,
 		ksk:    ksk,
 	}
@@ -101,7 +101,7 @@ func (s *keystore) getDNSKEY(name string) (zsk, ksk []*dns.DNSKEY) {
 	}
 	item.mu.RLock()
 	defer item.mu.RUnlock()
-	if item.keys == nil || s.now().After(item.keys.expiry) {
+	if item.keys == nil || s.now().After(item.keys.expiresAt) {
 		return nil, nil
 	}
 	return item.keys.zsk, item.keys.ksk
@@ -117,15 +117,15 @@ func (s *keystore) getDS(name string) []*dns.DS {
 	}
 	item.mu.RLock()
 	defer item.mu.RUnlock()
-	if item.ds == nil || s.now().After(item.ds.expiry) {
+	if item.ds == nil || s.now().After(item.ds.expiresAt) {
 		return nil
 	}
-	return item.ds.ds
+	return item.ds.records
 }
 
 // Returns an item for a domain from the keystore. The item
 // is created if none exist yet.
-func (s *keystore) getItem(name string) *keystoreItem {
+func (s *keystore) getItem(name string) *keystoreEntry {
 	mk := dns.CanonicalName(name)
 	s.mu.RLock()
 	item, ok := s.store[mk]
@@ -133,7 +133,7 @@ func (s *keystore) getItem(name string) *keystoreItem {
 	if ok {
 		return item
 	}
-	item = new(keystoreItem)
+	item = new(keystoreEntry)
 	s.mu.Lock()
 	s.store[mk] = item
 	s.mu.Unlock()
