@@ -77,7 +77,7 @@ func (s *LuaScript) HasFunction(name string) bool {
 func (s *LuaScript) Call(fnName string, nret int, params ...any) ([]any, error) {
 	args := []lua.LValue{
 		userDataWithMetatable(s.L, luaMessageMetatableName, params[0]),
-		userDataWithMetatable(s.L, "", params[1]),
+		userDataWithMetatable(s.L, luaClientInfoMetatableName, params[1]),
 	}
 
 	// Call the resolve() function in the lua script
