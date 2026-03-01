@@ -41,6 +41,7 @@
   - [Syslog](#syslog)
   - [Query Log](#query-log)
   - [Lua](#lua)
+  - [DNSSEC Validator](#dnssec-validator)
 - [Resolvers](#resolvers)
   - [Plain DNS](#plain-dns-resolver)
   - [DNS-over-TLS](#dns-over-tls-resolver)
@@ -1786,6 +1787,60 @@ resolvers = ["cloudflare-dot"]
 ```
 
 Example config files: [lua-passthrough.toml](../cmd/routedns/example-config/lua-passthrough.toml), [lua-static-answer.toml](../cmd/routedns/example-config/lua-static-answer.toml), [lua-routing.toml](../cmd/routedns/example-config/lua-routing.toml), [lua-opt.toml](../cmd/routedns/example-config/lua-opt.toml)
+
+### DNSSEC Validator
+
+Validates DNSSEC signatures on responses from upstream resolvers. The validator builds a chain of trust from configured root trust anchors down through DS and DNSKEY records to verify RRSIG signatures on the response. If validation fails, a SERVFAIL is returned to the client. Unsigned zones (insecure delegations) pass through without error. Only NOERROR and NXDOMAIN responses are validated.
+
+By default, the validator uses the built-in IANA root trust anchors (KSK-2017 and KSK-2024). Custom trust anchors can be provided to override the defaults.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers (only one supported).
+- `dnssec-log-only` - If `true`, validation failures are logged but responses are still returned to clients. Useful for monitoring before enforcing. Default: `false`.
+- `dnssec-trust-anchors` - Optional array of trust anchors. If not provided, the built-in IANA root KSK-2017 and KSK-2024 are used. Each entry has the following fields:
+  - `owner` - Owner name of the trust anchor (e.g. `"."`).
+  - `key-tag` - Key tag of the DNSKEY.
+  - `algorithm` - DNSSEC algorithm number.
+  - `digest-type` - Digest type number.
+  - `digest` - Hex-encoded digest of the DNSKEY.
+
+Examples:
+
+Simple DNSSEC validation with default trust anchors:
+
+```toml
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+```
+
+Log-only mode with explicit trust anchors:
+
+```toml
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+dnssec-log-only = true
+
+# KSK-2017
+[[groups.dnssec-validated.dnssec-trust-anchors]]
+owner = "."
+key-tag = 20326
+algorithm = 8
+digest-type = 2
+digest = "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
+
+# KSK-2024
+[[groups.dnssec-validated.dnssec-trust-anchors]]
+owner = "."
+key-tag = 38696
+algorithm = 8
+digest-type = 2
+digest = "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16"
+```
+
+Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dnssec-validator.toml), [dnssec-validator-trust-anchors.toml](../cmd/routedns/example-config/dnssec-validator-trust-anchors.toml)
 
 ## Resolvers
 

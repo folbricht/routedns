@@ -202,6 +202,18 @@ type group struct {
 	LuaScriptSource string `toml:"lua-script-source"` // Path to external Lua script file
 	LuaConcurrency  uint   `toml:"lua-concurrency"`   // Number of concurrent Lua instances, default 4
 	LuaNoSandbox    bool   `toml:"lua-no-sandbox"`    // Disable sandbox for trusted scripts
+
+	// DNSSEC validator options
+	DNSSECTrustAnchors []trustAnchor `toml:"dnssec-trust-anchors"`
+	DNSSECLogOnly      bool          `toml:"dnssec-log-only"`
+}
+
+type trustAnchor struct {
+	Owner      string `toml:"owner"`
+	KeyTag     uint16 `toml:"key-tag"`
+	Algorithm  uint8  `toml:"algorithm"`
+	DigestType uint8  `toml:"digest-type"`
+	Digest     string `toml:"digest"`
 }
 
 // Block/Allowlist items for blocklist-v2
