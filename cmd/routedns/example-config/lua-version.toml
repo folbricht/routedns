@@ -10,6 +10,7 @@ type = "lua"
 lua-script = """
 function Resolve(msg, ci)
     local a = Message.new():set_reply(msg)
+    a.authoritative = true
     a.answer = {
         RR.new({
             rtype = TypeTXT,
