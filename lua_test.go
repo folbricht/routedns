@@ -1011,3 +1011,30 @@ end`,
 	require.Equal(t, uint16(dns.ClassCHAOS), txt.Hdr.Class)
 	require.Equal(t, []string{BuildVersion}, txt.Txt)
 }
+
+func TestLuaAuthoritativeField(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	local answer = Message.new():set_reply(msg)
+	answer.authoritative = true
+	if not answer.authoritative then
+		return nil, Error.new("authoritative not set")
+	end
+	return answer, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	answer, err := r.Resolve(q, ci)
+	require.NoError(t, err)
+	require.True(t, answer.Authoritative)
+}
