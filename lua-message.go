@@ -46,6 +46,8 @@ func (s *LuaScript) RegisterMessageType() {
 				L.Push(lua.LBool(msg.RecursionDesired))
 			case "recursion_available":
 				L.Push(lua.LBool(msg.RecursionAvailable))
+			case "authoritative":
+				L.Push(lua.LBool(msg.Authoritative))
 			case "authenticated_data":
 				L.Push(lua.LBool(msg.AuthenticatedData))
 			case "answer":
@@ -137,6 +139,8 @@ func (s *LuaScript) RegisterMessageType() {
 				msg.RecursionDesired = L.CheckBool(3)
 			case "recursion_available":
 				msg.RecursionAvailable = L.CheckBool(3)
+			case "authoritative":
+				msg.Authoritative = L.CheckBool(3)
 			case "authenticated_data":
 				msg.AuthenticatedData = L.CheckBool(3)
 			case "answer":
