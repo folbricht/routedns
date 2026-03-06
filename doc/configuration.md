@@ -1653,7 +1653,8 @@ Scripts have access to the following types and globals:
 - **ClientInfo** - Client information passed as the second argument (`ci`) to `Resolve(msg, ci)`. Read-only fields: `source_ip` (string or nil), `doh_path` (string), `tls_server_name` (string), `listener` (string).
 - **Error** - Error value. Create with `Error.new("message")`. Methods: `error()`.
 - **Resolvers** - Table of upstream resolvers. Each resolver has a `resolve(msg, ci)` method that returns `(response, error)`.
-- **DNS constants** - Type constants (`TypeA`, `TypeAAAA`, `TypeMX`, ...), class constants (`ClassIN`, ...), rcode constants (`RcodeNOERROR`, `RcodeNXDOMAIN`, ...).
+- **DNS constants** - Type constants (`TypeA`, `TypeAAAA`, `TypeMX`, ...), class constants (`ClassIN`, `ClassCH`, ...), rcode constants (`RcodeNOERROR`, `RcodeNXDOMAIN`, ...).
+- **BuildVersion** - String constant containing the RouteDNS build version (e.g. `"v0.1.138"`).
 - **EDNS0 option constants** - `EDNS0SUBNET`, `EDNS0COOKIE`, `EDNS0EDE`, `EDNS0PADDING`, etc.
 - **EDNS0 types** - `EDNS0_SUBNET`, `EDNS0_COOKIE`, `EDNS0_EDE`, `EDNS0_PADDING`, `EDNS0_NSID`, `EDNS0_LOCAL`, and others. Each has a `new(...)` constructor and field accessors.
 

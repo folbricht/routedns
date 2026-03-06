@@ -977,3 +977,37 @@ end`,
 	_, err = r.Resolve(q, ci)
 	require.NoError(t, err)
 }
+
+func TestLuaBuildVersionConstant(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	if BuildVersion == nil or BuildVersion == "" then
+		return nil, Error.new("BuildVersion is not set")
+	end
+	local answer = Message.new():set_reply(msg)
+	answer.answer = {
+		RR.new({rtype = TypeTXT, class = ClassCH, name = msg.questions[1].name, ttl = 0, txt = {BuildVersion}})
+	}
+	return answer, nil
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("version.routedns.", dns.TypeTXT)
+	q.Question[0].Qclass = dns.ClassCHAOS
+
+	answer, err := r.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Len(t, answer.Answer, 1)
+	txt, ok := answer.Answer[0].(*dns.TXT)
+	require.True(t, ok)
+	require.Equal(t, uint16(dns.ClassCHAOS), txt.Hdr.Class)
+	require.Equal(t, []string{BuildVersion}, txt.Txt)
+}

@@ -1,0 +1,35 @@
+# Responds with the RouteDNS version for CH TXT queries to "version.routedns.",
+# similar to BIND's version.bind. All other queries are forwarded upstream.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.version]
+type = "lua"
+lua-script = """
+function Resolve(msg, ci)
+    local a = Message.new():set_reply(msg)
+    a.answer = {
+        RR.new({
+            rtype = TypeTXT,
+            class = ClassCH,
+            name  = msg.questions[1].name,
+            ttl   = 0,
+            txt   = {BuildVersion},
+        })
+    }
+    return a, nil
+end
+"""
+
+[routers.router]
+routes = [
+  { resolver = "version", type = "TXT", class = "CH", name = '(?i)^version\.routedns\.$' },
+  { resolver = "cloudflare-dot" },
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "router"
