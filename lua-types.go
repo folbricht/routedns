@@ -8,6 +8,9 @@ import (
 func (s *LuaScript) RegisterConstants() {
 	L := s.L
 
+	// Register build version
+	L.SetGlobal("BuildVersion", lua.LString(BuildVersion))
+
 	// Register TypeA, TypeAAAA, etc
 	for value, name := range dns.TypeToString {
 		L.SetGlobal("Type"+name, lua.LNumber(value))
