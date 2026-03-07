@@ -213,6 +213,7 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	answer := a.Msg
 	prefetchEligible := a.PrefetchEligible
 	answer.Id = q.Id
+	answer.Question = q.Question // restore the case used in the question
 
 	// Calculate the time the record spent in the cache. We need to
 	// subtract that from the TTL of each answer record.
@@ -263,7 +264,7 @@ func (b *redisBackend) Close() error {
 func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
 	var key strings.Builder
 	key.WriteString(b.opt.KeyPrefix)
-	key.WriteString(q.Question[0].Name)
+	key.WriteString(strings.ToLower(q.Question[0].Name))
 	key.WriteByte(':')
 	key.WriteString(dns.Class(q.Question[0].Qclass).String())
 	key.WriteByte(':')
