@@ -115,6 +115,7 @@ func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
 					return true
 				}
 			}
+			return false
 		}
 	} else {
 		// Check if the reply was deliberately empty
