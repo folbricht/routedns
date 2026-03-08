@@ -146,9 +146,7 @@ func (r *Random) isSuccessResponse(a *dns.Msg) bool {
 		// Check if the reply was deliberately empty
 		if edns0 := a.IsEdns0(); edns0 != nil && len(edns0.Option) > 0 {
 			if ede, ok := edns0.Option[0].(*dns.EDNS0_EDE); ok {
-				if ede.InfoCode >= dns.ExtendedErrorCodeBlocked && ede.InfoCode <= dns.ExtendedErrorCodeFiltered {
-					return true
-				}
+				return ede.InfoCode >= dns.ExtendedErrorCodeBlocked && ede.InfoCode <= dns.ExtendedErrorCodeFiltered
 			}
 		}
 	}
