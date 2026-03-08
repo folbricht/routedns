@@ -124,6 +124,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 				}
 				log.Debug("blocking response")
 				answer = nxdomain(query)
+				answer.RecursionAvailable = false // we didn't do any recursion
 				if err := r.EDNS0EDETemplate.Apply(answer, EDNS0EDEInput{query, match}); err != nil {
 					log.Warn("failed to apply edns0ede template", "error", err)
 				}
@@ -144,7 +145,9 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 			return r.BlocklistResolver.Resolve(query, ci)
 		}
 		log.Debug("no answers after filtering, blocking response")
-		return nxdomain(query), nil
+		answer = nxdomain(query)
+		answer.RecursionAvailable = false // we didn't do any recursion
+		return answer, nil
 	}
 	answer.Ns = r.filterRR(query, ci, answer.Ns)
 	answer.Extra = r.filterRR(query, ci, answer.Extra)
