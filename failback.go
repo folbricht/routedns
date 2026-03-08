@@ -170,45 +170,34 @@ func (r *FailBack) startResetTimer() chan struct{} {
 // Returns true if the response is considered successful given the options.
 func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
+		return true // !r.opt.EmptyError
+	}
+	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
+		return false
+	}
+	if !r.opt.EmptyError {
 		return true
 	}
-	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
-		return false
-	}
-	if r.opt.EmptyError {
-		// Check if there are only CNAMEs in the answer section
-		var onlyCNAME = true
-		for _, rr := range a.Answer {
-			if rr.Header().Rrtype != dns.TypeCNAME {
-				onlyCNAME = false
-				break
+	if len(a.Answer) > 0 {
+		// Check if the reply has useful records
+		if a.Question[0].Qtype != dns.TypeCNAME {
+			for _, rr := range a.Answer {
+				if rr.Header().Rrtype != dns.TypeCNAME {
+					return true
+				}
 			}
 		}
-		// The answer may be blank because it was blocked by a filter.
-		// If so (as determined by the presence of an EDE option), we
-		// consider it "successful" as we shouldn't retry or fail-over
-		// in that case.
-		if onlyCNAME && !hasExtendedErrorBlocked(a) {
-			return false
-		}
-	}
-	return true
-}
-
-// Returns true if the message contains an extended error option indicating it
-// was blocked, censored, or filtered.
-func hasExtendedErrorBlocked(msg *dns.Msg) bool {
-	edns0 := msg.IsEdns0()
-	if edns0 == nil {
-		return false
-	}
-	for _, opt := range edns0.Option {
-		if ede, ok := opt.(*dns.EDNS0_EDE); ok {
-			switch ede.InfoCode {
-			case dns.ExtendedErrorCodeBlocked, dns.ExtendedErrorCodeCensored, dns.ExtendedErrorCodeFiltered:
-				return true
+	} else {
+		// Check if the reply was deliberately empty
+		if edns0 := a.IsEdns0(); edns0 != nil {
+			for _, opt := range edns0.Option {
+				if ede, ok := opt.(*dns.EDNS0_EDE); ok {
+					if ede.InfoCode >= dns.ExtendedErrorCodeBlocked || ede.InfoCode <= dns.ExtendedErrorCodeFiltered {
+						return true
+					}
+				}
 			}
 		}
 	}
-	return false
+	return len(a.Answer) > 0
 }
