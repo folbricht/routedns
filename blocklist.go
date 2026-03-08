@@ -150,7 +150,7 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	answer := new(dns.Msg)
 	answer.SetReply(q)
-	answer.RecursionAvailable = q.RecursionDesired
+	answer.RecursionAvailable = false // we didn't do any recursion
 
 	// We have an IP address to return, make sure it's of the right type. If not return NXDOMAIN.
 	var spoof []dns.RR
