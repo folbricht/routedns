@@ -108,23 +108,23 @@ func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
 		return true
 	}
 	if len(a.Answer) > 0 {
-		// Check if the reply has useful records
-		if a.Question[0].Qtype != dns.TypeCNAME {
-			for _, rr := range a.Answer {
-				if rr.Header().Rrtype != dns.TypeCNAME {
-					return true
-				}
+		// Check if the reply has useful records (SOA is not useful)
+		for _, rr := range a.Answer {
+			if rr.Header().Rrtype == a.Question[0].Qtype {
+				return true
 			}
 			return false
 		}
+		if a.Question[0].Qtype == dns.TypeANY {
+			return !(len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeHINFO)
+		}
+		return false
 	} else {
 		// Check if the reply was deliberately empty
 		if edns0 := a.IsEdns0(); edns0 != nil {
-			for _, opt := range edns0.Option {
-				if ede, ok := opt.(*dns.EDNS0_EDE); ok {
-					if ede.InfoCode >= dns.ExtendedErrorCodeBlocked || ede.InfoCode <= dns.ExtendedErrorCodeFiltered {
-						return true
-					}
+			if ede, ok := edns0.Option[0].(*dns.EDNS0_EDE); ok {
+				if ede.InfoCode >= dns.ExtendedErrorCodeBlocked && ede.InfoCode <= dns.ExtendedErrorCodeFiltered {
+					return true
 				}
 			}
 		}

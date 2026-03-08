@@ -54,8 +54,8 @@ func NewStaticTemplateResolver(id string, opt StaticResolverOptions) (*StaticTem
 func (r *StaticTemplateResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
-	answer.RecursionAvailable = false // we didn't do any recursion
-	answer.Authoritative = true       // we made that reply up
+	answer.RecursionAvailable = true // we support recursion (even if we didn't actually do any)
+	answer.Authoritative = true      // we made that reply up
 	log := logger(r.id, q, ci)
 
 	answer.Answer = r.processRRTemplates(q, ci, r.answer...)
