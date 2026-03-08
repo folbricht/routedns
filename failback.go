@@ -172,7 +172,7 @@ func (r *FailBack) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
 		return true // !r.opt.EmptyError
 	}
-	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
+	if a.Rcode == dns.RcodeServerFailure && r.opt.ServfailError || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
 		return false
 	}
 	if !r.opt.EmptyError {
