@@ -122,28 +122,34 @@ func (r *Random) reactivateLater(resolver Resolver) {
 // Returns true if the response is considered successful given the options.
 func (r *Random) isSuccessResponse(a *dns.Msg) bool {
 	if a == nil {
-		return true
+		return true // !r.opt.EmptyError
 	}
-	if r.opt.ServfailError && a.Rcode == dns.RcodeServerFailure {
+	if a.Rcode == dns.RcodeServerFailure && r.opt.ServfailError || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
 		return false
 	}
-	if r.opt.EmptyError {
-		// Check if there are only CNAMEs in the answer section
-		var onlyCNAME = true
-		for _, rr := range a.Answer {
-			if rr.Header().Rrtype != dns.TypeCNAME {
-				onlyCNAME = false
-				break
+	if !r.opt.EmptyError {
+		return true
+	}
+	if len(a.Answer) > 0 {
+		// Check if the reply has useful records
+		if a.Question[0].Qtype != dns.TypeCNAME {
+			for _, rr := range a.Answer {
+				if rr.Header().Rrtype != dns.TypeCNAME {
+					return true
+				}
 			}
 		}
-		// The answer may be blank because it was blocked by a filter.
-		// If so (as determined by the presence of an EDE option), we
-		// consider it "successful" as we shouldn't retry or fail-over
-		// in that case.
-		if onlyCNAME && !hasExtendedErrorBlocked(a) {
-			return false
+	} else {
+		// Check if the reply was deliberately empty
+		if edns0 := a.IsEdns0(); edns0 != nil {
+			for _, opt := range edns0.Option {
+				if ede, ok := opt.(*dns.EDNS0_EDE); ok {
+					if ede.InfoCode >= dns.ExtendedErrorCodeBlocked || ede.InfoCode <= dns.ExtendedErrorCodeFiltered {
+						return true
+					}
+				}
+			}
 		}
 	}
-	return true
-
+	return len(a.Answer) > 0
 }
