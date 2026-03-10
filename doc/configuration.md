@@ -50,6 +50,7 @@
   - [DNS-over-QUIC](#dns-over-quic-resolver)
   - [Bootstrap Resolver](#bootstrap-resolver)
   - [SOCKS5 Proxy Support](#socks5-proxy-support)
+  - [Network Namespace Support](#network-namespace-support)
 - [Templates](#templates)
 
 ## Overview
@@ -128,6 +129,7 @@ Common options for all listeners:
 - `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both.
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
+- `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 
 Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificates, keys and peer validation.
 
@@ -1806,6 +1808,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
+- `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 
@@ -2066,6 +2069,36 @@ socks5-address = "1.2.3.4:1080"
 socks5-username = "test"
 socks5-password = "test"
 ```
+
+### Network Namespace Support
+
+On Linux, listeners and resolvers can be assigned to different network namespaces using the `netns` option. This allows RouteDNS to listen for queries in one namespace (e.g. a container) and resolve them via another (e.g. the host), without requiring iptables rules or veth forwarding.
+
+The `netns` value can be either:
+
+- A **name** — looked up in `/var/run/netns/` (as created by `ip netns add`)
+- An **absolute path** — e.g. `/proc/PID/ns/net` to reference another process's namespace
+
+The option is supported on all listener protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, Admin) and all resolver protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, ODoH). On non-Linux platforms, configuring `netns` returns an error.
+
+Examples:
+
+Listen in a container namespace, resolve in the host namespace:
+
+```toml
+[resolvers.host-upstream]
+address = "8.8.8.8:53"
+protocol = "udp"
+netns = "/proc/1/ns/net"
+
+[listeners.container-udp]
+address = "10.0.0.2:53"
+protocol = "udp"
+resolver = "host-upstream"
+netns = "container"
+```
+
+Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
 
 ## Templates
 

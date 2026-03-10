@@ -55,6 +55,9 @@ type DoHClientOptions struct {
 	Dialer Dialer
 
 	Use0RTT bool
+
+	// Linux network namespace for outbound connections.
+	NetNS *NetNS
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support for HTTP/2.
@@ -270,8 +273,8 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		}
 	}
 
-	// Use a custom dialer if a bootstrap address or local address was provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil {
+	// Use a custom dialer if a bootstrap address, local address, proxy, or netns was provided
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") {
 		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
@@ -282,9 +285,15 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
-				return opt.Dialer.Dial(network, addr)
+				var conn net.Conn
+				err := RunInNetNS(opt.NetNS, func() error {
+					var e error
+					conn, e = opt.Dialer.Dial(network, addr)
+					return e
+				})
+				return conn, err
 			}
-			return d.DialContext(ctx, network, addr)
+			return DialInNetNS(opt.NetNS, network, addr, &d)
 		}
 	}
 	return tr, nil
@@ -311,7 +320,7 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	}
 
 	// Initialize the local UDP connection, it'll be re-used for all connections
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	udpConn, err := ListenUDPInNetNS(opt.NetNS, "udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
 		return nil, err

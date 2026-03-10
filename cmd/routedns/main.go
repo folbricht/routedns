@@ -218,7 +218,12 @@ func start(opt options, args []string) error {
 			return errors.New("ip-version must be 4 or 6")
 		}
 
-		opt := rdns.ListenOptions{AllowedNet: allowedNet}
+		var netns *rdns.NetNS
+		if l.NetNS != "" {
+			netns = &rdns.NetNS{Name: l.NetNS}
+		}
+
+		opt := rdns.ListenOptions{AllowedNet: allowedNet, NetNS: netns}
 
 		switch l.Protocol {
 		case "tcp":

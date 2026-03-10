@@ -36,6 +36,9 @@ type DNSClientOptions struct {
 
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
+
+	// Linux network namespace for outbound connections.
+	NetNS *NetNS
 }
 
 var _ Resolver = &DNSClient{}
@@ -52,6 +55,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		TLSConfig: &tls.Config{},
 		LocalAddr: opt.LocalAddr,
 		Timeout:   opt.QueryTimeout,
+		NetNS:     opt.NetNS,
 	}
 	return &DNSClient{
 		id:       id,
@@ -92,6 +96,7 @@ type GenericDNSClient struct {
 	TLSConfig *tls.Config
 	LocalAddr net.IP
 	Timeout   time.Duration
+	NetNS     *NetNS
 }
 
 func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
@@ -122,8 +127,20 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		}
 		err error
 	)
-	// Open a raw connection
-	conn.Conn, err = dialer.Dial(network, address)
+	// Open a raw connection, optionally in a network namespace
+	if d.NetNS != nil && d.NetNS.Name != "" {
+		if netDialer, ok := dialer.(*net.Dialer); ok {
+			conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
+		} else {
+			err = RunInNetNS(d.NetNS, func() error {
+				var e error
+				conn.Conn, e = dialer.Dial(network, address)
+				return e
+			})
+		}
+	} else {
+		conn.Conn, err = dialer.Dial(network, address)
+	}
 	if err != nil {
 		return nil, err
 	}

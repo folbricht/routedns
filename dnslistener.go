@@ -2,7 +2,9 @@ package rdns
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
+	"strings"
 
 	"github.com/miekg/dns"
 )
@@ -10,7 +12,8 @@ import (
 // DNSListener is a standard DNS listener for UDP or TCP.
 type DNSListener struct {
 	*dns.Server
-	id string
+	id  string
+	opt ListenOptions
 }
 
 var _ Listener = &DNSListener{}
@@ -18,6 +21,9 @@ var _ Listener = &DNSListener{}
 type ListenOptions struct {
 	// Network allowed to query this listener.
 	AllowedNet []*net.IPNet
+
+	// Linux network namespace for the listening socket.
+	NetNS *NetNS
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
@@ -29,13 +35,37 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 			Net:     net,
 			Handler: listenHandler(id, net, addr, resolver, opt.AllowedNet),
 		},
+		opt: opt,
 	}
 }
 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
 	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
+	if s.opt.NetNS != nil && s.opt.NetNS.Name != "" {
+		return s.startInNetNS()
+	}
 	return s.ListenAndServe()
+}
+
+func (s DNSListener) startInNetNS() error {
+	switch {
+	case strings.HasPrefix(s.Net, "tcp"):
+		ln, err := ListenInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		if err != nil {
+			return err
+		}
+		s.Server.Listener = ln
+	case strings.HasPrefix(s.Net, "udp"):
+		pc, err := ListenPacketInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		if err != nil {
+			return err
+		}
+		s.Server.PacketConn = pc
+	default:
+		return fmt.Errorf("unsupported network %q for netns", s.Net)
+	}
+	return s.ActivateAndServe()
 }
 
 func (s DNSListener) String() string {

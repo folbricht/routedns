@@ -77,11 +77,21 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 // Start the QUIC server.
 func (s DoQListener) Start() error {
 	var err error
-	s.ln, err = quic.ListenAddrEarly(s.addr, s.opt.TLSConfig, &quic.Config{
+	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
+	if err != nil {
+		return err
+	}
+	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
+	if err != nil {
+		return err
+	}
+	transport := &quic.Transport{Conn: udpConn}
+	s.ln, err = transport.ListenEarly(s.opt.TLSConfig, &quic.Config{
 		Allow0RTT:      true,
 		MaxIdleTimeout: 5 * time.Minute,
 	})
 	if err != nil {
+		udpConn.Close()
 		return err
 	}
 	s.log.Info("starting listener")

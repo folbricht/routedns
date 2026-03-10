@@ -60,7 +60,12 @@ func (s *DTLSListener) Start() error {
 		return context.WithTimeout(context.Background(), 2*time.Second)
 	}
 
-	listener, err := dtls.Listen("udp", addr, s.opt.DTLSConfig)
+	var listener net.Listener
+	err = RunInNetNS(s.opt.NetNS, func() error {
+		var e error
+		listener, e = dtls.Listen("udp", addr, s.opt.DTLSConfig)
+		return e
+	})
 	if err != nil {
 		return err
 	}

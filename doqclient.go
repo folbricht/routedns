@@ -43,6 +43,9 @@ type DoQClientOptions struct {
 	TLSConfig    *tls.Config
 	QueryTimeout time.Duration
 	Use0RTT      bool
+
+	// Linux network namespace for outbound connections.
+	NetNS *NetNS
 }
 
 var _ Resolver = &DoQClient{}
@@ -94,7 +97,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		TokenStore:           quic.NewLRUTokenStore(10, 10),
 		HandshakeIdleTimeout: opt.QueryTimeout,
 	}
-	qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT)
+	qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT, opt.NetNS)
 	if err != nil {
 		return nil, err
 	}
@@ -224,9 +227,9 @@ type quicConnection struct {
 	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 }
 
-func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool) (*quicConnection, error) {
+func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool, netns *NetNS) (*quicConnection, error) {
 	// Initialize the local UDP connection, it'll be re-used for all connections
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	udpConn, err := ListenUDPInNetNS(netns, "udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
 		return nil, err

@@ -9,7 +9,8 @@ import (
 // DoTListener is a DNS listener/server for DNS-over-TLS.
 type DoTListener struct {
 	*dns.Server
-	id string
+	id  string
+	opt DoTListenerOptions
 }
 
 var _ Listener = &DoTListener{}
@@ -39,6 +40,7 @@ func NewDoTListener(id, addr, network string, opt DoTListenerOptions, resolver R
 			TLSConfig: opt.TLSConfig,
 			Handler:   listenHandler(id, "dot", addr, resolver, opt.AllowedNet),
 		},
+		opt: opt,
 	}
 }
 
@@ -48,6 +50,14 @@ func (s DoTListener) Start() error {
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)
+	if s.opt.NetNS != nil && s.opt.NetNS.Name != "" {
+		ln, err := ListenInNetNS(s.opt.NetNS, "tcp", s.Addr)
+		if err != nil {
+			return err
+		}
+		s.Server.Listener = tls.NewListener(ln, s.Server.TLSConfig)
+		return s.ActivateAndServe()
+	}
 	return s.ListenAndServe()
 }
 
