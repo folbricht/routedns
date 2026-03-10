@@ -293,7 +293,13 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				})
 				return conn, err
 			}
-			return DialInNetNS(opt.NetNS, network, addr, &d)
+			var conn net.Conn
+			err := RunInNetNS(opt.NetNS, func() error {
+				var e error
+				conn, e = d.DialContext(ctx, network, addr)
+				return e
+			})
+			return conn, err
 		}
 	}
 	return tr, nil
