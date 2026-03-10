@@ -23,6 +23,7 @@ Features:
 - Support for bootstrap addresses to avoid the initial service name lookup
 - Support for 0-RTT QUIC queries if the upstream server supports it
 - SOCKS5 proxy support
+- Linux network namespace support for listeners and resolvers (listen in one netns, resolve in another)
 - Optional metrics export (expvar) to support monitoring and graphing
 - Lua scripting for custom query handling logic with sandboxed execution
 - Written in Go - Platform independent
