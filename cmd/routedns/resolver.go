@@ -11,6 +11,12 @@ import (
 // Instantiates an rdns.Resolver from a resolver config
 func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolver) error {
 	var err error
+
+	var netns *rdns.NetNS
+	if r.NetNS != "" {
+		netns = &rdns.NetNS{Name: r.NetNS}
+	}
+
 	switch r.Protocol {
 
 	case "doq":
@@ -26,6 +32,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Use0RTT:       r.Use0RTT,
+			NetNS:         netns,
 		}
 		resolvers[id], err = rdns.NewDoQClient(id, r.Address, opt)
 		if err != nil {
@@ -44,6 +51,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
+			NetNS:         netns,
 		}
 		resolvers[id], err = rdns.NewDoTClient(id, r.Address, opt)
 		if err != nil {
@@ -62,6 +70,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			DTLSConfig:    dtlsConfig,
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			NetNS:         netns,
 		}
 		resolvers[id], err = rdns.NewDTLSClient(id, r.Address, opt)
 		if err != nil {
@@ -84,6 +93,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
 			Use0RTT:       r.Use0RTT,
+			NetNS:         netns,
 		}
 		resolvers[id], err = rdns.NewDoHClient(id, r.Address, opt)
 		if err != nil {
@@ -102,6 +112,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddr:     net.ParseIP(r.LocalAddr),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
+			NetNS:         netns,
 		}
 		resolvers[id], err = rdns.NewODoHClient(id, r.Address, r.Target, r.TargetConfig, opt)
 		if err != nil {
@@ -115,6 +126,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			UDPSize:      r.EDNS0UDPSize,
 			QueryTimeout: time.Duration(r.QueryTimeout) * time.Second,
 			Dialer:       socks5DialerFromConfig(r),
+			NetNS:        netns,
 		}
 		resolvers[id], err = rdns.NewDNSClient(id, r.Address, r.Protocol, opt)
 		if err != nil {

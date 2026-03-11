@@ -34,6 +34,9 @@ type DTLSClientOptions struct {
 	DTLSConfig *dtls.Config
 
 	QueryTimeout time.Duration
+
+	// Linux network namespace for outbound connections.
+	NetNS *NetNS
 }
 
 var _ Resolver = &DTLSClient{}
@@ -81,6 +84,7 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 		raddr:      addr,
 		laddr:      laddr,
 		dtlsConfig: opt.DTLSConfig,
+		netns:      opt.NetNS,
 	}
 	return &DTLSClient{
 		id:       id,
@@ -116,10 +120,16 @@ type dtlsDialer struct {
 	raddr      *net.UDPAddr
 	laddr      *net.UDPAddr
 	dtlsConfig *dtls.Config
+	netns      *NetNS
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
-	pConn, err := net.DialUDP("udp", d.laddr, d.raddr)
+	var pConn *net.UDPConn
+	err := RunInNetNS(d.netns, func() error {
+		var e error
+		pConn, e = net.DialUDP("udp", d.laddr, d.raddr)
+		return e
+	})
 	if err != nil {
 		return nil, err
 	}

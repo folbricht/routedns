@@ -1,0 +1,34 @@
+# Example demonstrating Linux network namespace support. This configuration
+# listens for DNS queries in a network namespace called "container" and
+# forwards them to an upstream resolver in the host's network namespace
+# (accessed via /proc/1/ns/net).
+#
+# Setup:
+#   sudo ip netns add container
+#   sudo ip link add veth-host type veth peer name veth-container
+#   sudo ip link set veth-container netns container
+#   sudo ip addr add 10.0.0.1/24 dev veth-host
+#   sudo ip link set veth-host up
+#   sudo ip netns exec container ip addr add 10.0.0.2/24 dev veth-container
+#   sudo ip netns exec container ip link set veth-container up
+#   sudo ip netns exec container ip link set lo up
+#
+# The listener binds in the "container" namespace while the resolver
+# connects out through the host namespace. Only supported on Linux.
+
+[resolvers.host-upstream]
+address = "8.8.8.8:53"
+protocol = "udp"
+netns = "/proc/1/ns/net"
+
+[listeners.container-udp]
+address = "10.0.0.2:53"
+protocol = "udp"
+resolver = "host-upstream"
+netns = "container"
+
+[listeners.container-tcp]
+address = "10.0.0.2:53"
+protocol = "tcp"
+resolver = "host-upstream"
+netns = "container"

@@ -122,7 +122,7 @@ func (s *DoHListener) startTCP() error {
 		Handler:      s.opt.customMux,
 	}
 
-	ln, err := net.Listen("tcp", s.addr)
+	ln, err := ListenInNetNS(s.opt.NetNS, "tcp", s.addr)
 	if err != nil {
 		return err
 	}
@@ -135,8 +135,25 @@ func (s *DoHListener) startTCP() error {
 
 // Start the DoH server with QUIC transport.
 func (s *DoHListener) startQUIC() error {
+	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
+	if err != nil {
+		return err
+	}
+	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
+	if err != nil {
+		return err
+	}
+	transport := &quic.Transport{Conn: udpConn}
+	tlsConf := http3.ConfigureTLSConfig(s.opt.TLSConfig)
+	quicLn, err := transport.ListenEarly(tlsConf, &quic.Config{
+		Allow0RTT:      true,
+		MaxIdleTimeout: 5 * time.Minute,
+	})
+	if err != nil {
+		udpConn.Close()
+		return err
+	}
 	s.quicServer = &http3.Server{
-		Addr:      s.addr,
 		TLSConfig: s.opt.TLSConfig,
 		QUICConfig: &quic.Config{
 			Allow0RTT:      true,
@@ -144,7 +161,7 @@ func (s *DoHListener) startQUIC() error {
 		},
 		Handler: s.opt.customMux,
 	}
-	return s.quicServer.ListenAndServe()
+	return s.quicServer.ServeListener(quicLn)
 }
 
 // Stop the server.

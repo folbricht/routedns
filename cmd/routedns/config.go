@@ -35,6 +35,7 @@ type listener struct {
 	KeySeed    string   `toml:"key-seed"`  // ODoH HPKE key seed, 16 byte hex key. Generate for example with: "openssl rand -hex 16"
 	OdohMode   string   `toml:"odoh-mode"` // ODoH mode - accepts "proxy", "target" or "dual", default is target mode
 	AllowDoH   bool     `toml:"allow-doh"` // Allow ODoH listeners to also handle DoH queries to /dns-query
+	NetNS      string   `toml:"netns"`     // Linux network namespace name or absolute path
 	Frontend   dohFrontend
 }
 
@@ -56,6 +57,7 @@ type resolver struct {
 	LocalAddr     string `toml:"local-address"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
+	NetNS         string `toml:"netns"`          // Linux network namespace name or absolute path
 
 	// Proxy configuration
 	Socks5Address      string `toml:"socks5-address"`
