@@ -66,7 +66,8 @@ func NewStaticResolver(id string, opt StaticResolverOptions) (*StaticResolver, e
 func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer := new(dns.Msg)
 	answer.SetReply(q)
-	answer.RecursionAvailable = q.RecursionDesired
+	answer.RecursionAvailable = true // we support recursion (even if we didn't actually do any)
+	answer.Authoritative = true      // we made that reply up
 	log := logger(r.id, q, ci)
 
 	// Update the name of every answer record to match that of the query

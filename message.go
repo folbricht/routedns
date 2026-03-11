@@ -49,6 +49,7 @@ func refused(q *dns.Msg) *dns.Msg {
 func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 	a := new(dns.Msg)
 	a.SetRcode(q, rcode)
+	a.RecursionAvailable = true // we support recursion (even if we didn't actually do any)
 	return a
 }
 
@@ -56,7 +57,7 @@ func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 func ptr(q *dns.Msg, names []string) *dns.Msg {
 	a := new(dns.Msg)
 	a.SetReply(q)
-	a.RecursionAvailable = q.RecursionDesired
+	a.RecursionAvailable = true // we support recursion (even if we didn't actually do any)
 	answer := make([]dns.RR, 0, len(names))
 	for _, name := range names {
 		rr := &dns.PTR{
