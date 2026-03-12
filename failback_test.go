@@ -297,11 +297,33 @@ func TestFailBackIsSuccessResponse(t *testing.T) {
 		require.False(t, fb.isSuccessResponse(msg))
 	})
 
+	t.Run("EmptyAnswerWithEDEProhibited", func(t *testing.T) {
+		fb := newFB(FailBackOptions{EmptyError: true})
+		msg := newMsg(dns.TypeA, dns.RcodeSuccess)
+		addEDE(msg, dns.ExtendedErrorCodeProhibited)
+		require.False(t, fb.isSuccessResponse(msg))
+	})
+
+	t.Run("EmptyAnswerWithInvalidEDE", func(t *testing.T) {
+		fb := newFB(FailBackOptions{EmptyError: true})
+		msg := newMsg(dns.TypeA, dns.RcodeSuccess)
+		addEDE(msg, 9999)
+		require.False(t, fb.isSuccessResponse(msg))
+	})
+
 	t.Run("TypeANYWithHINFO", func(t *testing.T) {
 		fb := newFB(FailBackOptions{EmptyError: true})
 		msg := newMsg(dns.TypeANY, dns.RcodeSuccess)
 		addAnswer(msg, dns.TypeHINFO)
 		require.False(t, fb.isSuccessResponse(msg))
+	})
+
+	t.Run("TypeANYWithHINFOAndA", func(t *testing.T) {
+		fb := newFB(FailBackOptions{EmptyError: true})
+		msg := newMsg(dns.TypeANY, dns.RcodeSuccess)
+		addAnswer(msg, dns.TypeHINFO)
+		addAnswer(msg, dns.TypeA)
+		require.True(t, fb.isSuccessResponse(msg))
 	})
 
 	t.Run("TypeANYWithRealAnswer", func(t *testing.T) {
