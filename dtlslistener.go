@@ -2,15 +2,13 @@ package rdns
 
 import (
 	"bytes"
-	"context"
 	"net"
 	"strconv"
-	"time"
 
 	"log/slog"
 
 	"github.com/miekg/dns"
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 )
 
 // DTLSListener is a DNS listener/server for DNS-over-DTLS.
@@ -56,10 +54,6 @@ func (s *DTLSListener) Start() error {
 	}
 	addr := &net.UDPAddr{IP: net.ParseIP(host), Port: p}
 
-	s.opt.DTLSConfig.ConnectContextMaker = func() (context.Context, func()) {
-		return context.WithTimeout(context.Background(), 2*time.Second)
-	}
-
 	var listener net.Listener
 	err = RunInNetNS(s.opt.NetNS, func() error {
 		var e error
@@ -95,7 +89,7 @@ func (l dtlsListener) Accept() (net.Conn, error) {
 }
 
 // dtlsConn wraps a dtls.Conn to support partial read operations. While
-// github.com/pion/dtls/v2 returns a net.Conn, that Read() fails on
+// github.com/pion/dtls/v3 returns a net.Conn, that Read() fails on
 // slices that are smaller than the data available. This wrapper adds a
 // buffer to allow github.com/miekg/dns to first read 2 bytes (size) and
 // then the rest of the DNS packet.

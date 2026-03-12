@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 )
 
 // DTLSServerConfig is a convenience function that builds a dtls.Config instance for DTLS servers

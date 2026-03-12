@@ -14,7 +14,7 @@ require (
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.69
 	github.com/oschwald/maxminddb-golang v1.13.1
-	github.com/pion/dtls/v2 v2.2.12
+	github.com/pion/dtls/v3 v3.1.2
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.57.1
 	github.com/redis/go-redis/v9 v9.17.2
@@ -39,8 +39,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/transport/v2 v2.2.10 // indirect
-	github.com/pion/transport/v3 v3.1.1 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
