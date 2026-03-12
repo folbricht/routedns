@@ -215,6 +215,12 @@ func TestFailBackIsSuccessResponse(t *testing.T) {
 		require.True(t, fb.isSuccessResponse(msg))
 	})
 
+	t.Run("NXDomainWithEmptyError", func(t *testing.T) {
+		fb := newFB(FailBackOptions{EmptyError: true})
+		msg := newMsg(dns.TypeA, dns.RcodeNameError)
+		require.True(t, fb.isSuccessResponse(msg))
+	})
+
 	t.Run("EmptyErrorDisabled", func(t *testing.T) {
 		fb := newFB(FailBackOptions{EmptyError: false})
 		msg := newMsg(dns.TypeA, dns.RcodeSuccess)

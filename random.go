@@ -127,6 +127,9 @@ func (r *Random) isSuccessResponse(a *dns.Msg) bool {
 	if a.Rcode == dns.RcodeServerFailure && r.opt.ServfailError || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
 		return false
 	}
+	if a.Rcode == dns.RcodeNameError {
+		return true
+	}
 	if !r.opt.EmptyError {
 		return true
 	}
