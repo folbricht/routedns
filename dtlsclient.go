@@ -37,6 +37,9 @@ type DTLSClientOptions struct {
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 var _ Resolver = &DTLSClient{}
@@ -81,10 +84,11 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	}
 
 	client := &dtlsDialer{
-		raddr:      addr,
-		laddr:      laddr,
-		dtlsConfig: opt.DTLSConfig,
-		netns:      opt.NetNS,
+		raddr:         addr,
+		laddr:         laddr,
+		dtlsConfig:    opt.DTLSConfig,
+		netns:         opt.NetNS,
+		socketOptions: opt.SocketOptions,
 	}
 	return &DTLSClient{
 		id:       id,
@@ -117,10 +121,11 @@ func (d *DTLSClient) String() string {
 }
 
 type dtlsDialer struct {
-	raddr      *net.UDPAddr
-	laddr      *net.UDPAddr
-	dtlsConfig *dtls.Config
-	netns      *NetNS
+	raddr         *net.UDPAddr
+	laddr         *net.UDPAddr
+	dtlsConfig    *dtls.Config
+	netns         *NetNS
+	socketOptions SocketOptions
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
@@ -131,6 +136,10 @@ func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
 		return e
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := d.socketOptions.applyToConn(pConn); err != nil {
+		pConn.Close()
 		return nil, err
 	}
 	c, err := dtls.Client(pConn, d.raddr, d.dtlsConfig)

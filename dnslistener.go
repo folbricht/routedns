@@ -24,6 +24,9 @@ type ListenOptions struct {
 
 	// Linux network namespace for the listening socket.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
@@ -42,17 +45,21 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
 	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
-	if s.opt.NetNS != nil && s.opt.NetNS.Name != "" {
-		return s.startInNetNS()
+	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+		return s.startWithSocketSetup()
 	}
 	return s.ListenAndServe()
 }
 
-func (s DNSListener) startInNetNS() error {
+func (s DNSListener) startWithSocketSetup() error {
 	switch {
 	case strings.HasPrefix(s.Net, "tcp"):
 		ln, err := ListenInNetNS(s.opt.NetNS, s.Net, s.Addr)
 		if err != nil {
+			return err
+		}
+		if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
+			ln.Close()
 			return err
 		}
 		s.Server.Listener = ln
@@ -61,9 +68,13 @@ func (s DNSListener) startInNetNS() error {
 		if err != nil {
 			return err
 		}
+		if err := s.opt.SocketOptions.applyToConn(pc); err != nil {
+			pc.Close()
+			return err
+		}
 		s.Server.PacketConn = pc
 	default:
-		return fmt.Errorf("unsupported network %q for netns", s.Net)
+		return fmt.Errorf("unsupported network %q for socket setup", s.Net)
 	}
 	return s.ActivateAndServe()
 }

@@ -50,9 +50,13 @@ func (s DoTListener) Start() error {
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)
-	if s.opt.NetNS != nil && s.opt.NetNS.Name != "" {
+	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
 		ln, err := ListenInNetNS(s.opt.NetNS, "tcp", s.Addr)
 		if err != nil {
+			return err
+		}
+		if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
+			ln.Close()
 			return err
 		}
 		s.Server.Listener = tls.NewListener(ln, s.Server.TLSConfig)

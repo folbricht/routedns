@@ -126,6 +126,10 @@ func (s *DoHListener) startTCP() error {
 	if err != nil {
 		return err
 	}
+	if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
+		ln.Close()
+		return err
+	}
 	defer ln.Close()
 	if s.opt.NoTLS {
 		return s.httpServer.Serve(ln)
@@ -141,6 +145,10 @@ func (s *DoHListener) startQUIC() error {
 	}
 	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
 	if err != nil {
+		return err
+	}
+	if err := s.opt.SocketOptions.applyToConn(udpConn); err != nil {
+		udpConn.Close()
 		return err
 	}
 	transport := &quic.Transport{Conn: udpConn}

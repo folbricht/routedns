@@ -24,6 +24,7 @@ Features:
 - Support for 0-RTT QUIC queries if the upstream server supports it
 - SOCKS5 proxy support
 - Linux network namespace support for listeners and resolvers (listen in one netns, resolve in another)
+- Linux firewall mark (fwmark) and interface binding (SO_BINDTODEVICE) for policy routing and VRF support
 - Optional metrics export (expvar) to support monitoring and graphing
 - Lua scripting for custom query handling logic with sandboxed execution
 - Written in Go - Platform independent

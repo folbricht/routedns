@@ -51,6 +51,7 @@
   - [Bootstrap Resolver](#bootstrap-resolver)
   - [SOCKS5 Proxy Support](#socks5-proxy-support)
   - [Network Namespace Support](#network-namespace-support)
+  - [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
 - [Templates](#templates)
 
 ## Overview
@@ -130,6 +131,8 @@ Common options for all listeners:
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 - `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `fwmark` - Linux firewall mark (`SO_MARK`) to set on the listening socket. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
+- `bind-if` - Bind the listening socket to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or restricting a listener to one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 
 Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificates, keys and peer validation.
 
@@ -2099,6 +2102,60 @@ netns = "container"
 ```
 
 Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
+
+### Firewall Mark and Interface Binding
+
+On Linux, listeners and resolvers support two socket-level options for advanced routing:
+
+- `fwmark` - Sets the `SO_MARK` socket option. The firewall mark is attached to all packets sent from the socket, allowing Linux netfilter (`iptables`/`nftables`) and policy routing (`ip rule`) to match and route them. The value is an integer and supports TOML hex notation (e.g. `0xb`).
+- `bind-if` - Sets the `SO_BINDTODEVICE` socket option. Binds the socket to a specific network interface so that traffic can only flow through that interface. This is useful with [VRFs](https://docs.kernel.org/networking/vrf.html) or as a safeguard against route leaks. On kernels >= 5.7, `SO_BINDTODEVICE` does not require root privileges.
+
+Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged).
+
+**Resolver with fwmark and interface binding:**
+
+Route upstream DNS traffic over a specific WAN interface using policy routing:
+
+```toml
+[resolvers.quad9-wan2]
+address = "9.9.9.9:53"
+protocol = "udp"
+fwmark = 11
+bind-if = "eth2"
+```
+
+With the corresponding routing setup:
+
+```text
+ip -4 rule add fwmark 11 table 1234
+ip -4 route add default via 192.168.1.1 dev eth2 table 1234
+```
+
+**Listener bound to a VRF:**
+
+Bind a listener to a VRF interface so it is only reachable from within that VRF:
+
+```toml
+[listeners.vrf-udp]
+address = ":53"
+protocol = "udp"
+resolver = "upstream"
+bind-if = "vrf-blue"
+```
+
+**Listener with fwmark:**
+
+Mark packets from the listening socket for netfilter matching:
+
+```toml
+[listeners.marked-udp]
+address = "[::]:53"
+protocol = "udp"
+resolver = "upstream"
+fwmark = 12
+```
+
+Example config files: [fwmark-bind-if.toml](../cmd/routedns/example-config/fwmark-bind-if.toml)
 
 ## Templates
 

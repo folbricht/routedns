@@ -39,6 +39,9 @@ type DNSClientOptions struct {
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 var _ Resolver = &DNSClient{}
@@ -50,12 +53,13 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		return nil, err
 	}
 	client := GenericDNSClient{
-		Net:       network,
-		Dialer:    opt.Dialer,
-		TLSConfig: &tls.Config{},
-		LocalAddr: opt.LocalAddr,
-		Timeout:   opt.QueryTimeout,
-		NetNS:     opt.NetNS,
+		Net:           network,
+		Dialer:        opt.Dialer,
+		TLSConfig:     &tls.Config{},
+		LocalAddr:     opt.LocalAddr,
+		Timeout:       opt.QueryTimeout,
+		NetNS:         opt.NetNS,
+		SocketOptions: opt.SocketOptions,
 	}
 	return &DNSClient{
 		id:       id,
@@ -91,12 +95,13 @@ func (d *DNSClient) String() string {
 // (only *net.Dialer) which prevents the use of proxies. It implements the same
 // Dial functionality, while supporting custom dialers.
 type GenericDNSClient struct {
-	Dialer    Dialer
-	Net       string
-	TLSConfig *tls.Config
-	LocalAddr net.IP
-	Timeout   time.Duration
-	NetNS     *NetNS
+	Dialer        Dialer
+	Net           string
+	TLSConfig     *tls.Config
+	LocalAddr     net.IP
+	Timeout       time.Duration
+	NetNS         *NetNS
+	SocketOptions SocketOptions
 }
 
 func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
@@ -108,17 +113,16 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 
 	dialer := d.Dialer
 	if dialer == nil {
-		// Use a custom dialer if a local address was provided
+		nd := &net.Dialer{Timeout: d.Timeout, Control: d.SocketOptions.dialerControl()}
 		if d.LocalAddr != nil {
 			switch network {
 			case "tcp":
-				dialer = &net.Dialer{LocalAddr: &net.TCPAddr{IP: d.LocalAddr}, Timeout: d.Timeout}
+				nd.LocalAddr = &net.TCPAddr{IP: d.LocalAddr}
 			case "udp":
-				dialer = &net.Dialer{LocalAddr: &net.UDPAddr{IP: d.LocalAddr}, Timeout: d.Timeout}
+				nd.LocalAddr = &net.UDPAddr{IP: d.LocalAddr}
 			}
-		} else {
-			dialer = &net.Dialer{}
 		}
+		dialer = nd
 	}
 
 	var (
@@ -143,6 +147,15 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Apply socket options to connections made by custom dialers.
+	// For net.Dialer, options were already applied via Control.
+	if d.Dialer != nil {
+		if err := d.SocketOptions.applyToConn(conn.Conn); err != nil {
+			conn.Conn.Close()
+			return nil, err
+		}
 	}
 
 	// Trick dns.Conn.ReadMsg() into thinking this is a packet connection (udp) so it

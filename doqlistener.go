@@ -85,6 +85,10 @@ func (s DoQListener) Start() error {
 	if err != nil {
 		return err
 	}
+	if err := s.opt.SocketOptions.applyToConn(udpConn); err != nil {
+		udpConn.Close()
+		return err
+	}
 	transport := &quic.Transport{Conn: udpConn}
 	s.ln, err = transport.ListenEarly(s.opt.TLSConfig, &quic.Config{
 		Allow0RTT:      true,

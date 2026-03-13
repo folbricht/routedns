@@ -58,6 +58,9 @@ type DoHClientOptions struct {
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 // DoHClient is a DNS-over-HTTP resolver with support for HTTP/2.
@@ -273,9 +276,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		}
 	}
 
-	// Use a custom dialer if a bootstrap address, local address, proxy, or netns was provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") {
-		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}}
+	// Use a custom dialer if a bootstrap address, local address, proxy, netns, or socket options were provided
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") || opt.SocketOptions.active() {
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}, Control: opt.SocketOptions.dialerControl()}
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
 				_, port, err := net.SplitHostPort(addr)
@@ -291,7 +294,14 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 					conn, e = opt.Dialer.Dial(network, addr)
 					return e
 				})
-				return conn, err
+				if err != nil {
+					return nil, err
+				}
+				if err := opt.SocketOptions.applyToConn(conn); err != nil {
+					conn.Close()
+					return nil, err
+				}
+				return conn, nil
 			}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {
@@ -329,6 +339,10 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	udpConn, err := ListenUDPInNetNS(opt.NetNS, "udp", &net.UDPAddr{IP: lAddr, Port: 0})
 	if err != nil {
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
+		return nil, err
+	}
+	if err := opt.SocketOptions.applyToConn(udpConn); err != nil {
+		udpConn.Close()
 		return nil, err
 	}
 	quicTransport := &quic.Transport{Conn: udpConn}

@@ -88,6 +88,10 @@ func (s *AdminListener) startTCP() error {
 	if err != nil {
 		return err
 	}
+	if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
+		ln.Close()
+		return err
+	}
 	defer ln.Close()
 	return s.httpServer.ServeTLS(ln, "", "")
 }
@@ -100,6 +104,10 @@ func (s *AdminListener) startQUIC() error {
 	}
 	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
 	if err != nil {
+		return err
+	}
+	if err := s.opt.SocketOptions.applyToConn(udpConn); err != nil {
+		udpConn.Close()
 		return err
 	}
 	transport := &quic.Transport{Conn: udpConn}
