@@ -1,6 +1,11 @@
 package rdns
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestSocketOptionsActive(t *testing.T) {
 	tests := []struct {
@@ -16,17 +21,12 @@ func TestSocketOptionsActive(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.opts.active(); got != tt.active {
-				t.Errorf("SocketOptions.active() = %v, want %v", got, tt.active)
-			}
+			assert.Equal(t, tt.active, tt.opts.active())
 		})
 	}
 }
 
 func TestSocketOptionsDialerControlNil(t *testing.T) {
-	// No options set should return nil control function
 	opts := SocketOptions{}
-	if ctrl := opts.dialerControl(); ctrl != nil {
-		t.Error("expected nil control function for empty socket options")
-	}
+	require.Nil(t, opts.dialerControl(), "expected nil control function for empty socket options")
 }
