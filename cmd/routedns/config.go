@@ -36,7 +36,7 @@ type listener struct {
 	OdohMode   string   `toml:"odoh-mode"` // ODoH mode - accepts "proxy", "target" or "dual", default is target mode
 	AllowDoH      bool     `toml:"allow-doh"` // Allow ODoH listeners to also handle DoH queries to /dns-query
 	NetNS         string   `toml:"netns"`     // Linux network namespace name or absolute path
-	FWMark        int      `toml:"fwmark"`    // Linux firewall mark (SO_MARK) for the listening socket
+	FWMark        uint32   `toml:"fwmark"`    // Linux firewall mark (SO_MARK) for the listening socket
 	BindInterface string   `toml:"bind-if"`   // Linux network interface to bind the socket to (SO_BINDTODEVICE)
 	Frontend      dohFrontend
 }
@@ -60,7 +60,7 @@ type resolver struct {
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
 	NetNS         string `toml:"netns"`          // Linux network namespace name or absolute path
-	FWMark        int    `toml:"fwmark"`         // Linux firewall mark (SO_MARK) for outbound connections
+	FWMark        uint32 `toml:"fwmark"`         // Linux firewall mark (SO_MARK) for outbound connections
 	BindInterface string `toml:"bind-if"`        // Linux network interface to bind outbound connections to (SO_BINDTODEVICE)
 
 	// Proxy configuration

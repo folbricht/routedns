@@ -151,6 +151,10 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 
 	// Apply socket options to connections made by custom dialers.
 	// For net.Dialer, options were already applied via Control.
+	// Custom dialers (e.g. SOCKS5) don't expose a Control callback,
+	// so we apply post-connect. SO_MARK still affects future packets
+	// on the socket; SO_BINDTODEVICE has no routing effect after
+	// connect but is applied for consistency.
 	if d.Dialer != nil {
 		if err := d.SocketOptions.applyToConn(conn.Conn); err != nil {
 			conn.Conn.Close()

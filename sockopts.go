@@ -5,7 +5,7 @@ package rdns
 // and SO_BINDTODEVICE socket options.
 type SocketOptions struct {
 	// Firewall mark (SO_MARK) to set on the socket. 0 means unset.
-	FWMark int
+	FWMark uint32
 
 	// Network interface to bind the socket to (SO_BINDTODEVICE). Empty means unset.
 	BindInterface string
