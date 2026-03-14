@@ -1,0 +1,54 @@
+# Example demonstrating Linux socket options for policy-based routing.
+# This shows how to use fwmark (SO_MARK) and bind-if (SO_BINDTODEVICE) on
+# resolvers and listeners.
+#
+# Use case: Multi-WAN setup where different resolvers should route their
+# traffic over different network interfaces using Linux policy routing.
+#
+# Setup (fwmark-based routing via eth2):
+#   ip -4 rule add fwmark 11 table 1234
+#   ip -4 route add default via 192.168.1.1 dev eth2 table 1234
+#
+# The fwmark on the resolver marks outgoing DNS packets so that Linux
+# netfilter / ip rule can route them to the correct WAN interface.
+# The bind-if option provides an additional safeguard by binding the
+# socket directly to the interface, preventing leaks if the routing
+# table is cleared.
+#
+# Both options are Linux-only and may require appropriate capabilities
+# (CAP_NET_ADMIN for fwmark, or kernel >= 5.7 for SO_BINDTODEVICE
+# without root).
+
+# Resolver that routes its traffic over eth2 using fwmark and bind-if.
+[resolvers.quad9-wan2]
+address = "9.9.9.9:53"
+protocol = "udp"
+fwmark = 11
+bind-if = "eth2"
+
+# Resolver using the default route (no special socket options).
+[resolvers.cloudflare-default]
+address = "1.1.1.1:53"
+protocol = "udp"
+
+# Route queries: .internal domains go over the secondary WAN,
+# everything else uses the default route.
+[routers.wan-router]
+routes = [
+  { name = '(^|\.)internal\.$', resolver = "quad9-wan2" },
+  { resolver = "cloudflare-default" },
+]
+
+# Plain UDP listener on the local network.
+[listeners.local-udp]
+address = "10.0.0.1:53"
+protocol = "udp"
+resolver = "wan-router"
+
+# Listener bound to a VRF interface. This makes the listener available
+# only within the VRF, useful for providing DNS to VRF-isolated networks.
+[listeners.vrf-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-default"
+bind-if = "vrf-blue"

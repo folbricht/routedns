@@ -3,6 +3,7 @@
 package rdns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -64,34 +65,51 @@ func RunInNetNS(ns *NetNS, fn func() error) error {
 }
 
 // ListenInNetNS creates a net.Listener in the given network namespace.
-func ListenInNetNS(ns *NetNS, network, address string) (net.Listener, error) {
+// Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
+// net.ListenConfig.Control so that interface binding works correctly.
+func ListenInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.Listener, error) {
 	var ln net.Listener
 	err := RunInNetNS(ns, func() error {
+		lc := net.ListenConfig{Control: opts.dialerControl()}
 		var e error
-		ln, e = net.Listen(network, address)
+		ln, e = lc.Listen(ctx, network, address)
 		return e
 	})
 	return ln, err
 }
 
 // ListenPacketInNetNS creates a net.PacketConn in the given network namespace.
-func ListenPacketInNetNS(ns *NetNS, network, address string) (net.PacketConn, error) {
+// Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
+// net.ListenConfig.Control so that interface binding works correctly.
+func ListenPacketInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.PacketConn, error) {
 	var pc net.PacketConn
 	err := RunInNetNS(ns, func() error {
+		lc := net.ListenConfig{Control: opts.dialerControl()}
 		var e error
-		pc, e = net.ListenPacket(network, address)
+		pc, e = lc.ListenPacket(ctx, network, address)
 		return e
 	})
 	return pc, err
 }
 
 // ListenUDPInNetNS creates a *net.UDPConn in the given network namespace.
-func ListenUDPInNetNS(ns *NetNS, network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
+// Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
+// net.ListenConfig.Control so that interface binding works correctly.
+func ListenUDPInNetNS(ctx context.Context, ns *NetNS, network string, laddr *net.UDPAddr, opts SocketOptions) (*net.UDPConn, error) {
 	var conn *net.UDPConn
 	err := RunInNetNS(ns, func() error {
-		var e error
-		conn, e = net.ListenUDP(network, laddr)
-		return e
+		lc := net.ListenConfig{Control: opts.dialerControl()}
+		pc, e := lc.ListenPacket(ctx, network, laddr.String())
+		if e != nil {
+			return e
+		}
+		var ok bool
+		conn, ok = pc.(*net.UDPConn)
+		if !ok {
+			pc.Close()
+			return fmt.Errorf("expected *net.UDPConn, got %T", pc)
+		}
+		return nil
 	})
 	return conn, err
 }

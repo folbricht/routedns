@@ -223,7 +223,11 @@ func start(opt options, args []string) error {
 			netns = &rdns.NetNS{Name: l.NetNS}
 		}
 
-		opt := rdns.ListenOptions{AllowedNet: allowedNet, NetNS: netns}
+		opt := rdns.ListenOptions{
+			AllowedNet:    allowedNet,
+			NetNS:         netns,
+			SocketOptions: rdns.SocketOptions{FWMark: l.FWMark, BindInterface: l.BindInterface},
+		}
 
 		switch l.Protocol {
 		case "tcp":

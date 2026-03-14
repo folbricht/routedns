@@ -81,7 +81,7 @@ func (s DoQListener) Start() error {
 	if err != nil {
 		return err
 	}
-	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
+	udpConn, err := ListenUDPInNetNS(context.Background(), s.opt.NetNS, "udp", udpAddr, s.opt.SocketOptions)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -24,6 +25,9 @@ type ListenOptions struct {
 
 	// Linux network namespace for the listening socket.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
@@ -42,28 +46,28 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
 	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
-	if s.opt.NetNS != nil && s.opt.NetNS.Name != "" {
-		return s.startInNetNS()
+	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+		return s.startWithSocketSetup()
 	}
 	return s.ListenAndServe()
 }
 
-func (s DNSListener) startInNetNS() error {
+func (s DNSListener) startWithSocketSetup() error {
 	switch {
 	case strings.HasPrefix(s.Net, "tcp"):
-		ln, err := ListenInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, s.Net, s.Addr, s.opt.SocketOptions)
 		if err != nil {
 			return err
 		}
 		s.Server.Listener = ln
 	case strings.HasPrefix(s.Net, "udp"):
-		pc, err := ListenPacketInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		pc, err := ListenPacketInNetNS(context.Background(), s.opt.NetNS, s.Net, s.Addr, s.opt.SocketOptions)
 		if err != nil {
 			return err
 		}
 		s.Server.PacketConn = pc
 	default:
-		return fmt.Errorf("unsupported network %q for netns", s.Net)
+		return fmt.Errorf("unsupported network %q for socket setup", s.Net)
 	}
 	return s.ActivateAndServe()
 }

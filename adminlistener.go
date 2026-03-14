@@ -84,7 +84,7 @@ func (s *AdminListener) startTCP() error {
 		WriteTimeout: adminServerTimeout,
 	}
 
-	ln, err := ListenInNetNS(s.opt.NetNS, "tcp", s.addr)
+	ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.addr, s.opt.SocketOptions)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (s *AdminListener) startQUIC() error {
 	if err != nil {
 		return err
 	}
-	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
+	udpConn, err := ListenUDPInNetNS(context.Background(), s.opt.NetNS, "udp", udpAddr, s.opt.SocketOptions)
 	if err != nil {
 		return err
 	}

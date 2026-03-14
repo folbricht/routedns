@@ -35,6 +35,9 @@ type DoTClientOptions struct {
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 var _ Resolver = &DoTClient{}
@@ -46,11 +49,12 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 	}
 
 	client := GenericDNSClient{
-		Net:       "tcp-tls",
-		TLSConfig: opt.TLSConfig,
-		Dialer:    opt.Dialer,
-		LocalAddr: opt.LocalAddr,
-		NetNS:     opt.NetNS,
+		Net:           "tcp-tls",
+		TLSConfig:     opt.TLSConfig,
+		Dialer:        opt.Dialer,
+		LocalAddr:     opt.LocalAddr,
+		NetNS:         opt.NetNS,
+		SocketOptions: opt.SocketOptions,
 	}
 	// If a bootstrap address was provided, we need to use the IP for the connection but the
 	// hostname in the TLS handshake. The DNS library doesn't support custom dialers, so

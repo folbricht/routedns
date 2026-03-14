@@ -44,6 +44,10 @@ func NewDTLSListener(id, addr string, opt DTLSListenerOptions, resolver Resolver
 func (s *DTLSListener) Start() error {
 	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "dtls"), slog.String("addr", s.Addr)))
 
+	if s.opt.SocketOptions.active() {
+		Log.Warn("socket options (fwmark, bind-interface) are not supported for DTLS listeners", "id", s.id)
+	}
+
 	host, port, err := net.SplitHostPort(s.Server.Addr)
 	if err != nil {
 		return err

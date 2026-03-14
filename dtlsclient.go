@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -37,6 +38,9 @@ type DTLSClientOptions struct {
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
+
+	// Linux socket options for fwmark and interface binding.
+	SocketOptions SocketOptions
 }
 
 var _ Resolver = &DTLSClient{}
@@ -81,10 +85,11 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	}
 
 	client := &dtlsDialer{
-		raddr:      addr,
-		laddr:      laddr,
-		dtlsConfig: opt.DTLSConfig,
-		netns:      opt.NetNS,
+		raddr:         addr,
+		laddr:         laddr,
+		dtlsConfig:    opt.DTLSConfig,
+		netns:         opt.NetNS,
+		socketOptions: opt.SocketOptions,
 	}
 	return &DTLSClient{
 		id:       id,
@@ -117,17 +122,23 @@ func (d *DTLSClient) String() string {
 }
 
 type dtlsDialer struct {
-	raddr      *net.UDPAddr
-	laddr      *net.UDPAddr
-	dtlsConfig *dtls.Config
-	netns      *NetNS
+	raddr         *net.UDPAddr
+	laddr         *net.UDPAddr
+	dtlsConfig    *dtls.Config
+	netns         *NetNS
+	socketOptions SocketOptions
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
-	var pConn *net.UDPConn
+	var pConn net.PacketConn
 	err := RunInNetNS(d.netns, func() error {
+		laddr := ":0"
+		if d.laddr != nil {
+			laddr = d.laddr.String()
+		}
+		lc := net.ListenConfig{Control: d.socketOptions.dialerControl()}
 		var e error
-		pConn, e = net.ListenUDP("udp", d.laddr)
+		pConn, e = lc.ListenPacket(context.Background(), "udp", laddr)
 		return e
 	})
 	if err != nil {
