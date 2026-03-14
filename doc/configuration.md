@@ -1809,6 +1809,8 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `protocol` - The DNS protocol used to send queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`.
 - `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
+- `local-address-v4` - IPv4 address of the local interface to use when connecting to IPv4 targets. Takes priority over `local-address` for IPv4 connections.
+- `local-address-v6` - IPv6 address of the local interface to use when connecting to IPv6 targets. Takes priority over `local-address` for IPv6 connections.
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).

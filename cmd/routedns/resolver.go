@@ -34,6 +34,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		opt := rdns.DoQClientOptions{
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Use0RTT:       r.Use0RTT,
@@ -54,6 +56,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		opt := rdns.DoTClientOptions{
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
@@ -74,6 +78,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		opt := rdns.DTLSClientOptions{
 			BootstrapAddr: r.BootstrapAddr,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			DTLSConfig:    dtlsConfig,
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
@@ -97,6 +103,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
@@ -119,6 +127,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			BootstrapAddr: r.BootstrapAddr,
 			Transport:     r.Transport,
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
 			NetNS:         netns,
@@ -133,6 +143,8 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 
 		opt := rdns.DNSClientOptions{
 			LocalAddr:     net.ParseIP(r.LocalAddr),
+			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			Dialer:        socks5DialerFromConfig(r),
@@ -163,6 +175,8 @@ func socks5DialerFromConfig(cfg resolver) rdns.Dialer {
 			UDPTimeout:   5 * time.Second,
 			ResolveLocal: cfg.Socks5ResolveLocal,
 			LocalAddr:    net.ParseIP(cfg.LocalAddr),
+			LocalAddrV4:  net.ParseIP(cfg.LocalAddrV4),
+			LocalAddrV6:  net.ParseIP(cfg.LocalAddrV6),
 		})
 	return r
 }

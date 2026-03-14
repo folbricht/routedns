@@ -26,7 +26,9 @@ type Dialer interface {
 
 type DNSClientOptions struct {
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr net.IP
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
 
 	// Sets the EDNS0 UDP size for all queries sent upstream. If set to 0, queries
 	// are not changed.
@@ -57,6 +59,8 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		Dialer:        opt.Dialer,
 		TLSConfig:     &tls.Config{},
 		LocalAddr:     opt.LocalAddr,
+		LocalAddrV4:   opt.LocalAddrV4,
+		LocalAddrV6:   opt.LocalAddrV6,
 		Timeout:       opt.QueryTimeout,
 		NetNS:         opt.NetNS,
 		SocketOptions: opt.SocketOptions,
@@ -99,6 +103,8 @@ type GenericDNSClient struct {
 	Net           string
 	TLSConfig     *tls.Config
 	LocalAddr     net.IP
+	LocalAddrV4   net.IP
+	LocalAddrV6   net.IP
 	Timeout       time.Duration
 	NetNS         *NetNS
 	SocketOptions SocketOptions
@@ -114,12 +120,13 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 	dialer := d.Dialer
 	if dialer == nil {
 		nd := &net.Dialer{Timeout: d.Timeout, Control: d.SocketOptions.dialerControl()}
-		if d.LocalAddr != nil {
+		localAddr := selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
+		if localAddr != nil {
 			switch network {
 			case "tcp":
-				nd.LocalAddr = &net.TCPAddr{IP: d.LocalAddr}
+				nd.LocalAddr = &net.TCPAddr{IP: localAddr}
 			case "udp":
-				nd.LocalAddr = &net.UDPAddr{IP: d.LocalAddr}
+				nd.LocalAddr = &net.UDPAddr{IP: localAddr}
 			}
 		}
 		dialer = nd
@@ -205,4 +212,20 @@ func (c packetConnWrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 
 func (c packetConnWrapper) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	panic("not implemented")
+}
+
+// selectLocalAddr picks the local address to use based on the target's address family.
+// Priority: family-specific (V4/V6) > generic (LocalAddr) > nil.
+func selectLocalAddr(target string, localAddr, localAddrV4, localAddrV6 net.IP) net.IP {
+	host, _, _ := net.SplitHostPort(target)
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.To4() != nil && localAddrV4 != nil {
+			return localAddrV4
+		}
+		if ip.To4() == nil && localAddrV6 != nil {
+			return localAddrV6
+		}
+	}
+	return localAddr
 }

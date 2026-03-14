@@ -26,7 +26,9 @@ type DTLSClientOptions struct {
 	BootstrapAddr string
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr net.IP
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
 
 	// Sets the EDNS0 UDP size for all queries sent upstream. If set to 0, queries
 	// are not changed.
@@ -79,9 +81,16 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	}
 	addr := &net.UDPAddr{IP: ip, Port: p}
 
+	// Select the local address based on the target's address family
+	localAddr := opt.LocalAddr
+	if ip.To4() != nil && opt.LocalAddrV4 != nil {
+		localAddr = opt.LocalAddrV4
+	} else if ip.To4() == nil && opt.LocalAddrV6 != nil {
+		localAddr = opt.LocalAddrV6
+	}
 	var laddr *net.UDPAddr
-	if opt.LocalAddr != nil {
-		laddr = &net.UDPAddr{IP: opt.LocalAddr}
+	if localAddr != nil {
+		laddr = &net.UDPAddr{IP: localAddr}
 	}
 
 	client := &dtlsDialer{

@@ -24,7 +24,9 @@ type DoTClientOptions struct {
 	BootstrapAddr string
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr net.IP
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
 
 	TLSConfig *tls.Config
 
@@ -53,6 +55,8 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 		TLSConfig:     opt.TLSConfig,
 		Dialer:        opt.Dialer,
 		LocalAddr:     opt.LocalAddr,
+		LocalAddrV4:   opt.LocalAddrV4,
+		LocalAddrV6:   opt.LocalAddrV6,
 		NetNS:         opt.NetNS,
 		SocketOptions: opt.SocketOptions,
 	}

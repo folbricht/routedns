@@ -18,11 +18,13 @@ type Socks5Dialer struct {
 }
 
 type Socks5DialerOptions struct {
-	Username   string
-	Password   string
-	UDPTimeout time.Duration
-	TCPTimeout time.Duration
-	LocalAddr  net.IP
+	Username    string
+	Password    string
+	UDPTimeout  time.Duration
+	TCPTimeout  time.Duration
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
 
 	// When the resolver is configured with a name, not an IP, e.g. one.one.one.one:53
 	// this setting will resolve that name locally rather than on the SOCKS proxy. The
@@ -85,8 +87,9 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 
 	})
 
-	if d.opt.LocalAddr != nil {
-		return d.Client.DialWithLocalAddr(network, d.opt.LocalAddr.String(), d.addr, nil)
+	localAddr := selectLocalAddr(d.addr, d.opt.LocalAddr, d.opt.LocalAddrV4, d.opt.LocalAddrV6)
+	if localAddr != nil {
+		return d.Client.DialWithLocalAddr(network, localAddr.String(), d.addr, nil)
 	}
 	return d.Client.Dial(network, d.addr)
 }

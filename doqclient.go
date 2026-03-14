@@ -29,7 +29,9 @@ type DoQClient struct {
 	log      *slog.Logger
 	metrics  *ListenerMetrics
 
-	connection *quicConnection
+	connection  *quicConnection
+	connectionV4 *quicConnection // IPv4-specific connection, used in dual-stack mode
+	connectionV6 *quicConnection // IPv6-specific connection, used in dual-stack mode
 }
 
 // DoQClientOptions contains options used by the DNS-over-QUIC resolver.
@@ -39,7 +41,10 @@ type DoQClientOptions struct {
 	BootstrapAddr string
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr    net.IP
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
+
 	TLSConfig    *tls.Config
 	QueryTimeout time.Duration
 	Use0RTT      bool
@@ -65,10 +70,6 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		tlsConfig = opt.TLSConfig.Clone()
 	}
 	tlsConfig.NextProtos = []string{"doq"}
-	lAddr := net.IPv4zero
-	if opt.LocalAddr != nil {
-		lAddr = opt.LocalAddr
-	}
 	// If a bootstrap address was provided, we need to use the IP for the connection but the
 	// hostname in the TLS handshake. The library doesn't support custom dialers, so
 	// instead set the ServerName in the TLS config to the name in the endpoint config, and
@@ -100,19 +101,48 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		TokenStore:           quic.NewLRUTokenStore(10, 10),
 		HandshakeIdleTimeout: opt.QueryTimeout,
 	}
-	qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
-	if err != nil {
-		return nil, err
-	}
-	return &DoQClient{
+
+	client := &DoQClient{
 		id:               id,
 		endpoint:         endpoint,
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		connection:       qConn,
 		metrics:          NewListenerMetrics("client", id),
-	}, nil
+	}
+
+	// When both V4 and V6 local addresses are specified, create two QUIC connections
+	// since a UDP socket bound to an IPv4 address cannot reach IPv6 endpoints and vice versa.
+	if opt.LocalAddrV4 != nil && opt.LocalAddrV6 != nil {
+		qConn4, err := newQuicConnection(opt.LocalAddrV4, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		if err != nil {
+			return nil, err
+		}
+		qConn6, err := newQuicConnection(opt.LocalAddrV6, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		if err != nil {
+			return nil, err
+		}
+		client.connectionV4 = qConn4
+		client.connectionV6 = qConn6
+	} else {
+		lAddr := net.IPv4zero
+		if opt.LocalAddr != nil {
+			lAddr = opt.LocalAddr
+		}
+		if opt.LocalAddrV4 != nil {
+			lAddr = opt.LocalAddrV4
+		}
+		if opt.LocalAddrV6 != nil {
+			lAddr = opt.LocalAddrV6
+		}
+		qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		if err != nil {
+			return nil, err
+		}
+		client.connection = qConn
+	}
+
+	return client, nil
 }
 
 // Resolve a DNS query.
@@ -155,8 +185,21 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	binary.BigEndian.PutUint16(b, uint16(len(p)))
 	copy(b[2:], p)
 
-	// Get a new stream in the connection
-	stream, err := d.connection.getStream(d.endpoint, d.log)
+	// Get a new stream in the connection, selecting the right one for dual-stack
+	conn := d.connection
+	if conn == nil {
+		// Dual-stack mode: resolve the endpoint and pick the right connection
+		rAddr, err := net.ResolveUDPAddr("udp", d.endpoint)
+		if err != nil {
+			d.metrics.err.Add("resolve", 1)
+			return nil, err
+		}
+		conn = d.connectionV4
+		if rAddr.IP.To4() == nil {
+			conn = d.connectionV6
+		}
+	}
+	stream, err := conn.getStream(d.endpoint, d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
