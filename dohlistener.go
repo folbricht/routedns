@@ -122,12 +122,8 @@ func (s *DoHListener) startTCP() error {
 		Handler:      s.opt.customMux,
 	}
 
-	ln, err := ListenInNetNS(s.opt.NetNS, "tcp", s.addr)
+	ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.addr, s.opt.SocketOptions)
 	if err != nil {
-		return err
-	}
-	if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
-		ln.Close()
 		return err
 	}
 	defer ln.Close()
@@ -143,12 +139,8 @@ func (s *DoHListener) startQUIC() error {
 	if err != nil {
 		return err
 	}
-	udpConn, err := ListenUDPInNetNS(s.opt.NetNS, "udp", udpAddr)
+	udpConn, err := ListenUDPInNetNS(context.Background(), s.opt.NetNS, "udp", udpAddr, s.opt.SocketOptions)
 	if err != nil {
-		return err
-	}
-	if err := s.opt.SocketOptions.applyToConn(udpConn); err != nil {
-		udpConn.Close()
 		return err
 	}
 	transport := &quic.Transport{Conn: udpConn}

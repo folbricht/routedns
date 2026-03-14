@@ -336,13 +336,9 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	}
 
 	// Initialize the local UDP connection, it'll be re-used for all connections
-	udpConn, err := ListenUDPInNetNS(opt.NetNS, "udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	udpConn, err := ListenUDPInNetNS(context.Background(), opt.NetNS, "udp", &net.UDPAddr{IP: lAddr, Port: 0}, opt.SocketOptions)
 	if err != nil {
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
-		return nil, err
-	}
-	if err := opt.SocketOptions.applyToConn(udpConn); err != nil {
-		udpConn.Close()
 		return nil, err
 	}
 	quicTransport := &quic.Transport{Conn: udpConn}

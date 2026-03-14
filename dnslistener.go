@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -54,22 +55,14 @@ func (s DNSListener) Start() error {
 func (s DNSListener) startWithSocketSetup() error {
 	switch {
 	case strings.HasPrefix(s.Net, "tcp"):
-		ln, err := ListenInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, s.Net, s.Addr, s.opt.SocketOptions)
 		if err != nil {
-			return err
-		}
-		if err := s.opt.SocketOptions.applyToConn(ln); err != nil {
-			ln.Close()
 			return err
 		}
 		s.Server.Listener = ln
 	case strings.HasPrefix(s.Net, "udp"):
-		pc, err := ListenPacketInNetNS(s.opt.NetNS, s.Net, s.Addr)
+		pc, err := ListenPacketInNetNS(context.Background(), s.opt.NetNS, s.Net, s.Addr, s.opt.SocketOptions)
 		if err != nil {
-			return err
-		}
-		if err := s.opt.SocketOptions.applyToConn(pc); err != nil {
-			pc.Close()
 			return err
 		}
 		s.Server.PacketConn = pc

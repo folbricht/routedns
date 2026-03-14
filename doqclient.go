@@ -232,13 +232,9 @@ type quicConnection struct {
 
 func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool, netns *NetNS, sockOpts SocketOptions) (*quicConnection, error) {
 	// Initialize the local UDP connection, it'll be re-used for all connections
-	udpConn, err := ListenUDPInNetNS(netns, "udp", &net.UDPAddr{IP: lAddr, Port: 0})
+	udpConn, err := ListenUDPInNetNS(context.Background(), netns, "udp", &net.UDPAddr{IP: lAddr, Port: 0}, sockOpts)
 	if err != nil {
 		Log.Error("couldn't listen on UDP socket on local address", "error", err, "local", lAddr.String())
-		return nil, err
-	}
-	if err := sockOpts.applyToConn(udpConn); err != nil {
-		udpConn.Close()
 		return nil, err
 	}
 	quicTransport := &quic.Transport{Conn: udpConn}

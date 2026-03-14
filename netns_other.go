@@ -3,6 +3,7 @@
 package rdns
 
 import (
+	"context"
 	"fmt"
 	"net"
 )
@@ -23,27 +24,39 @@ func RunInNetNS(ns *NetNS, fn func() error) error {
 }
 
 // ListenInNetNS creates a net.Listener in the given network namespace.
-func ListenInNetNS(ns *NetNS, network, address string) (net.Listener, error) {
+func ListenInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.Listener, error) {
 	if ns != nil && ns.Name != "" {
 		return nil, fmt.Errorf("network namespaces are only supported on Linux")
 	}
-	return net.Listen(network, address)
+	lc := net.ListenConfig{Control: opts.dialerControl()}
+	return lc.Listen(ctx, network, address)
 }
 
 // ListenPacketInNetNS creates a net.PacketConn in the given network namespace.
-func ListenPacketInNetNS(ns *NetNS, network, address string) (net.PacketConn, error) {
+func ListenPacketInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.PacketConn, error) {
 	if ns != nil && ns.Name != "" {
 		return nil, fmt.Errorf("network namespaces are only supported on Linux")
 	}
-	return net.ListenPacket(network, address)
+	lc := net.ListenConfig{Control: opts.dialerControl()}
+	return lc.ListenPacket(ctx, network, address)
 }
 
 // ListenUDPInNetNS creates a *net.UDPConn in the given network namespace.
-func ListenUDPInNetNS(ns *NetNS, network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
+func ListenUDPInNetNS(ctx context.Context, ns *NetNS, network string, laddr *net.UDPAddr, opts SocketOptions) (*net.UDPConn, error) {
 	if ns != nil && ns.Name != "" {
 		return nil, fmt.Errorf("network namespaces are only supported on Linux")
 	}
-	return net.ListenUDP(network, laddr)
+	lc := net.ListenConfig{Control: opts.dialerControl()}
+	pc, err := lc.ListenPacket(ctx, network, laddr.String())
+	if err != nil {
+		return nil, err
+	}
+	conn, ok := pc.(*net.UDPConn)
+	if !ok {
+		pc.Close()
+		return nil, fmt.Errorf("expected *net.UDPConn, got %T", pc)
+	}
+	return conn, nil
 }
 
 // DialInNetNS dials a connection in the given network namespace.
