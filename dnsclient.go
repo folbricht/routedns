@@ -119,6 +119,9 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 
 	dialer := d.Dialer
 	if dialer == nil {
+		// Resolve hostname to IP so selectLocalAddr can determine the address
+		// family. Use the resolved address for the dial to avoid double resolution.
+		address = resolveEndpointAddr(address)
 		nd := &net.Dialer{Timeout: d.Timeout, Control: d.SocketOptions.dialerControl()}
 		localAddr := selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
 		if localAddr != nil {
@@ -212,6 +215,23 @@ func (c packetConnWrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 
 func (c packetConnWrapper) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	panic("not implemented")
+}
+
+// resolveEndpointAddr resolves a hostname in a host:port address to an IP.
+// If the host is already an IP or resolution fails, the address is returned as-is.
+func resolveEndpointAddr(address string) string {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+	if net.ParseIP(host) != nil {
+		return address
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return address
+	}
+	return net.JoinHostPort(ips[0].String(), port)
 }
 
 // selectLocalAddr picks the local address to use based on the target's address family.

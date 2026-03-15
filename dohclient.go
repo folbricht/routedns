@@ -304,6 +304,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				}
 				return conn, nil
 			}
+			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
 			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
