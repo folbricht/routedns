@@ -21,8 +21,9 @@ type DNSSECValidator struct {
 
 // DNSSECValidatorOptions holds configuration for the DNSSEC validator.
 type DNSSECValidatorOptions struct {
-	TrustAnchors []TrustAnchor
-	LogOnly      bool // Log validation failures without returning SERVFAIL
+	TrustAnchors   []TrustAnchor
+	TrustAnchorURL string // URL to fetch trust anchors from (e.g. IANA root-anchors.xml)
+	LogOnly        bool   // Log validation failures without returning SERVFAIL
 }
 
 // TrustAnchor represents a DNSSEC trust anchor (typically the root KSK).
@@ -69,6 +70,14 @@ func NewDNSSECValidator(id string, resolver Resolver, opt DNSSECValidatorOptions
 	)
 
 	anchors := opt.TrustAnchors
+	if len(anchors) == 0 && opt.TrustAnchorURL != "" {
+		var err error
+		anchors, err = FetchTrustAnchorsFromURL(opt.TrustAnchorURL)
+		if err != nil {
+			Log.Warn("failed to fetch trust anchors, falling back to built-in defaults",
+				"url", opt.TrustAnchorURL, "error", err)
+		}
+	}
 	if len(anchors) == 0 {
 		anchors = defaultTrustAnchors
 	}

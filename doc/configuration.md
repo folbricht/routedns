@@ -1798,12 +1798,13 @@ Example config files: [lua-passthrough.toml](../cmd/routedns/example-config/lua-
 
 Validates DNSSEC signatures on responses from upstream resolvers. The validator builds a chain of trust from configured root trust anchors down through DS and DNSKEY records to verify RRSIG signatures on the response. If validation fails, a SERVFAIL is returned to the client. Unsigned zones (insecure delegations) pass through without error. Only NOERROR and NXDOMAIN responses are validated.
 
-By default, the validator uses the built-in IANA root trust anchors (KSK-2017 and KSK-2024). Custom trust anchors can be provided to override the defaults.
+By default, the validator uses the built-in IANA root trust anchors (KSK-2017 and KSK-2024). Custom trust anchors can be provided to override the defaults, or the validator can fetch them from a URL at startup.
 
 Options:
 
 - `resolvers` - Array of upstream resolvers (only one supported).
 - `dnssec-log-only` - If `true`, validation failures are logged but responses are still returned to clients. Useful for monitoring before enforcing. Default: `false`.
+- `dnssec-trust-anchor-url` - Optional URL to fetch trust anchors from at startup. The URL should serve XML in IANA root-anchors.xml format. Expired entries (past their `validUntil` date) are automatically filtered out. If the fetch fails, falls back to built-in defaults. Ignored if `dnssec-trust-anchors` is set.
 - `dnssec-trust-anchors` - Optional array of trust anchors. If not provided, the built-in IANA root KSK-2017 and KSK-2024 are used. Each entry has the following fields:
   - `owner` - Owner name of the trust anchor (e.g. `"."`).
   - `key-tag` - Key tag of the DNSKEY.
@@ -1819,6 +1820,15 @@ Simple DNSSEC validation with default trust anchors:
 [groups.dnssec-validated]
 type = "dnssec-validator"
 resolvers = ["cloudflare-dot"]
+```
+
+Auto-fetch trust anchors from IANA:
+
+```toml
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+dnssec-trust-anchor-url = "https://data.iana.org/root-anchors/root-anchors.xml"
 ```
 
 Log-only mode with explicit trust anchors:
@@ -1846,7 +1856,7 @@ digest-type = 2
 digest = "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16"
 ```
 
-Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dnssec-validator.toml), [dnssec-validator-trust-anchors.toml](../cmd/routedns/example-config/dnssec-validator-trust-anchors.toml)
+Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dnssec-validator.toml), [dnssec-validator-trust-anchors.toml](../cmd/routedns/example-config/dnssec-validator-trust-anchors.toml), [dnssec-validator-iana.toml](../cmd/routedns/example-config/dnssec-validator-iana.toml)
 
 ## Resolvers
 

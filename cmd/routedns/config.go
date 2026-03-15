@@ -210,8 +210,9 @@ type group struct {
 	LuaNoSandbox    bool   `toml:"lua-no-sandbox"`    // Disable sandbox for trusted scripts
 
 	// DNSSEC validator options
-	DNSSECTrustAnchors []trustAnchor `toml:"dnssec-trust-anchors"`
-	DNSSECLogOnly      bool          `toml:"dnssec-log-only"`
+	DNSSECTrustAnchors   []trustAnchor `toml:"dnssec-trust-anchors"`
+	DNSSECTrustAnchorURL string        `toml:"dnssec-trust-anchor-url"`
+	DNSSECLogOnly        bool          `toml:"dnssec-log-only"`
 }
 
 type trustAnchor struct {

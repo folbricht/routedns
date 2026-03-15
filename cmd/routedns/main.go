@@ -940,8 +940,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			})
 		}
 		opt := rdns.DNSSECValidatorOptions{
-			TrustAnchors: anchors,
-			LogOnly:      g.DNSSECLogOnly,
+			TrustAnchors:   anchors,
+			TrustAnchorURL: g.DNSSECTrustAnchorURL,
+			LogOnly:        g.DNSSECLogOnly,
 		}
 		resolvers[id], err = rdns.NewDNSSECValidator(id, gr[0], opt)
 		if err != nil {
