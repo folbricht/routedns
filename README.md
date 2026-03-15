@@ -14,6 +14,14 @@ graph LR
         P --> R[Resolvers<br/>DNS · DoT · DoH<br/>DoQ · DTLS · ODoH]
     end
     R --> U[Upstream DNS]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C,U ext
+    class L listen
+    class P proc
+    class R resolve
 ```
 
 Listeners receive queries over any supported protocol. Routers, groups and modifiers form the processing pipeline — routing, filtering, caching, and transforming queries and responses. Resolvers forward queries upstream. Every component implements the same `Resolver` interface, so they can be composed freely.
@@ -139,6 +147,14 @@ graph LR
     L --> RT[Router]
     RT -->|*.mycompany.com| CO[Fail-Rotate<br/>Company DNS A/B]
     RT -->|everything else| CF[Cloudflare DoH]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class RT proc
+    class CO,CF resolve
 ```
 
 Configuration: [use-case-2.toml](cmd/routedns/example-config/use-case-2.toml)
@@ -153,6 +169,14 @@ graph LR
     L --> RT[Router]
     RT -->|source 192.168.1.123| BL[Blocklist] --> CB[CleanBrowsing DoT]
     RT -->|default| CF[Cloudflare DoT]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class RT,BL proc
+    class CB,CF resolve
 ```
 
 Configuration: [family-browsing.toml](cmd/routedns/example-config/family-browsing.toml)
@@ -170,6 +194,14 @@ graph LR
     BQ --> BR[Response Name<br/>Blocklist]
     BR --> BI[Response IP<br/>Blocklist]
     BI --> CF[Cloudflare DoT<br/>Fail-Rotate]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class CA,TTL,BQ,BR,BI proc
+    class CF resolve
 ```
 
 Configuration: [use-case-6.toml](cmd/routedns/example-config/use-case-6.toml)
@@ -183,6 +215,14 @@ graph LR
     C[Client] --> L[Listener<br/>UDP/TCP :53]
     L --> DV[DNSSEC Validator<br/>IANA Trust Anchor]
     DV --> CF[Cloudflare DoT]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class DV proc
+    class CF resolve
 ```
 
 ```toml
