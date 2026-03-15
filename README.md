@@ -208,7 +208,7 @@ Configuration: [use-case-6.toml](cmd/routedns/example-config/use-case-6.toml)
 
 ### DNSSEC validation
 
-Validate DNSSEC signatures on all responses using the IANA root trust anchor, which is fetched and refreshed automatically. Queries with invalid signatures are rejected.
+Validate DNSSEC signatures on all responses using built-in root trust anchors. Queries with invalid signatures are rejected.
 
 ```mermaid
 graph LR
@@ -233,7 +233,6 @@ protocol = "dot"
 [groups.dnssec-validated]
 type = "dnssec-validator"
 resolvers = ["cloudflare-dot"]
-dnssec-trust-anchor-url = "https://data.iana.org/root-anchors/root-anchors.xml"
 
 [listeners.local-udp]
 address = "127.0.0.1:53"
