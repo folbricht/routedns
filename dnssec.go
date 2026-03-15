@@ -92,28 +92,39 @@ func NewDNSSECValidator(id string, resolver Resolver, opt DNSSECValidatorOptions
 func (r *DNSSECValidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(r.id, q, ci)
 
+	// Save the client's EDNS0/DO state before we modify the query
+	clientEdns0 := q.IsEdns0()
+	clientHadEdns0 := clientEdns0 != nil
+	clientSetDo := clientHadEdns0 && clientEdns0.Do()
+	qtype := q.Question[0].Qtype
+
+	// Work on a copy so we don't mutate the caller's query
+	qUpstream := q.Copy()
+
 	// Ensure the DO (DNSSEC OK) bit is set
-	edns0 := q.IsEdns0()
+	edns0 := qUpstream.IsEdns0()
 	if edns0 == nil {
-		q.SetEdns0(4096, true)
+		qUpstream.SetEdns0(4096, true)
 	} else {
 		edns0.SetUDPSize(4096)
 		edns0.SetDo()
 	}
 
-	answer, err := r.resolver.Resolve(q, ci)
+	answer, err := r.resolver.Resolve(qUpstream, ci)
 	if err != nil || answer == nil {
 		return answer, err
 	}
 
 	// Only validate successful responses
 	if answer.Rcode != dns.RcodeSuccess && answer.Rcode != dns.RcodeNameError {
+		stripDNSSEC(answer, clientSetDo, clientHadEdns0, qtype)
 		return answer, nil
 	}
 
 	if err := r.validator.Validate(answer); err != nil {
 		if errors.Is(err, dnssec.ErrInsecureDelegation) {
 			log.Debug("insecure delegation, passing through", "error", err)
+			stripDNSSEC(answer, clientSetDo, clientHadEdns0, qtype)
 			return answer, nil
 		}
 		r.metrics.failure.Add(1)
@@ -121,11 +132,66 @@ func (r *DNSSECValidator) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		if !r.LogOnly {
 			return servfail(q), nil
 		}
+		stripDNSSEC(answer, clientSetDo, clientHadEdns0, qtype)
 		return answer, nil
 	}
 
 	r.metrics.success.Add(1)
+	answer.AuthenticatedData = true
+	stripDNSSEC(answer, clientSetDo, clientHadEdns0, qtype)
 	return answer, nil
+}
+
+// stripDNSSEC removes DNSSEC records from the response if the client
+// did not set the DO bit. Per RFC 4035 Section 3.2.1.
+func stripDNSSEC(answer *dns.Msg, clientSetDo, clientHadEdns0 bool, qtype uint16) {
+	if clientSetDo {
+		return
+	}
+	answer.Answer = filterDNSSECRR(answer.Answer, qtype)
+	answer.Ns = filterDNSSECRR(answer.Ns, qtype)
+	answer.Extra = filterDNSSECRR(answer.Extra, qtype)
+
+	if !clientHadEdns0 {
+		// Remove OPT record entirely
+		filtered := answer.Extra[:0]
+		for _, rr := range answer.Extra {
+			if _, ok := rr.(*dns.OPT); !ok {
+				filtered = append(filtered, rr)
+			}
+		}
+		answer.Extra = filtered
+	} else {
+		// Client had EDNS0 but DO=false: clear DO in the response
+		if opt := answer.IsEdns0(); opt != nil {
+			opt.Hdr.Ttl &^= 1 << 15
+		}
+	}
+}
+
+// filterDNSSECRR removes RRSIG, NSEC, and NSEC3 records from a slice,
+// preserving OPT pseudo-records and records matching the original query type.
+func filterDNSSECRR(rrs []dns.RR, qtype uint16) []dns.RR {
+	filtered := rrs[:0]
+	for _, rr := range rrs {
+		// Always keep OPT pseudo-records (handled separately)
+		if _, ok := rr.(*dns.OPT); ok {
+			filtered = append(filtered, rr)
+			continue
+		}
+		rrtype := rr.Header().Rrtype
+		// Keep records that match the original query type
+		if rrtype == qtype {
+			filtered = append(filtered, rr)
+			continue
+		}
+		// Strip DNSSEC-specific record types
+		if rrtype == dns.TypeRRSIG || rrtype == dns.TypeNSEC || rrtype == dns.TypeNSEC3 {
+			continue
+		}
+		filtered = append(filtered, rr)
+	}
+	return filtered
 }
 
 func (r *DNSSECValidator) String() string {
