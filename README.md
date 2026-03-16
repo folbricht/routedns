@@ -86,7 +86,7 @@ git clone https://github.com/folbricht/routedns.git
 cd routedns/cmd/routedns && go install
 ```
 
-Pre-built binaries for common platforms (including Raspberry Pi) are available at [routedns-binaries](https://github.com/cbuijs/routedns-binaries).
+Pre-built binaries for Linux (amd64, arm64, armv7), macOS (amd64, arm64), FreeBSD, and Windows are available on the [GitHub Releases](https://github.com/folbricht/routedns/releases) page.
 
 ### Docker
 
