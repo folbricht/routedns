@@ -39,7 +39,9 @@ type DoHClientOptions struct {
 	Transport string
 
 	// Local IP to use for outbound connections. If nil, a local address is chosen.
-	LocalAddr net.IP
+	LocalAddr   net.IP
+	LocalAddrV4 net.IP
+	LocalAddrV6 net.IP
 
 	TLSConfig *tls.Config
 
@@ -277,8 +279,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	}
 
 	// Use a custom dialer if a bootstrap address, local address, proxy, netns, or socket options were provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") || opt.SocketOptions.active() {
-		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: opt.LocalAddr}, Control: opt.SocketOptions.dialerControl()}
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") || opt.SocketOptions.active() {
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
 				_, port, err := net.SplitHostPort(addr)
@@ -303,6 +304,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				}
 				return conn, nil
 			}
+			addr = resolveEndpointAddr(addr)
+			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
+			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {
 				var e error
@@ -330,9 +334,29 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 	// enable TLS session caching for session resumption and 0-RTT
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(100)
 	tlsConfig.ServerName = u.Hostname()
+
+	quicConfig := &quic.Config{
+		TokenStore: quic.NewLRUTokenStore(10, 10),
+	}
+	if opt.IdleTimeout > 0 {
+		quicConfig.MaxIdleTimeout = opt.IdleTimeout
+	}
+
+	// When both V4 and V6 local addresses are specified, create two QUIC transports
+	// since a UDP socket bound to an IPv4 address cannot reach IPv6 endpoints and vice versa.
+	if opt.LocalAddrV4 != nil && opt.LocalAddrV6 != nil {
+		return dohDualStackQuicTransport(opt, tlsConfig, quicConfig)
+	}
+
 	lAddr := net.IPv4zero
 	if opt.LocalAddr != nil {
 		lAddr = opt.LocalAddr
+	}
+	if opt.LocalAddrV4 != nil {
+		lAddr = opt.LocalAddrV4
+	}
+	if opt.LocalAddrV6 != nil {
+		lAddr = opt.LocalAddrV6
 	}
 
 	// Initialize the local UDP connection, it'll be re-used for all connections
@@ -363,11 +387,54 @@ func dohQuicTransport(endpoint string, opt DoHClientOptions) (http.RoundTripper,
 		return dialFunc(ctx, rAddr, tlsConfig, config)
 	}
 
-	quicConfig := &quic.Config{
-		TokenStore: quic.NewLRUTokenStore(10, 10),
+	tr := &http3.Transport{
+		TLSClientConfig: tlsConfig,
+		QUICConfig:      quicConfig,
+		Dial:            dialer,
 	}
-	if opt.IdleTimeout > 0 {
-		quicConfig.MaxIdleTimeout = opt.IdleTimeout
+	return tr, nil
+}
+
+// dohDualStackQuicTransport creates a dual-stack QUIC transport with separate
+// UDP sockets for IPv4 and IPv6, selecting the appropriate one based on the
+// resolved remote address family.
+func dohDualStackQuicTransport(opt DoHClientOptions, tlsConfig *tls.Config, quicConfig *quic.Config) (http.RoundTripper, error) {
+	udpConn4, err := ListenUDPInNetNS(context.Background(), opt.NetNS, "udp4", &net.UDPAddr{IP: opt.LocalAddrV4, Port: 0}, opt.SocketOptions)
+	if err != nil {
+		return nil, err
+	}
+	qt4 := &quic.Transport{Conn: udpConn4}
+
+	udpConn6, err := ListenUDPInNetNS(context.Background(), opt.NetNS, "udp6", &net.UDPAddr{IP: opt.LocalAddrV6, Port: 0}, opt.SocketOptions)
+	if err != nil {
+		return nil, err
+	}
+	qt6 := &quic.Transport{Conn: udpConn6}
+
+	dialFunc4 := qt4.Dial
+	dialFunc6 := qt6.Dial
+	if opt.Use0RTT {
+		dialFunc4 = qt4.DialEarly
+		dialFunc6 = qt6.DialEarly
+	}
+
+	dialer := func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (*quic.Conn, error) {
+		if opt.BootstrapAddr != "" {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			addr = net.JoinHostPort(opt.BootstrapAddr, port)
+		}
+		rAddr, err := net.ResolveUDPAddr("udp", addr)
+		if err != nil {
+			return nil, err
+		}
+		dialFunc := dialFunc4
+		if rAddr.IP.To4() == nil {
+			dialFunc = dialFunc6
+		}
+		return dialFunc(ctx, rAddr, tlsConfig, config)
 	}
 
 	tr := &http3.Transport{

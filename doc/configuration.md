@@ -1809,6 +1809,8 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `protocol` - The DNS protocol used to send queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`.
 - `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
+- `local-address-v4` - IPv4 address of the local interface to use when connecting to IPv4 targets. Takes priority over `local-address` for IPv4 connections.
+- `local-address-v6` - IPv6 address of the local interface to use when connecting to IPv6 targets. Takes priority over `local-address` for IPv6 connections. The address must be unbracketed (e.g. `fd00::1`, not `[fd00::1]`).
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
@@ -1839,6 +1841,16 @@ protocol = "dot"
 ca = "/path/to/my-ca.pem"
 client-key = "/path/to/my-key.pem"
 client-crt = "/path/to/my-crt.pem"
+```
+
+UDP resolver with dual-stack local addresses. When the upstream resolves to an IPv4 address, `local-address-v4` is used as the source; when it resolves to IPv6, `local-address-v6` is used.
+
+```toml
+[resolvers.quad9]
+address = "9.9.9.9:53"
+protocol = "udp"
+local-address-v4 = "10.96.0.23"
+local-address-v6 = "fd54:20a4:d33b:b10c::1"
 ```
 
 A list of well-known public DNS services can be found [here](../cmd/routedns/example-config/well-known.toml)

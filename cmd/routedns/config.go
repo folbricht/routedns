@@ -56,7 +56,9 @@ type resolver struct {
 	ClientCrt     string `toml:"client-crt"`
 	ServerName    string `toml:"server-name"` // TLS server name presented in the server certificate
 	BootstrapAddr string `toml:"bootstrap-address"`
-	LocalAddr     string `toml:"local-address"`
+	LocalAddr   string `toml:"local-address"`
+	LocalAddrV4 string `toml:"local-address-v4"`
+	LocalAddrV6 string `toml:"local-address-v6"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
 	NetNS         string `toml:"netns"`          // Linux network namespace name or absolute path
