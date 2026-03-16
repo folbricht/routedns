@@ -17,6 +17,8 @@ jobs:
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -30,6 +32,7 @@ jobs:
 
       # Runs a set of commands using the runners shell
       - name: Run a multi-line script
+        id: version
         run: |
           echo $PWD
 
@@ -67,3 +70,14 @@ jobs:
           # PUSH
           git push origin HEAD:master
           git push origin --follow-tags
+
+          # Output tag for release workflow
+          echo "tag=$CHANGE_BUILD_VERSION" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: build
+    uses: ./.github/workflows/release.yaml
+    with:
+      tag: ${{ needs.build.outputs.tag }}
+    permissions:
+      contents: write
