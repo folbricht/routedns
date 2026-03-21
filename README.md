@@ -1,170 +1,261 @@
-# RouteDNS - DNS stub resolver, proxy and router
+# RouteDNS
 
-[![GoDoc](https://godoc.org/github.com/folbricht/routedns?status.svg)](https://godoc.org/github.com/folbricht/routedns) ![build](https://github.com/folbricht/routedns/workflows/build/badge.svg) ![license](https://img.shields.io/badge/License-BSD-green.svg)
+[![Go Reference](https://pkg.go.dev/badge/github.com/folbricht/routedns.svg)](https://pkg.go.dev/github.com/folbricht/routedns) ![build](https://github.com/folbricht/routedns/workflows/build/badge.svg) ![license](https://img.shields.io/badge/License-BSD-green.svg)
 
-RouteDNS acts as a stub resolver and proxy that offers flexible configuration options with a focus on providing privacy as well as resiliency. It supports several DNS protocols such as plain UDP and TCP, DNS-over-TLS and DNS-over-HTTPS as input and output. In addition it's possible to build complex processing pipelines allowing routing of queries based on query name, type or source address as well as blocklists, caches and name translation. Upstream resolvers can be grouped in various ways to provide failover, load-balancing, or performance.
+RouteDNS is a composable DNS stub resolver, proxy and router written in Go. It enables building flexible DNS processing pipelines with support for all modern DNS protocols, query routing, caching, blocklists, DNSSEC validation, Lua scripting, and 30+ other pipeline components — all configured via TOML.
 
-Features:
+## Pipeline Architecture
 
-- Support for DNS-over-TLS (DoT, [RFC7858](https://tools.ietf.org/html/rfc7858)), client and server
-- Support for DNS-over-HTTPS (DoH, [RFC8484](https://tools.ietf.org/html/rfc8484)), client and server with HTTP2
-- Support for DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)), client and server
-- Support for DNS-over-DTLS ([RFC8094](https://tools.ietf.org/html/rfc8094)), client and server
-- DNS-over-HTTPS using a QUIC transport, client and server
-- Oblivious DNS client, ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/))
-- Oblivious DNS listener, proxy and target resolver
-- Custom CAs and mutual-TLS
-- Support for plain DNS, UDP and TCP for incoming and outgoing requests
-- Connection reuse and pipelining queries for efficiency
-- Multiple failover and load-balancing algorithms, caching, in-line query/response modification and translation (full list [here](doc/configuration.md))
-- Routing of queries based on query type, class, query name, time, client IP, or EDNS Client Subnet (ECS)
-- EDNS0 query and response padding ([RFC7830](https://tools.ietf.org/html/rfc7830), [RFC8467](https://tools.ietf.org/html/rfc8467))
-- EDNS0 Client Subnet (ECS) manipulation ([RFC7871](https://tools.ietf.org/html/rfc7871))
-- Support for bootstrap addresses to avoid the initial service name lookup
-- Support for 0-RTT QUIC queries if the upstream server supports it
+```mermaid
+graph LR
+    C[Clients] --> L
+    subgraph RouteDNS
+        L[Listeners<br/>DNS · DoT · DoH<br/>DoQ · DTLS · ODoH] --> P[Routers / Groups / Modifiers<br/>Router · Cache · Blocklist<br/>Rate Limiter · Load Balancer<br/>DNSSEC Validator · Lua Script<br/>...30+ types]
+        P --> R[Resolvers<br/>DNS · DoT · DoH<br/>DoQ · DTLS · ODoH]
+    end
+    R --> U[Upstream DNS]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C,U ext
+    class L listen
+    class P proc
+    class R resolve
+```
+
+Listeners receive queries over any supported protocol. Routers, groups and modifiers form the processing pipeline — routing, filtering, caching, and transforming queries and responses. Resolvers forward queries upstream. Every component implements the same `Resolver` interface, so they can be composed freely.
+
+## Features
+
+**Protocols**
+- Plain DNS over UDP and TCP, with connection reuse and pipelining
+- DNS-over-TLS (DoT, [RFC 7858](https://tools.ietf.org/html/rfc7858)) — client and server
+- DNS-over-HTTPS (DoH, [RFC 8484](https://tools.ietf.org/html/rfc8484)) — client and server with HTTP/2
+- DNS-over-QUIC (DoQ, [RFC 9250](https://datatracker.ietf.org/doc/rfc9250/)) — client and server, with 0-RTT support
+- DNS-over-DTLS ([RFC 8094](https://tools.ietf.org/html/rfc8094)) — client and server
+- DNS-over-HTTPS with QUIC transport — client and server
+- Oblivious DoH (ODoH, [RFC 9230](https://datatracker.ietf.org/doc/rfc9230/)) — client, proxy and target
+- Custom CAs and mutual TLS (mTLS)
 - SOCKS5 proxy support
-- Linux network namespace support for listeners and resolvers (listen in one netns, resolve in another)
-- Linux firewall mark (fwmark) and interface binding (SO_BINDTODEVICE) for policy routing and VRF support
-- Optional metrics export (expvar) to support monitoring and graphing
-- Lua scripting for custom query handling logic with sandboxed execution
-- DNSSEC validation with configurable trust anchors
-- Written in Go - Platform independent
+
+**Query Processing**
+- DNSSEC validation with IANA trust anchor support
+- Blocklists — domain, regex, hosts-file, wildcard formats with auto-refresh from HTTP/file sources
+- Response blocklists — filter by response name, IP/CIDR, GeoIP country, or ASN
+- MAC address filtering via EDNS0
+- Lua scripting with sandboxed execution for custom query handling logic
+- Query/response modification and name translation
+- Static responses using Go templates
+- EDNS0 Client Subnet (ECS) manipulation ([RFC 7871](https://tools.ietf.org/html/rfc7871))
+- EDNS0 query and response padding ([RFC 7830](https://tools.ietf.org/html/rfc7830), [RFC 8467](https://tools.ietf.org/html/rfc8467))
+
+**Routing**
+- Route by query name (regex), query type, query class, source IP/CIDR, or EDNS Client Subnet
+- Time-of-day based routing
+- Multiple routes evaluated in order — first match wins
+
+**Resilience & Performance**
+- Caching with memory or Redis backend, negative-TTL support, and prefetch
+- TTL manipulation (min/max clamping)
+- Multiple load-balancing algorithms: round-robin, fail-rotate, fastest, random
+- Request deduplication
+- Rate limiting per client subnet
+- Truncate-retry (automatic TCP fallback on truncated UDP responses)
+- Bootstrap addresses to avoid initial service name lookups
+
+**Deployment**
+- Linux network namespace support — listen in one netns, resolve in another
+- Firewall mark (fwmark) and interface binding (SO_BINDTODEVICE) for policy routing and VRF
+- Admin listener with expvar metrics (Prometheus-compatible)
+- Query/response logging, syslog integration
+- Platform independent — written in Go
 
 ## Installation
 
-Install [Go](https://golang.org/dl) version 1.19+ then run the following to build the binary. It'll be placed in $HOME/go/bin by default:
+Requires [Go](https://golang.org/dl) 1.24+:
 
 ```text
 go install github.com/folbricht/routedns/cmd/routedns@latest
 ```
 
-Alternative method using a clone, building from the tip of the master branch.
+Or build from source:
 
 ```text
 git clone https://github.com/folbricht/routedns.git
 cd routedns/cmd/routedns && go install
 ```
 
-Run it:
+Pre-built binaries for Linux (amd64, arm64, armv7), macOS (amd64, arm64), FreeBSD, and Windows are available on the [GitHub Releases](https://github.com/folbricht/routedns/releases) page.
 
-```text
-routedns config.toml
-```
+### Docker
 
-An example systemd service file is provided [here](cmd/routedns/routedns.service)
-
-Example configuration files for a number of use-cases can be found [here](cmd/routedns/example-config)
-
-### Docker container
-
-A container is available on [Docker Hub](https://hub.docker.com/r/folbricht/routedns). It comes with a very basic configuration which is expected to be overwritten with a custom config file.
-
-Use the default config (simple DNS -> DoT proxy):
+A container is available on [Docker Hub](https://hub.docker.com/r/folbricht/routedns):
 
 ```text
 docker run -d --rm --network host folbricht/routedns
 ```
 
-Override the default configuration (`/config.toml`) with a config file on the host:
+With a custom config:
 
 ```text
 docker run -d --rm --network host -v /path/to/config.toml:/config.toml folbricht/routedns
 ```
 
-Listen on non-standard ports:
+## Quick Start
 
-```text
-docker run -d --rm -p 5353:53/udp -p 5353:53/tcp -v /path/to/config.toml:/config.toml folbricht/routedns
+This minimal config forwards all local DNS queries encrypted via DNS-over-TLS to Cloudflare, with caching. Set your system's nameserver to `127.0.0.1` (e.g. in `/etc/resolv.conf`).
+
+```toml
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-cached]
+type = "cache"
+resolvers = ["cloudflare-dot"]
+backend = {type = "memory"}
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-cached"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "cloudflare-cached"
 ```
 
-### Pre-Compiled/Built Binaries
+Save as `config.toml` and run:
 
-You can also fetch pre-compiled/built binaries for popular/common (router) platforms (like Raspberry Pi) here: https://github.com/cbuijs/routedns-binaries.
+```text
+routedns config.toml
+```
 
-## Configuration
+An example systemd service file is provided [here](cmd/routedns/routedns.service).
 
-RouteDNS supports building complex DNS processing pipelines. A typical configuration would have one or more listeners to receive queries, several modifiers and routers to process the query (or responses), and then several resolvers that pass the query to upstream DNS services. See the [Configuration Guide](doc/configuration.md) for details on how to set up a pipeline.
+## Use Cases
 
-![pipeline-overview](doc/pipeline-overview.svg)
+### Corporate split DNS
 
-## QUIC support
+Route internal queries to company DNS servers while sending everything else securely to Cloudflare via DoH. Company servers are grouped with fail-rotate for resilience.
 
-Support for the QUIC protocol is still experimental. In the context of DNS, there are two implementations, DNS-over-QUIC (DoQ, [RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both protocols are supported by RouteDNS, client and server implementations. QUIC also supports 0-RTT queries if the upstream server supports it.
+```mermaid
+graph LR
+    C[Client] --> L[Listener<br/>UDP/TCP :53]
+    L --> RT[Router]
+    RT -->|*.mycompany.com| CO[Fail-Rotate<br/>Company DNS A/B]
+    RT -->|everything else| CF[Cloudflare DoH]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class RT proc
+    class CO,CF resolve
+```
 
-## Use-cases / Examples
+Configuration: [use-case-2.toml](cmd/routedns/example-config/use-case-2.toml)
 
-### Use case 1: Use DNS-over-TLS for all queries locally
+### Content filtering for specific devices
 
-In this example, the goal is to send all DNS queries on the local machine encrypted via DNS-over-TLS to Cloudflare's DNS server `1.1.1.1`. For this, the `nameserver` IP in /etc/resolv.conf is changed to `127.0.0.1`. To improve query performance a cache is added. Since there is only one upstream resolver, and everything should be sent there, no router is needed. Both listeners are using the loopback device as only the local machine should be able to use RouteDNS.
+Single out devices by IP address and apply a custom blocklist plus a filtered upstream resolver, while giving all other devices unfiltered access.
 
-![use-case-1](doc/use-case-1.svg)
+```mermaid
+graph LR
+    C[Client] --> L[Listener<br/>UDP/TCP :53]
+    L --> RT[Router]
+    RT -->|source 192.168.1.123| BL[Blocklist] --> CB[CleanBrowsing DoT]
+    RT -->|default| CF[Cloudflare DoT]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class RT,BL proc
+    class CB,CF resolve
+```
 
-The full config file for this use-case can be found [here](cmd/routedns/example-config/use-case-1.toml)
+Configuration: [family-browsing.toml](cmd/routedns/example-config/family-browsing.toml)
 
-### Use case 2: Prefer secure DNS in a corporate environment
+### Home network ad & malware blocking
 
-In a corporate environment it's necessary to use the potentially slow and insecure company DNS servers. Only these servers are able to resolve some resources hosted in the corporate network. A router can be used to secure DNS whenever possible while still being able to resolve internal hosts over a VPN.
+Protect the whole network with multi-layer blocklists (query names, response names, response IPs), caching, and TTL clamping. Blocklists auto-refresh daily from remote HTTP sources.
 
-![use-case-2](doc/use-case-2.svg)
+```mermaid
+graph LR
+    C[Clients] --> L[Listener<br/>UDP/TCP :53]
+    L --> CA[Cache]
+    CA --> TTL[TTL Modifier]
+    TTL --> BQ[Query Blocklist]
+    BQ --> BR[Response Name<br/>Blocklist]
+    BR --> BI[Response IP<br/>Blocklist]
+    BI --> CF[Cloudflare DoT<br/>Fail-Rotate]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class CA,TTL,BQ,BR,BI proc
+    class CF resolve
+```
 
-The configuration can be found [here](cmd/routedns/example-config/use-case-2.toml)
+Configuration: [use-case-6.toml](cmd/routedns/example-config/use-case-6.toml)
 
-### Use case 3: Restrict access to potentially harmful content
+### DNSSEC validation
 
-The goal here is to single out children's devices on the network and apply a custom blocklist to their DNS resolution. Anything on the (static) blocklist will fail to resolve with an NXDOMAIN response. Names that aren't on the blocklist are then sent on to CleanBrowsing for any further filtering. All other devices on the network will have unfiltered access via Cloudflare's DNS server, and all queries are done using DNS-over-TLS. The config file can also be found [here](cmd/routedns/example-config/family-browsing.toml)
+Validate DNSSEC signatures on all responses using built-in root trust anchors. Queries with invalid signatures are rejected.
 
-![use-case-3](doc/use-case-3.svg)
+```mermaid
+graph LR
+    C[Client] --> L[Listener<br/>UDP/TCP :53]
+    L --> DV[DNSSEC Validator<br/>IANA Trust Anchor]
+    DV --> CF[Cloudflare DoT]
+    classDef ext fill:#e2e8f0,stroke:#64748b,color:#1e293b
+    classDef listen fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef proc fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef resolve fill:#d1fae5,stroke:#10b981,color:#064e3b
+    class C ext
+    class L listen
+    class DV proc
+    class CF resolve
+```
 
-### Use case 4: Replace queries for short names with FQDN in a multi-lab environment
+```toml
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
 
-If adding a search list to /etc/resolv.conf is not an option, a `replace` group can be used to add the correct domain based on the name in the query. It's possible to modify or expand query strings by matching on a regex and replacing it with an alternative expression. The replace string supports expansion like `$1` to refer to a match in the regex. The `replace` can be combined with routers and resolvers as with all the other groups.
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
 
-In this example, there are multiple lab VPN connections, each with their own DNS server. Queries for short names starting with `prod-` will have the domain `prod-domain.com.` appended to them and the prefix removed. Queries for `test-*` will have `test.domain.com.` appended and so on. The queries are then routed to the appropriate DNS server and responses to the client will reference the original queries with the response from the lab DNS. More than one replace rule can be defined and they are applied to the query name in order. Any other queries will pass without modification and are routed to Cloudflare.
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dnssec-validated"
 
-![use-case-4](doc/use-case-4.svg)
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "dnssec-validated"
+```
 
-The configuration can be found [here](cmd/routedns/example-config/use-case-4.toml)
+## Documentation
 
-### Use case 5: Proxying out of a restricted or un-trusted location
-
-In this use case the goal is to get access to unfiltered and unmonitored DNS services in a location that does not offer it normally. Direct access to well-known public DoT or DoH providers may be blocked, forcing plain DNS. It may be possible to set up an instance of RouteDNS in a less restricted location to act as proxy, offering DoH which is harder to detect and block. To prevent unauthorized access to the proxy, the config will enforce mutual-TLS with a client certificate signed by a custom CA.
-
-![use-case-5](doc/use-case-5.svg)
-
-The [server configuration](cmd/routedns/example-config/use-case-5-server.toml) will accept queries over DNS-over-HTTPS from authorized clients (with valid and signed certificate), and forward all queries to Cloudflare using DNS-over-TLS.
-
-The [client configuration](cmd/routedns/example-config/use-case-5-client.toml) acts as local DNS resolver, handling all queries from the local OS. Every query is then forwarded to the secure proxy using DoH. The client needs to have a signed certificate as the server is configured to require it.
-
-### Use case 6: Protecting the home-network from ads and malware domains using blocklists
-
-In this use-case, a whole internal network can be protected from unwanted content such as ads and malware. This can be achieved by running RouteDNS in the local network, filtering out known-bad domains or networks. There are 3 different types of filters applied:
-
-- Queries are filtered through a list of bad domains
-- Responses are filtered if they contain names on a blocklist
-- Responses that contain IPs in known-bad networks are blocked, regardless of what query name was used
-
-These blocklists are loaded and refreshed daily by RouteDNS over HTTP. Refresh happens transparently and does not impact query performance. In addition, this configuration caches responses and adjusts TTL values to reduce the amount of queries caused by TTL values that are set too low.
-
-![use-case-6](doc/use-case-6.svg)
-
-The configuration can be found [here](cmd/routedns/example-config/use-case-6.toml)
-
-### Use case 7: Per-client filtering with an EDNS-aware frontend
-
-This use case addresses applying different DNS policies to individual clients when using a frontend resolver that forwards the original client IP using an EDNS Client Subnet (ECS) option (e.g., `add-subnet=32` for dnsmasq). When a frontend resolver forwards a query, the source IP of the DNS packet becomes the IP of the resolver itself, hiding the original client's IP. As a result, RouteDNS's standard `source` routing rule cannot be used to differentiate between the individual clients behind the resolver.
-
-The `ecs-source` routing option allows RouteDNS to inspect the ECS data in the query and route based on the original client's IP address. In this example, we apply a strict ad-blocking policy to a child's device (`192.168.1.10`) while giving an adult's device (`192.168.1.20`) unfiltered resolution, even though both queries are forwarded by the same DNS frontend resolver (e.g. dnsmasq).
-
-![use-case-7](doc/use-case-7.svg)
-
-The configuration can be found [here](cmd/routedns/example-config/use-case-7.toml)
+- [Configuration Guide](doc/configuration.md) — full reference for all component types and options
+- [Example Configs](cmd/routedns/example-config/) — ready-to-use configuration files
 
 ## Links
 
-- DNS-over-TLS RFC - [https://tools.ietf.org/html/rfc7858](https://tools.ietf.org/html/rfc7858)
-- DNS-over-HTTPS RFC - [https://tools.ietf.org/html/rfc8484](https://tools.ietf.org/html/rfc8484)
-- DNS-over-QUIC RFC - [https://www.rfc-editor.org/rfc/rfc9250](https://www.rfc-editor.org/rfc/rfc9250)
-- EDNS0 padding [RFC7830](https://tools.ietf.org/html/rfc7830) and [RFC8467](https://tools.ietf.org/html/rfc8467)
-- Go QUIC implementation - [https://github.com/lucas-clemente/quic-go](https://github.com/lucas-clemente/quic-go)
-- Go DNS library - [https://github.com/miekg/dns](https://github.com/miekg/dns)
-- DTLS library - [https://github.com/pion/dtls](https://github.com/pion/dtls)
+- [RFC 7858](https://tools.ietf.org/html/rfc7858) — DNS-over-TLS
+- [RFC 8484](https://tools.ietf.org/html/rfc8484) — DNS-over-HTTPS
+- [RFC 9250](https://datatracker.ietf.org/doc/rfc9250/) — DNS-over-QUIC
+- [RFC 9230](https://datatracker.ietf.org/doc/rfc9230/) — Oblivious DoH
+- [RFC 8094](https://tools.ietf.org/html/rfc8094) — DNS-over-DTLS
+- [miekg/dns](https://github.com/miekg/dns) — Go DNS library
+- [quic-go](https://github.com/quic-go/quic-go) — Go QUIC implementation
