@@ -84,8 +84,9 @@ func NewODoHListener(id, addr string, opt ODoHListenerOptions, resolver Resolver
 	}
 
 	dohOpt := DoHListenerOptions{
-		TLSConfig: opt.TLSConfig,
-		customMux: mux,
+		ListenOptions: opt.ListenOptions,
+		TLSConfig:     opt.TLSConfig,
+		customMux:     mux,
 	}
 	dohListen, err := NewDoHListener(id, addr, dohOpt, resolver)
 	if err != nil {

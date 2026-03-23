@@ -88,6 +88,7 @@ func (s *AdminListener) startTCP() error {
 	if err != nil {
 		return err
 	}
+	ln = proxyProtocolListener(ln, s.opt.ProxyProtocol)
 	defer ln.Close()
 	return s.httpServer.ServeTLS(ln, "", "")
 }

@@ -37,7 +37,8 @@ type listener struct {
 	AllowDoH      bool     `toml:"allow-doh"` // Allow ODoH listeners to also handle DoH queries to /dns-query
 	NetNS         string   `toml:"netns"`     // Linux network namespace name or absolute path
 	FWMark        uint32   `toml:"fwmark"`    // Linux firewall mark (SO_MARK) for the listening socket
-	BindInterface string   `toml:"bind-if"`   // Linux network interface to bind the socket to (SO_BINDTODEVICE)
+	BindInterface string   `toml:"bind-if"`        // Linux network interface to bind the socket to (SO_BINDTODEVICE)
+	ProxyProtocol bool     `toml:"proxy-protocol"` // Enable PROXY protocol v1/v2 header parsing on TCP listeners
 	Frontend      dohFrontend
 }
 

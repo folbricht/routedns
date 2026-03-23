@@ -227,6 +227,7 @@ func start(opt options, args []string) error {
 			AllowedNet:    allowedNet,
 			NetNS:         netns,
 			SocketOptions: rdns.SocketOptions{FWMark: l.FWMark, BindInterface: l.BindInterface},
+			ProxyProtocol: l.ProxyProtocol,
 		}
 
 		switch l.Protocol {
