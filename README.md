@@ -67,6 +67,7 @@ Listeners receive queries over any supported protocol. Routers, groups and modif
 **Deployment**
 - Linux network namespace support — listen in one netns, resolve in another
 - Firewall mark (fwmark) and interface binding (SO_BINDTODEVICE) for policy routing and VRF
+- PROXY protocol v1/v2 support for preserving client IPs behind load balancers
 - Admin listener with expvar metrics (Prometheus-compatible)
 - Query/response logging, syslog integration
 - Platform independent — written in Go

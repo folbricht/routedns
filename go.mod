@@ -15,6 +15,7 @@ require (
 	github.com/miekg/dns v1.1.69
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/pion/dtls/v3 v3.1.2
+	github.com/pires/go-proxyproto v0.11.0
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.57.1
 	github.com/redis/go-redis/v9 v9.17.2
