@@ -41,6 +41,7 @@ Listeners receive queries over any supported protocol. Routers, groups and modif
 
 **Query Processing**
 - DNSSEC validation with IANA trust anchor support
+- DNS64 for NAT64 networks ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)) — synthesize AAAA from A records
 - Blocklists — domain, regex, hosts-file, wildcard formats with auto-refresh from HTTP/file sources
 - Response blocklists — filter by response name, IP/CIDR, GeoIP country, or ASN
 - MAC address filtering via EDNS0
