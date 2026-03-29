@@ -77,6 +77,13 @@ func (r *DNS64) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
+	// Per RFC 6147 Section 3: do not synthesize when the client sets the
+	// DO (DNSSEC OK) bit, as synthesized records cannot be validated.
+	if edns0 := q.IsEdns0(); edns0 != nil && edns0.Do() {
+		r.metrics.passthru.Add(1)
+		return r.resolver.Resolve(q, ci)
+	}
+
 	r.metrics.query.Add(1)
 	log := logger(r.id, q, ci)
 
@@ -143,31 +150,38 @@ func (r *DNS64) String() string {
 }
 
 // synthesizeAAAA creates AAAA records from A records in the response.
+// CNAME records from the A response are preserved and prepended to the
+// synthesized AAAA records to maintain the CNAME chain.
 func (r *DNS64) synthesizeAAAA(aAnswer *dns.Msg, question dns.Question) []dns.RR {
-	var result []dns.RR
+	var cnames []dns.RR
+	var aaaa []dns.RR
 	for _, rr := range aAnswer.Answer {
-		aRecord, ok := rr.(*dns.A)
-		if !ok {
-			continue
-		}
-		ipv4 := aRecord.A.To4()
-		if ipv4 == nil {
-			continue
-		}
-		for _, prefix := range r.prefixes {
-			ipv6 := synthesizeIPv6(prefix, ipv4)
-			result = append(result, &dns.AAAA{
-				Hdr: dns.RR_Header{
-					Name:   question.Name,
-					Rrtype: dns.TypeAAAA,
-					Class:  question.Qclass,
-					Ttl:    aRecord.Hdr.Ttl,
-				},
-				AAAA: ipv6,
-			})
+		switch rec := rr.(type) {
+		case *dns.CNAME:
+			cnames = append(cnames, rec)
+		case *dns.A:
+			ipv4 := rec.A.To4()
+			if ipv4 == nil {
+				continue
+			}
+			for _, prefix := range r.prefixes {
+				ipv6 := synthesizeIPv6(prefix, ipv4)
+				aaaa = append(aaaa, &dns.AAAA{
+					Hdr: dns.RR_Header{
+						Name:   question.Name,
+						Rrtype: dns.TypeAAAA,
+						Class:  question.Qclass,
+						Ttl:    rec.Hdr.Ttl,
+					},
+					AAAA: ipv6,
+				})
+			}
 		}
 	}
-	return result
+	if len(aaaa) == 0 {
+		return nil
+	}
+	return append(cnames, aaaa...)
 }
 
 // hasAAAARecords returns true if the message contains any AAAA answer records.

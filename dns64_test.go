@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"net"
 	"testing"
 
@@ -293,6 +294,92 @@ func TestDNS64UpstreamError(t *testing.T) {
 	a, err := d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
 	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
+}
+
+func TestDNS64SynthesizeWithCNAME(t *testing.T) {
+	upstream := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			if q.Question[0].Qtype == dns.TypeAAAA {
+				return a, nil
+			}
+			if q.Question[0].Qtype == dns.TypeA {
+				a.Answer = []dns.RR{
+					&dns.CNAME{
+						Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 300},
+						Target: "cdn.example.com.",
+					},
+					&dns.A{
+						Hdr: dns.RR_Header{Name: "cdn.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+						A:   net.IP{1, 2, 3, 4},
+					},
+				}
+			}
+			return a, nil
+		},
+	}
+	d, err := NewDNS64("test", upstream, DNS64Options{})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeAAAA)
+	a, err := d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.Len(t, a.Answer, 2)
+	// First record should be the CNAME
+	require.Equal(t, dns.TypeCNAME, a.Answer[0].Header().Rrtype)
+	require.Equal(t, "cdn.example.com.", a.Answer[0].(*dns.CNAME).Target)
+	// Second record should be the synthesized AAAA
+	require.Equal(t, dns.TypeAAAA, a.Answer[1].Header().Rrtype)
+}
+
+func TestDNS64PassthroughDNSSECDO(t *testing.T) {
+	upstream := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			// Return empty AAAA — normally would trigger synthesis
+			return a, nil
+		},
+	}
+	d, err := NewDNS64("test", upstream, DNS64Options{})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeAAAA)
+	q.SetEdns0(4096, true) // Set DO bit
+
+	a, err := d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	// Should pass through without synthesis — empty answer returned
+	require.Empty(t, a.Answer)
+	require.Equal(t, dns.TypeAAAA, a.Question[0].Qtype)
+}
+
+func TestDNS64AFallbackError(t *testing.T) {
+	upstream := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			if q.Question[0].Qtype == dns.TypeAAAA {
+				a := new(dns.Msg)
+				a.SetReply(q)
+				return a, nil
+			}
+			// A fallback returns an error
+			return nil, errors.New("upstream failure")
+		},
+	}
+	d, err := NewDNS64("test", upstream, DNS64Options{})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeAAAA)
+	a, err := d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	// Should return the original NODATA response, not an error
+	require.NotNil(t, a)
+	require.Equal(t, dns.RcodeSuccess, a.Rcode)
+	require.Empty(t, a.Answer)
 }
 
 func TestDNS64NoARecordsEither(t *testing.T) {
