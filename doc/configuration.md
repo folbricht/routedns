@@ -42,6 +42,7 @@
   - [Query Log](#query-log)
   - [Lua](#lua)
   - [DNSSEC Validator](#dnssec-validator)
+  - [DNS64](#dns64)
 - [Resolvers](#resolvers)
   - [Plain DNS](#plain-dns-resolver)
   - [DNS-over-TLS](#dns-over-tls-resolver)
@@ -1857,6 +1858,43 @@ digest = "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16"
 ```
 
 Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dnssec-validator.toml), [dnssec-validator-trust-anchors.toml](../cmd/routedns/example-config/dnssec-validator-trust-anchors.toml), [dnssec-validator-iana.toml](../cmd/routedns/example-config/dnssec-validator-iana.toml)
+
+### DNS64
+
+Synthesizes AAAA records from A records for IPv6-only clients using NAT64 ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)). When an AAAA query returns no AAAA answers from upstream, DNS64 falls back to an A query and embeds the IPv4 addresses into configurable IPv6 prefixes per [RFC 6052](https://datatracker.ietf.org/doc/html/rfc6052). Queries for non-AAAA types and responses that already contain AAAA records pass through unchanged.
+
+Options:
+
+- `resolvers` - Array of upstream resolvers (only one supported).
+- `dns64-prefix` - Array of IPv6 CIDR prefixes for address synthesis. Supported prefix lengths: `/32`, `/40`, `/48`, `/56`, `/64`, `/96`. Default: `["64:ff9b::/96"]` (well-known prefix from RFC 6052).
+
+Examples:
+
+Using the well-known prefix (default):
+
+```toml
+[groups.dns64]
+type = "dns64"
+resolvers = ["upstream-udp"]
+```
+
+Custom prefix:
+
+```toml
+[groups.dns64]
+type = "dns64"
+resolvers = ["upstream-udp"]
+dns64-prefix = ["2001:db8::/96"]
+```
+
+Multiple prefixes:
+
+```toml
+[groups.dns64]
+type = "dns64"
+resolvers = ["upstream-udp"]
+dns64-prefix = ["64:ff9b::/96", "2001:db8::/32"]
+```
 
 ## Resolvers
 

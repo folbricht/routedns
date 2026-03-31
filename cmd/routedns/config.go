@@ -215,6 +215,9 @@ type group struct {
 	DNSSECTrustAnchors   []trustAnchor `toml:"dnssec-trust-anchors"`
 	DNSSECTrustAnchorURL string        `toml:"dnssec-trust-anchor-url"`
 	DNSSECLogOnly        bool          `toml:"dnssec-log-only"`
+
+	// DNS64 options
+	DNS64Prefix []string `toml:"dns64-prefix"`
 }
 
 type trustAnchor struct {

@@ -948,6 +948,17 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
+	case "dns64":
+		if len(gr) != 1 {
+			return fmt.Errorf("type dns64 only supports one resolver in '%s'", id)
+		}
+		opt := rdns.DNS64Options{
+			Prefixes: g.DNS64Prefix,
+		}
+		resolvers[id], err = rdns.NewDNS64(id, gr[0], opt)
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported group type '%s' for group '%s'", g.Type, id)
 	}
