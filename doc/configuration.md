@@ -679,13 +679,14 @@ This replacer could be used where the company has multiple environment behind VP
 
 Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist. A blocklist can have multiple rule-sets, with different formats. In its simplest form, the blocklist has just one upstream resolver and forwards anything that does not match its rules. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP, depending on what blocklist format is used.
 
-The blocklist group supports 4 types of blocklist formats:
+The blocklist group supports 5 types of blocklist formats:
 
 - `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details on what is supported.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
   - `domain.com` matches just domain.com and no sub-domains.
   - `.domain.com` matches domain.com and all sub-domains.
   - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
+- `domain-subdomain` - Like `domain`, but bare entries (e.g. `domain.com`) match the apex *and* all sub-domains. `.domain.com` is unchanged. `*.domain.com` still matches sub-domains only and can be used as a per-entry opt-out. Designed for blocklists such as hagezi's "Wildcard Domains" lists where every line is meant to block apex + sub-domains.
 - `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
 - `mac` - A blocklist of MAC addresses in the form `01:23:34:ab:bc:de` representing the MAC address of a client. The query is expected to contain the value of the client's MAC in EDNS0 option 65001.
 
@@ -701,11 +702,11 @@ Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `blocklist-resolver` - Alternative resolver for queries matching the blocklist, rather than responding with NXDOMAIN. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
+- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
 - `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `name`.
 - `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
-- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
+- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to `regexp`.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
 - `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
@@ -741,6 +742,20 @@ blocklist = [
   'domain1.com',               # Exact match
   '.domain2.com',              # Exact match and all sub-domains
   '*.domain3.com',             # Only match sub-domains
+]
+```
+
+Blocklist using the `domain-subdomain` format. Bare entries match the apex *and* all sub-domains, so a single line such as `evil.com` blocks `evil.com`, `www.evil.com`, etc. A `*.opt-out.com` entry can still be used to block sub-domains only and leave the apex resolvable. Useful for lists like hagezi's "Wildcard Domains" where every line is meant to apply to apex + sub-domains.
+
+```toml
+[groups.my-blocklist]
+type             = "blocklist-v2"
+resolvers        = ["upstream-resolver"]
+blocklist-format = "domain-subdomain"
+blocklist = [
+  'evil.com',         # Blocks evil.com and all sub-domains
+  'facebook.com',     # Blocks facebook.com and all sub-domains
+  '*.opt-out.com',    # Blocks sub-domains only; apex still resolves
 ]
 ```
 
