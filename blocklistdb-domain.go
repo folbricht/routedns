@@ -13,18 +13,35 @@ import (
 // domain.com: matches just domain.com and not subdomains
 // .domain.com: matches domain.com and all subdomains
 // *.domain.com: matches all subdomains but not domain.com
+//
+// When includeSubdomains is true, bare entries like "domain.com" are treated as
+// ".domain.com" (apex and all sub-domains). Entries that already use a leading
+// "." or "*." prefix keep their original semantics. This is intended for
+// blocklists where every line is meant to block both the apex and sub-domains
+// (e.g. hagezi's "Wildcard Domains" lists).
 type DomainDB struct {
-	name   string
-	root   node
-	loader BlocklistLoader
+	name              string
+	root              node
+	loader            BlocklistLoader
+	includeSubdomains bool
 }
 
 type node map[string]node
 
 var _ BlocklistDB = &DomainDB{}
 
-// NewDomainDB returns a new instance of a matcher for a list of regular expressions.
+// NewDomainDB returns a new instance of a matcher for a list of domain rules.
 func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
+	return newDomainDB(name, loader, false)
+}
+
+// NewDomainSubdomainDB is like NewDomainDB but treats bare entries as matching
+// the apex and all sub-domains. See DomainDB for details.
+func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
+	return newDomainDB(name, loader, true)
+}
+
+func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -38,6 +55,13 @@ func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
 
 		// Force all domain names to lower case
 		r = strings.ToLower(r)
+
+		// In subdomain-matching mode, treat bare entries as ".entry" so they
+		// match the apex and all sub-domains. Leave entries that already
+		// start with "." or "*." alone.
+		if includeSubdomains && r != "" && !strings.HasPrefix(r, ".") && !strings.HasPrefix(r, "*.") {
+			r = "." + r
+		}
 
 		// Break up the domain into its parts and iterate backwards over them, building
 		// a graph of maps
@@ -59,11 +83,11 @@ func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
 			n = subNode
 		}
 	}
-	return &DomainDB{name, root, loader}, nil
+	return &DomainDB{name, root, loader, includeSubdomains}, nil
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
-	return NewDomainDB(m.name, m.loader)
+	return newDomainDB(m.name, m.loader, m.includeSubdomains)
 }
 
 func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {

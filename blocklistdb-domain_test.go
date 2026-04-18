@@ -61,6 +61,73 @@ func TestDomainDB(t *testing.T) {
 	}
 }
 
+func TestDomainSubdomainDB(t *testing.T) {
+	loader := NewStaticLoader([]string{
+		"domain1.com",     // bare entry: apex + subdomains
+		".domain2.com",    // explicit dot: apex + subdomains (unchanged)
+		"*.domain3.com",   // explicit wildcard: subdomains-only opt-out
+		"DOMAIN4.com",     // capitalized bare entry
+		"trailing.dot.com.",
+	})
+
+	m, err := NewDomainSubdomainDB("testlist", loader)
+	require.NoError(t, err)
+
+	tests := []struct {
+		q     string
+		match bool
+	}{
+		// bare entry matches apex and subdomains
+		{"domain1.com.", true},
+		{"sub.domain1.com.", true},
+		{"deep.sub.domain1.com.", true},
+
+		// leading-dot entry behaves identically
+		{"domain2.com.", true},
+		{"sub.domain2.com.", true},
+
+		// wildcard entry remains subdomains-only (opt-out)
+		{"domain3.com.", false},
+		{"sub.domain3.com.", true},
+
+		// capitalized blocklist entry, lowercase query
+		{"domain4.com.", true},
+		{"sub.domain4.com.", true},
+
+		// trailing-dot entry handled
+		{"trailing.dot.com.", true},
+		{"sub.trailing.dot.com.", true},
+
+		// non-matching
+		{"unblocked.test.", false},
+		{"com.", false},
+
+		// capitalized query
+		{"Domain1.com.", true},
+	}
+	for _, test := range tests {
+		msg := new(dns.Msg)
+		msg.SetQuestion(test.q, dns.TypeA)
+
+		_, _, _, ok := m.Match(msg)
+		require.Equal(t, test.match, ok, "query: %s", test.q)
+	}
+}
+
+func TestDomainSubdomainDBError(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{"sub.*.com"},
+		{"*domain.com"},
+	}
+	for _, test := range tests {
+		loader := NewStaticLoader([]string{test.name})
+		_, err := NewDomainSubdomainDB("testlist", loader)
+		require.Error(t, err)
+	}
+}
+
 func TestDomainDBError(t *testing.T) {
 	tests := []struct {
 		name string

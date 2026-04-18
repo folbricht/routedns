@@ -1,0 +1,34 @@
+# Demonstrates the "domain-subdomain" blocklist format. Bare entries match
+# the apex AND all sub-domains, so a single line such as `evil.com` blocks
+# `evil.com`, `www.evil.com`, `cdn.tracking.evil.com`, etc.
+#
+# This is intended for blocklists where every line is meant to apply to
+# apex + sub-domains, e.g. hagezi's "Wildcard Domains" lists:
+#   https://github.com/hagezi/dns-blocklists
+#
+# A `*.example.com` entry can still be used as a per-entry opt-out, matching
+# only sub-domains and leaving the apex unblocked.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.cloudflare-blocklist]
+type             = "blocklist-v2"
+resolvers        = ["cloudflare-dot"]
+blocklist-format = "domain-subdomain"
+blocklist        = [
+  'evil.com',         # blocks evil.com and all sub-domains
+  'facebook.com',     # blocks facebook.com and all sub-domains
+  '*.opt-out.com',    # blocks sub-domains only; apex still resolves
+]
+
+[listeners.local-udp]
+address = ":53"
+protocol = "udp"
+resolver = "cloudflare-blocklist"
+
+[listeners.local-tcp]
+address = ":53"
+protocol = "tcp"
+resolver = "cloudflare-blocklist"
