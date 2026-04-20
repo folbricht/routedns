@@ -2,7 +2,10 @@ package rdns
 
 import (
 	"fmt"
+	"maps"
 	"net"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -42,6 +45,15 @@ func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error
 }
 
 func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
+	emptyNode := make(node)
+	dotNode := node{"": emptyNode}
+	starNode := node{"*": emptyNode}
+	memorySavingNodes := []uintptr{
+		reflect.ValueOf(emptyNode).Pointer(),
+		reflect.ValueOf(dotNode).Pointer(),
+		reflect.ValueOf(starNode).Pointer(),
+	}
+
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -77,7 +89,19 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 
 			subNode, ok := n[part]
 			if !ok {
-				subNode = make(node)
+				switch {
+				case i == 0:
+					subNode = emptyNode
+				case i == 1 && parts[0] == "":
+					subNode = dotNode
+				case i == 1 && parts[0] == "*":
+					subNode = starNode
+				default:
+					subNode = make(node)
+				}
+				n[part] = subNode
+			} else if i != 0 && slices.Contains(memorySavingNodes, reflect.ValueOf(subNode).Pointer()) {
+				subNode = maps.Clone(subNode)
 				n[part] = subNode
 			}
 			n = subNode
