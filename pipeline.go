@@ -230,26 +230,31 @@ func (r *request) markDone(a *dns.Msg, err error) {
 // Queue to manage requests that are in flight. Used to asynchronously match received
 // responses with their requests.
 type inFlightQueue struct {
-	requests  map[uint16]*request
-	mu        sync.Mutex
-	idCounter uint16
-	maxLen    int
+	requests map[uint16]*request
+	mu       sync.Mutex
+	maxLen   int
 }
 
 // Add a request to the queue and return an updated DNS query with a new ID. The ID needs
 // to be unique per connection, and we could be receiving multiple queries with the same
-// ID. So make up a new ID, used that in the query upstream, then map it back to the
-// request and replace the ID with the original one.
+// ID. So pick a random ID that isn't currently in flight, use that in the query upstream,
+// then map it back to the request and replace the ID with the original one.
 func (q *inFlightQueue) add(r *request) *dns.Msg {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.requests == nil {
 		q.requests = make(map[uint16]*request)
 	}
-	q.idCounter++
-	q.requests[q.idCounter] = r
+	var id uint16
+	for {
+		id = dns.Id()
+		if _, inUse := q.requests[id]; !inUse {
+			break
+		}
+	}
+	q.requests[id] = r
 	query := r.q.Copy()
-	query.Id = q.idCounter
+	query.Id = id
 	if len(q.requests) > q.maxLen {
 		q.maxLen = len(q.requests)
 	}
