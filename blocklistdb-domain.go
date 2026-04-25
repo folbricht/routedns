@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 
@@ -42,6 +43,16 @@ func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error
 }
 
 func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
+	// Large lists (e.g. hagezi NRD) produce huge numbers of identical
+	// terminal nodes: empty leaves, "{"": empty}" (.X.tld), and
+	// "{"*": empty}" (*.X.tld). Empty leaves are represented as the nil
+	// node so they cost zero allocations. The two depth-1 shapes share
+	// a single map instance per build. Any later rule that descends
+	// through one of them clones first so it doesn't corrupt sibling
+	// paths that share the same instance.
+	dotNode := node{"": nil}
+	starNode := node{"*": nil}
+
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
@@ -77,13 +88,50 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 
 			subNode, ok := n[part]
 			if !ok {
-				subNode = make(node)
+				switch {
+				case i == 0:
+					subNode = nil
+				case i == 1 && parts[0] == "":
+					subNode = dotNode
+				case i == 1 && parts[0] == "*":
+					subNode = starNode
+				default:
+					subNode = make(node)
+				}
+				n[part] = subNode
+			} else if i != 0 && isSharedShape(subNode) {
+				if subNode == nil {
+					subNode = make(node)
+				} else {
+					subNode = maps.Clone(subNode)
+				}
 				n[part] = subNode
 			}
 			n = subNode
 		}
 	}
 	return &DomainDB{name, root, loader, includeSubdomains}, nil
+}
+
+// isSharedShape reports whether n looks like one of the build-time
+// sentinels: a nil empty leaf, {"": nil} (the .X dot-sentinel), or
+// {"*": nil} (the *.X star-sentinel). The build path never produces
+// nodes of these shapes outside the sentinel paths, so a shape match
+// safely identifies a (possibly shared) instance that must be cloned
+// before mutation.
+func isSharedShape(n node) bool {
+	switch len(n) {
+	case 0:
+		return n == nil
+	case 1:
+		if v, ok := n[""]; ok {
+			return v == nil
+		}
+		if v, ok := n["*"]; ok {
+			return v == nil
+		}
+	}
+	return false
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
