@@ -202,7 +202,13 @@ func start(opt options, args []string) error {
 	}
 
 	// Build the Listeners last as they can point to routers, groups or resolvers directly.
-	var listeners []rdns.Listener
+	type pendingListener struct {
+		id     string
+		nsName string // empty unless the listener is bound to a netns
+		build  func() (rdns.Listener, error)
+		ln     rdns.Listener // pre-built for non-netns listeners
+	}
+	var listeners []pendingListener
 	for id, l := range config.Listeners {
 		resolver, ok := resolvers[l.Resolver]
 		// All Listeners should route queries (except the admin service).
@@ -229,30 +235,33 @@ func start(opt options, args []string) error {
 			SocketOptions: rdns.SocketOptions{FWMark: l.FWMark, BindInterface: l.BindInterface},
 		}
 
+		var build func() (rdns.Listener, error)
 		switch l.Protocol {
 		case "tcp":
 			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
+			build = func() (rdns.Listener, error) {
+				return rdns.NewDNSListener(id, l.Address, network, opt, resolver), nil
+			}
 		case "udp":
 			network := networkForIPVersion("udp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			listeners = append(listeners, rdns.NewDNSListener(id, l.Address, network, opt, resolver))
+			build = func() (rdns.Listener, error) {
+				return rdns.NewDNSListener(id, l.Address, network, opt, resolver), nil
+			}
 		case "admin":
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			opt := rdns.AdminListenerOptions{
+			adminOpt := rdns.AdminListenerOptions{
 				TLSConfig:     tlsConfig,
 				ListenOptions: opt,
 				Transport:     l.Transport,
 			}
-			ln, err := rdns.NewAdminListener(id, l.Address, opt)
-			if err != nil {
-				return err
+			build = func() (rdns.Listener, error) {
+				return rdns.NewAdminListener(id, l.Address, adminOpt)
 			}
-			listeners = append(listeners, ln)
 		case "dot":
 			network := networkForIPVersion("tcp", l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoTPort)
@@ -260,16 +269,18 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDoTListener(id, l.Address, network, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
-			listeners = append(listeners, ln)
+			build = func() (rdns.Listener, error) {
+				return rdns.NewDoTListener(id, l.Address, network, rdns.DoTListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver), nil
+			}
 		case "dtls":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
 			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver)
-			listeners = append(listeners, ln)
+			build = func() (rdns.Listener, error) {
+				return rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver), nil
+			}
 		case "doh":
 			if l.Transport != "quic" {
 				l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
@@ -294,18 +305,16 @@ func start(opt options, args []string) error {
 					return fmt.Errorf("listener '%s' trusted-proxy '%s': %v", id, l.Frontend.HTTPProxyNet, err)
 				}
 			}
-			opt := rdns.DoHListenerOptions{
+			dohOpt := rdns.DoHListenerOptions{
 				TLSConfig:     tlsConfig,
 				ListenOptions: opt,
 				Transport:     l.Transport,
 				HTTPProxyNet:  httpProxyNet,
 				NoTLS:         l.NoTLS,
 			}
-			ln, err := rdns.NewDoHListener(id, l.Address, opt, resolver)
-			if err != nil {
-				return err
+			build = func() (rdns.Listener, error) {
+				return rdns.NewDoHListener(id, l.Address, dohOpt, resolver)
 			}
-			listeners = append(listeners, ln)
 		case "doq":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoQPort)
 
@@ -313,41 +322,55 @@ func start(opt options, args []string) error {
 			if err != nil {
 				return err
 			}
-			ln := rdns.NewQUICListener(id, l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver)
-			listeners = append(listeners, ln)
+			build = func() (rdns.Listener, error) {
+				return rdns.NewQUICListener(id, l.Address, rdns.DoQListenerOptions{TLSConfig: tlsConfig, ListenOptions: opt}, resolver), nil
+			}
 		case "odoh":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
 			tlsConfig, err := rdns.TLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
 			if err != nil {
 				return err
 			}
-			opt := rdns.ODoHListenerOptions{
+			odohOpt := rdns.ODoHListenerOptions{
 				TLSConfig:     tlsConfig,
 				KeySeed:       l.KeySeed,
 				OdohMode:      l.OdohMode,
 				AllowDoH:      l.AllowDoH,
 				ListenOptions: opt,
 			}
-			ln, err := rdns.NewODoHListener(id, l.Address, opt, resolver)
-			if err != nil {
-				return err
+			build = func() (rdns.Listener, error) {
+				return rdns.NewODoHListener(id, l.Address, odohOpt, resolver)
 			}
-			listeners = append(listeners, ln)
 		default:
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
 		}
+
+		pl := pendingListener{id: id, nsName: l.NetNS, build: build}
+		if pl.nsName == "" {
+			pl.ln, err = build()
+			if err != nil {
+				return err
+			}
+		}
+		listeners = append(listeners, pl)
 	}
 
-	// Start the listeners
-	for _, l := range listeners {
-		go func(l rdns.Listener) {
-			for {
-				err := l.Start()
-				rdns.Log.Error("listener failed",
-					"error", err)
-				time.Sleep(time.Second)
-			}
-		}(l)
+	// Start the listeners. Listeners bound to a netns are run through a
+	// supervisor that watches /var/run/netns/ via inotify and gates the
+	// inner listener on namespace presence: warn-and-wait when absent,
+	// build+Start when present, Stop when removed.
+	for _, pl := range listeners {
+		if pl.nsName == "" {
+			go func(l rdns.Listener) {
+				for {
+					err := l.Start()
+					rdns.Log.Error("listener failed", "error", err)
+					time.Sleep(time.Second)
+				}
+			}(pl.ln)
+			continue
+		}
+		go superviseNetNSListener(pl.id, pl.nsName, pl.build)
 	}
 
 	// Graceful shutdown
@@ -1080,6 +1103,69 @@ func networkForIPVersion(base string, ipVersion int) string {
 		return base
 	}
 	return base + strconv.Itoa(ipVersion)
+}
+
+// superviseNetNSListener gates a listener on the presence of a network
+// namespace. When the namespace appears, build is called and the resulting
+// listener is started; when it disappears, the listener is stopped. A fresh
+// instance is constructed on each cycle because some listener types
+// (http.Server-backed) cannot be restarted after Shutdown.
+func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, error)) {
+	events, cancel, err := rdns.SubscribeNetNS(nsName)
+	if err != nil {
+		rdns.Log.Error("netns watcher unavailable, listener disabled", "id", id, "error", err)
+		return
+	}
+	defer cancel()
+
+	var (
+		ln       rdns.Listener
+		startErr chan error
+	)
+
+	for {
+		select {
+		case state, ok := <-events:
+			if !ok {
+				return
+			}
+			switch state {
+			case rdns.NetNSPresent:
+				if ln != nil {
+					continue
+				}
+				rdns.Log.Info("netns present, starting listener", "netns", nsName, "id", id)
+				inner, err := build()
+				if err != nil {
+					rdns.Log.Warn("failed to build listener", "id", id, "error", err)
+					continue
+				}
+				ln = inner
+				startErr = make(chan error, 1)
+				go func(l rdns.Listener, done chan error) {
+					done <- l.Start()
+				}(ln, startErr)
+			case rdns.NetNSAbsent:
+				if ln == nil {
+					rdns.Log.Warn("netns not present, waiting", "netns", nsName, "id", id)
+					continue
+				}
+				rdns.Log.Warn("netns gone, stopping listener", "netns", nsName, "id", id)
+				if err := ln.Stop(); err != nil {
+					rdns.Log.Warn("error stopping listener", "id", id, "error", err)
+				}
+				<-startErr
+				ln = nil
+				startErr = nil
+			}
+		case err := <-startErr:
+			startErr = nil
+			ln = nil
+			if err != nil {
+				rdns.Log.Warn("listener exited, will retry on next netns event", "id", id, "error", err)
+			}
+		}
+	}
 }
 
 func printVersion() {
