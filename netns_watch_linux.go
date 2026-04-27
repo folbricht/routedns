@@ -3,6 +3,7 @@
 package rdns
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func (w *netnsWatcher) read() {
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
-			Log.Warn("netns watcher: read failed", "error", err)
+			Log.Error("netns watcher: read failed, watcher disabled", "error", err)
 			return
 		}
 		offset := 0
@@ -108,7 +109,7 @@ func (w *netnsWatcher) read() {
 			if nameLen > 0 {
 				start := offset + unix.SizeofInotifyEvent
 				nameBytes := buf[start : start+nameLen]
-				if i := indexZero(nameBytes); i >= 0 {
+				if i := bytes.IndexByte(nameBytes, 0); i >= 0 {
 					nameBytes = nameBytes[:i]
 				}
 				name = string(nameBytes)
@@ -178,13 +179,4 @@ func sendState(ch chan NetNSState, s NetNSState) {
 	case ch <- s:
 	default:
 	}
-}
-
-func indexZero(b []byte) int {
-	for i, c := range b {
-		if c == 0 {
-			return i
-		}
-	}
-	return -1
 }
