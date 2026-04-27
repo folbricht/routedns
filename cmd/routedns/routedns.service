@@ -16,7 +16,9 @@ WorkingDirectory=/opt/routedns
 #   CAP_NET_ADMIN        - required by the `fwmark` option (SO_MARK) on
 #                          listeners/resolvers.
 #   CAP_NET_RAW          - required by the `bind-if` option (SO_BINDTODEVICE)
-#                          on listeners/resolvers.
+#                          on listeners/resolvers when running on Linux
+#                          kernels older than 5.7. Since 5.7 it is not
+#                          needed for the initial bind to an interface.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/opt/routedns/routedns config.toml
 Restart=on-failure
