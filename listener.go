@@ -9,6 +9,7 @@ import (
 // Listener is an interface for a DNS listener.
 type Listener interface {
 	Start() error
+	Stop() error
 	fmt.Stringer
 }
 
