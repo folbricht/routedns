@@ -1,8 +1,6 @@
 module github.com/folbricht/routedns
 
-go 1.24.4
-
-toolchain go1.24.7
+go 1.25.0
 
 require (
 	github.com/0xERR0R/expiration-cache v0.1.0

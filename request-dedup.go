@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"encoding/binary"
+	"strings"
 	"sync"
 
 	"github.com/miekg/dns"
@@ -10,6 +11,9 @@ import (
 type dedupKey struct {
 	name        string
 	qtype       uint16
+	qclass      uint16
+	do          bool
+	cd          bool
 	ecs_ipv4    uint32
 	ecs_ipv6_hi uint64
 	ecs_ipv6_lo uint64
@@ -49,10 +53,12 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		ecsIPv4              uint32
 		ecsIPv6Lo, ecsIPv6Hi uint64
 		ecsMask              uint8
+		do                   bool
 	)
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
+		do = edns0.Do()
 		// Find the ECS option
 		for _, opt := range edns0.Option {
 			ecs, ok := opt.(*dns.EDNS0_SUBNET)
@@ -71,8 +77,11 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 	k := dedupKey{
-		name:        q.Question[0].Name,
+		name:        strings.ToLower(q.Question[0].Name),
 		qtype:       q.Question[0].Qtype,
+		qclass:      q.Question[0].Qclass,
+		do:          do,
+		cd:          q.CheckingDisabled,
 		ecs_ipv4:    ecsIPv4,
 		ecs_ipv6_hi: ecsIPv6Hi,
 		ecs_ipv6_lo: ecsIPv6Lo,
@@ -96,9 +105,12 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.Debug("duplicated request, waiting for first answer")
 		<-req.done
 		a, err := req.answer, req.err
-		// Return a copy of the answer as other elements might be modifying it
+		// Return a copy of the answer as other elements might be modifying it,
+		// and restore this caller's transaction ID and Question section.
 		if a != nil {
 			a = a.Copy()
+			a.Id = q.Id
+			a.Question = q.Question
 		}
 		return a, err
 	}
@@ -118,7 +130,10 @@ func (r *requestDedup) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Return a copy since it could be modified in the chain (i.e. in the listener)
 	// but it's also stored for other goroutines which need to copy it.
 	if a != nil {
-		return a.Copy(), err
+		a = a.Copy()
+		a.Id = q.Id
+		a.Question = q.Question
+		return a, err
 	}
 	return a, err
 }
