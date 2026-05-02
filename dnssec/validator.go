@@ -16,8 +16,9 @@ var (
 	ErrNoKey              = errors.New("dnssec: no matching DNSKEY")
 	ErrSignatureInvalid   = errors.New("dnssec: signature verification failed")
 	ErrDSMismatch         = errors.New("dnssec: DNSKEY doesn't match DS")
-	ErrNoTrustAnchor      = errors.New("dnssec: no trust anchor")
-	ErrInsecureDelegation = errors.New("dnssec: insecure delegation")
+	ErrNoTrustAnchor        = errors.New("dnssec: no trust anchor")
+	ErrInsecureDelegation   = errors.New("dnssec: insecure delegation")
+	ErrSignerOutOfBailiwick = errors.New("dnssec: RRSIG signer name out of bailiwick")
 )
 
 type Validator struct {
@@ -158,7 +159,18 @@ func (v *Validator) proveNoDS(zone string) (bool, error) {
 // validateRRset validates a set of RRs against the provided RRSIG by
 // building a chain of trust to the signer's DNSKEY.
 func (v *Validator) validateRRset(rrset []dns.RR, sig *dns.RRSIG) error {
-	zsk, _, err := v.buildChainOfTrust(sig.SignerName)
+	// RFC 4035 §5.3.1: the RRSIG Signer's Name MUST be the zone that
+	// contains the RRset, i.e. equal to or an ancestor of the owner name.
+	// miekg/dns Verify() only does a textual strings.HasSuffix check, so a
+	// signer "tim." would be accepted for owner "victim." — enforce a
+	// label-aware comparison here before fetching keys for the signer.
+	owner := dns.CanonicalName(rrset[0].Header().Name)
+	signer := dns.CanonicalName(sig.SignerName)
+	// dns.IsSubDomain(parent, child): true when child is at or below parent.
+	if !dns.IsSubDomain(signer, owner) {
+		return fmt.Errorf("%w: %s cannot sign %s", ErrSignerOutOfBailiwick, signer, owner)
+	}
+	zsk, _, err := v.buildChainOfTrust(signer)
 	if err != nil {
 		return err
 	}
