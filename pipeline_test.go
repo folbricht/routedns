@@ -2,6 +2,8 @@ package rdns
 
 import (
 	"errors"
+	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,4 +38,42 @@ func TestPipelineQueryTimeout(t *testing.T) {
 	// Make sure we get a timeout error and it took the right amount to come back
 	require.ErrorAs(t, err, &QueryTimeoutError{})
 	require.WithinDuration(t, start.Add(time.Second), time.Now(), 10*time.Millisecond)
+}
+
+// Queries whose responses never arrive must not accumulate in the in-flight map.
+func TestPipelineInFlightCleanup(t *testing.T) {
+	server, client := net.Pipe()
+	go func() { // upstream that reads queries but never answers
+		buf := make([]byte, 4096)
+		for {
+			if _, err := server.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() { server.Close() })
+
+	df := func(address string) (*dns.Conn, error) {
+		return &dns.Conn{Conn: client}, nil
+	}
+	p := NewPipeline("test", "localhost:53", testDialer(df), 50*time.Millisecond)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := p.Resolve(q)
+			require.Error(t, err)
+		}()
+	}
+	wg.Wait()
+
+	p.inFlight.mu.Lock()
+	n := len(p.inFlight.requests)
+	p.inFlight.mu.Unlock()
+	require.Equal(t, 0, n, "in-flight map should be empty after all callers timed out")
 }
