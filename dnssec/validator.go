@@ -176,6 +176,9 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		if len(dsRecords) == 0 {
 			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
 		}
+		if len(dsSigs) == 0 {
+			return nil, nil, fmt.Errorf("%w: DS for %s", ErrNoSignature, zone)
+		}
 
 		parent := parentZone(zone)
 		parentZSK, _, err := v.buildChainOfTrust(parent)
@@ -183,21 +186,19 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 			return nil, nil, fmt.Errorf("failed to build chain of trust for parent %s: %w", parent, err)
 		}
 
-		if len(dsSigs) > 0 {
-			dsRRset := make([]dns.RR, len(dsRecords))
-			for i, d := range dsRecords {
-				dsRRset[i] = d
+		dsRRset := make([]dns.RR, len(dsRecords))
+		for i, d := range dsRecords {
+			dsRRset[i] = d
+		}
+		var verified bool
+		for _, dsSig := range dsSigs {
+			if err := verifyRRSIG(dsSig, parentZSK, dsRRset); err == nil {
+				verified = true
+				break
 			}
-			var verified bool
-			for _, dsSig := range dsSigs {
-				if err := verifyRRSIG(dsSig, parentZSK, dsRRset); err == nil {
-					verified = true
-					break
-				}
-			}
-			if !verified {
-				return nil, nil, fmt.Errorf("%w: DS RRSIG for %s", ErrSignatureInvalid, zone)
-			}
+		}
+		if !verified {
+			return nil, nil, fmt.Errorf("%w: DS RRSIG for %s", ErrSignatureInvalid, zone)
 		}
 	}
 
