@@ -1,8 +1,10 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -24,6 +26,7 @@ type Pipeline struct {
 	addr     string
 	client   DNSDialer
 	requests chan *request
+	inFlight inFlightQueue
 	metrics  *ListenerMetrics
 	timeout  time.Duration
 }
@@ -68,6 +71,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	select {
 	case <-r.done:
 	case <-timeout.C:
+		c.inFlight.delete(r)
 		c.metrics.err.Add("querytimeout", 1)
 		return nil, QueryTimeoutError{q}
 	}
@@ -79,10 +83,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 // and reading answers concurrently using the same connection. It also handles errors like idle
 // close from upstream.
 func (c *Pipeline) start() {
-	var (
-		wg       sync.WaitGroup
-		inFlight inFlightQueue
-	)
+	var wg sync.WaitGroup
 	log := Log.With("addr", c.addr)
 	for req := range c.requests { // Lazy connection. Only open a real connection if there's a request
 		done := make(chan struct{})
@@ -102,12 +103,17 @@ func (c *Pipeline) start() {
 			for {
 				select {
 				case req := <-c.requests:
-					query := inFlight.add(req)
+					query := c.inFlight.add(req)
+					if query == nil {
+						req.markDone(nil, errors.New("too many queries in flight"))
+						c.metrics.err.Add("inflight_full", 1)
+						continue
+					}
 					log.With("qname", qName(query)).Debug("sending query")
 					c.metrics.query.Add(1)
 					if err := conn.WriteMsg(query); err != nil {
 						req.markDone(nil, err) // fail the request
-						inFlight.get(query)    // clean up the in-flight queue so it doesn't keep growing
+						c.inFlight.get(query)  // clean up the in-flight queue so it doesn't keep growing
 						conn.Close()           // throw away this connection, should wake up the reader as well
 						wg.Done()
 						c.metrics.err.Add("send_query", 1)
@@ -163,7 +169,7 @@ func (c *Pipeline) start() {
 						log.Warn("failed to read response", "error", err, "qname", qName(a))
 					}
 				}
-				req := inFlight.get(a) // match the answer to an in-flight query
+				req := c.inFlight.get(a) // match the answer to an in-flight query
 				if req == nil {
 					c.metrics.err.Add("unexpected_a", 1)
 					log.With("qname", qName(a)).Warn("unexpected answer received, ignoring")
@@ -171,7 +177,7 @@ func (c *Pipeline) start() {
 				}
 				c.metrics.response.Add(rCode(a), 1)
 				req.markDone(a, nil)
-				ql := inFlight.maxQueueLen()
+				ql := c.inFlight.maxQueueLen()
 				if ql > c.metrics.maxQueueLen.Value() {
 					c.metrics.maxQueueLen.Set(ql)
 				}
@@ -180,6 +186,7 @@ func (c *Pipeline) start() {
 
 		// wait for both, sender and receiver to terminate before trying to reconnect
 		wg.Wait()
+		c.inFlight.drain(errors.New("upstream connection closed with request in flight"))
 	}
 }
 
@@ -187,6 +194,7 @@ func (c *Pipeline) start() {
 // closed when the request is done.
 type request struct {
 	q, a *dns.Msg
+	id   uint16
 	err  error
 	done chan struct{}
 }
@@ -245,6 +253,9 @@ func (q *inFlightQueue) add(r *request) *dns.Msg {
 	if q.requests == nil {
 		q.requests = make(map[uint16]*request)
 	}
+	if len(q.requests) >= math.MaxUint16 {
+		return nil
+	}
 	var id uint16
 	for {
 		id = dns.Id()
@@ -252,6 +263,7 @@ func (q *inFlightQueue) add(r *request) *dns.Msg {
 			break
 		}
 	}
+	r.id = id
 	q.requests[id] = r
 	query := r.q.Copy()
 	query.Id = id
@@ -273,6 +285,26 @@ func (q *inFlightQueue) get(a *dns.Msg) *request {
 	}
 	delete(q.requests, id)
 	return r
+}
+
+// Removes a request from the queue if it is still present. Safe to call when the
+// request was never added or was already removed.
+func (q *inFlightQueue) delete(r *request) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.requests[r.id] == r {
+		delete(q.requests, r.id)
+	}
+}
+
+// Fails all queued requests with err and clears the queue.
+func (q *inFlightQueue) drain(err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for id, r := range q.requests {
+		r.markDone(nil, err)
+		delete(q.requests, id)
+	}
 }
 
 func (q *inFlightQueue) maxQueueLen() int64 {
