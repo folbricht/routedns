@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"expvar"
 	"fmt"
 
@@ -47,9 +46,6 @@ func NewRouter(id string) *Router {
 
 // Resolve a request by routing it to the right resolved based on the routes setup in the router.
 func (r *Router) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
 	question := q.Question[0]
 	log := logger(r.id, q, ci)
 	for _, route := range r.routes {

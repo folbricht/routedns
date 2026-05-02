@@ -224,6 +224,11 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "unpacking oblivious query failed", http.StatusBadRequest)
 		return
 	}
+	if len(q.Question) == 0 {
+		Log.With("id", s.id, "protocol", "odoh", "addr", s.addr).Warn("dropping query with no Question section")
+		http.Error(w, "no question in query", http.StatusBadRequest)
+		return
+	}
 
 	a, err := s.r.Resolve(q, ClientInfo{Listener: s.id, TLSServerName: r.TLS.ServerName})
 	if err != nil {

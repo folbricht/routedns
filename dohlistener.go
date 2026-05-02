@@ -259,6 +259,12 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if len(q.Question) == 0 {
+		s.metrics.err.Add("noquestion", 1)
+		Log.With("id", s.id, "protocol", "doh", "addr", s.addr).Warn("dropping query with no Question section")
+		http.Error(w, "no question in query", http.StatusBadRequest)
+		return
+	}
 	// Extract the remote host address from the HTTP headers.
 	clientIP := s.extractClientAddress(r)
 	if clientIP == nil {

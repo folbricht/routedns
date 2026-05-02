@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"net"
 
 	"github.com/miekg/dns"
@@ -27,10 +26,6 @@ func NewECSModifier(id string, resolver Resolver, f ECSModifierFunc) (*ECSModifi
 
 // Resolve modifies the OPT EDNS0 record and passes it to the next resolver.
 func (r *ECSModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
-
 	// Modify the query
 	if r.modifier != nil {
 		r.modifier(r.id, q, ci)

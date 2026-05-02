@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"expvar"
 	"log/slog"
 	"net"
@@ -89,9 +88,6 @@ func NewBlocklist(id string, resolver Resolver, opt BlocklistOptions) (*Blocklis
 // Resolve a DNS query by first checking the query against the provided matcher.
 // Queries that do not match are passed on to the next resolver.
 func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
 	question := q.Question[0]
 	log := logger(r.id, q, ci)
 
