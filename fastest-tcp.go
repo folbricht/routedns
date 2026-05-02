@@ -11,6 +11,11 @@ import (
 	"github.com/miekg/dns"
 )
 
+// fastestTCPMaxProbes caps how many A/AAAA records are probed concurrently.
+// This bounds the number of goroutines and sockets spawned per query so that
+// responses with very large RRsets cannot exhaust file descriptors or memory.
+const fastestTCPMaxProbes = 32
+
 // FastestTCP first resolves the query with the upstream resolver, then
 // performs TCP connection tests with the response IPs to determine which
 // IP responds the fastest. This IP is then returned in the response as first
@@ -70,11 +75,14 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return a, nil
 	}
 
-	// Extract the IP responses
+	// Extract the IP responses, up to the probe cap
 	var ipRRs []dns.RR
 	for _, rr := range a.Answer {
 		if rr.Header().Rrtype == question.Qtype {
 			ipRRs = append(ipRRs, rr)
+			if len(ipRRs) >= fastestTCPMaxProbes {
+				break
+			}
 		}
 	}
 
@@ -101,7 +109,12 @@ func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Merge the sorted list of RRs back into the original answer in the same
 	// positions. The original answer could have CNAMEs and other types in it.
+	// Stop once the sorted list is exhausted; any records beyond the probe cap
+	// remain in their original positions.
 	for i, rr := range a.Answer {
+		if len(sorted) == 0 {
+			break
+		}
 		if rr.Header().Rrtype == question.Qtype {
 			a.Answer[i] = sorted[0]
 			sorted = sorted[1:]
@@ -175,8 +188,12 @@ type tcpProbeResult struct {
 }
 
 // Probes all IPs and returns a channel with responses in the order they succeed or fail.
+// The channel is buffered to len(rrs) so that probe goroutines never block on send,
+// even when the caller stops reading early (e.g. probeFastest after the first result,
+// or probeAll on error/timeout). This guarantees every goroutine runs to completion
+// and closes its socket.
 func (r *FastestTCP) probe(ctx context.Context, log *slog.Logger, rrs []dns.RR) <-chan tcpProbeResult {
-	resultCh := make(chan tcpProbeResult)
+	resultCh := make(chan tcpProbeResult, len(rrs))
 	for _, rr := range rrs {
 		var d net.Dialer
 		go func(rr dns.RR) {
