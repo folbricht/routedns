@@ -107,6 +107,11 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			"protocol", protocol,
 			"addr", addr,
 		)
+		if len(req.Question) == 0 {
+			metrics.err.Add("noquestion", 1)
+			log.Warn("dropping query with no Question section")
+			return
+		}
 		log.Debug("received query")
 		metrics.query.Add(1)
 

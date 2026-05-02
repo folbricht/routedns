@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"regexp"
 
 	"github.com/miekg/dns"
@@ -55,9 +54,6 @@ func NewReplace(id string, resolver Resolver, list ...ReplaceOperation) (*Replac
 // sending the query upstream and replace the name in the response with
 // the original query string again.
 func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
 	oldName := q.Question[0].Name
 	newName := r.exp.apply(oldName)
 	log := logger(r.id, q, ci)

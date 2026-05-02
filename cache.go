@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"expvar"
 	"math"
 	"math/rand"
@@ -131,9 +130,6 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 // Resolve a DNS query by first checking an internal cache for existing
 // results
 func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	if len(q.Question) < 1 {
-		return nil, errors.New("no question in query")
-	}
 	// While multiple questions in one DNS message is part of the standard,
 	// it's not actually supported by servers. If we do get one of those,
 	// just pass it through and bypass caching.
