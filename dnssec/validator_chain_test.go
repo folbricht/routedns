@@ -328,6 +328,125 @@ func TestValidateRejectsForgedNSECDenial(t *testing.T) {
 		"NSEC signed by an untrusted key must be rejected; got %v", err)
 }
 
+// TestValidateRejectsCrossZoneSignerName reproduces the RFC 4035 §5.3.1
+// bypass: an attacker who controls a legitimately signed zone returns a
+// forged A record for an unrelated owner name covered by an RRSIG whose
+// SignerName is the attacker's zone. The attacker zone → root chain is
+// valid and the cryptographic signature verifies, but the signer is not at
+// or above the owner name in the DNS hierarchy and MUST be rejected.
+//
+// miekg/dns RRSIG.Verify() has its own guard, but it is a textual
+// strings.HasSuffix check rather than a label-aware comparison, so an
+// attacker zone "tim." passes the library check for owner "victim." even
+// though "tim." is a sibling of "victim.", not an ancestor.
+func TestValidateRejectsCrossZoneSignerName(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, rootZSKpriv := genKey(t, ".", 256)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK})
+
+	// "tim." is a real, properly delegated, DNSSEC-signed zone the attacker
+	// controls. It is NOT an ancestor of "victim." but is a textual suffix.
+	attackerKSK, attackerKSKpriv := genKey(t, "tim.", 257)
+	attackerZSK, attackerZSKpriv := genKey(t, "tim.", 256)
+	attackerDNSKEYSig := signRRset(t, attackerKSK, attackerKSKpriv, now, []dns.RR{attackerZSK, attackerKSK})
+	attackerDS := attackerKSK.ToDS(dns.SHA256)
+	require.NotNil(t, attackerDS)
+	attackerDSSig := signRRset(t, rootZSK, rootZSKpriv, now, []dns.RR{attackerDS})
+
+	// Forged answer for victim. signed by the attacker's ZSK. signRRset sets
+	// SignerName = key owner, so this RRSIG has owner=victim. and
+	// SignerName=tim. — out of bailiwick.
+	forgedA, _ := dns.NewRR("victim. 300 IN A 6.6.6.6")
+	forgedASig := signRRset(t, attackerZSK, attackerZSKpriv, now, []dns.RR{forgedA})
+	require.Equal(t, "tim.", forgedASig.SignerName)
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		name := dns.CanonicalName(q.Question[0].Name)
+		switch q.Question[0].Qtype {
+		case dns.TypeDNSKEY:
+			switch name {
+			case ".":
+				a.Answer = []dns.RR{rootZSK, rootKSK, rootDNSKEYSig}
+			case "tim.":
+				a.Answer = []dns.RR{attackerZSK, attackerKSK, attackerDNSKEYSig}
+			}
+		case dns.TypeDS:
+			if name == "tim." {
+				a.Answer = []dns.RR{attackerDS, attackerDSSig}
+			}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	answer := new(dns.Msg)
+	answer.SetQuestion("victim.", dns.TypeA)
+	answer.Answer = []dns.RR{forgedA, forgedASig}
+
+	err := v.Validate(answer)
+	require.ErrorIs(t, err, ErrSignerOutOfBailiwick,
+		"RRSIG whose SignerName is not at or above the owner name must be rejected; got %v", err)
+}
+
+// TestValidateAcceptsAncestorSignerName is the positive counterpart: an RRset
+// at www.child. signed by the child. zone's ZSK (SignerName=child., a proper
+// ancestor of the owner) must validate.
+func TestValidateAcceptsAncestorSignerName(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, rootZSKpriv := genKey(t, ".", 256)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK})
+
+	childKSK, childKSKpriv := genKey(t, "child.", 257)
+	childZSK, childZSKpriv := genKey(t, "child.", 256)
+	childDNSKEYSig := signRRset(t, childKSK, childKSKpriv, now, []dns.RR{childZSK, childKSK})
+	childDS := childKSK.ToDS(dns.SHA256)
+	require.NotNil(t, childDS)
+	childDSSig := signRRset(t, rootZSK, rootZSKpriv, now, []dns.RR{childDS})
+
+	wwwA, _ := dns.NewRR("www.child. 300 IN A 1.2.3.4")
+	wwwASig := signRRset(t, childZSK, childZSKpriv, now, []dns.RR{wwwA})
+	require.Equal(t, "child.", wwwASig.SignerName)
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		name := dns.CanonicalName(q.Question[0].Name)
+		switch q.Question[0].Qtype {
+		case dns.TypeDNSKEY:
+			switch name {
+			case ".":
+				a.Answer = []dns.RR{rootZSK, rootKSK, rootDNSKEYSig}
+			case "child.":
+				a.Answer = []dns.RR{childZSK, childKSK, childDNSKEYSig}
+			}
+		case dns.TypeDS:
+			if name == "child." {
+				a.Answer = []dns.RR{childDS, childDSSig}
+			}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	answer := new(dns.Msg)
+	answer.SetQuestion("www.child.", dns.TypeA)
+	answer.Answer = []dns.RR{wwwA, wwwASig}
+
+	require.NoError(t, v.Validate(answer))
+}
+
 // genKey creates an ECDSAP256SHA256 DNSKEY for the given owner and flags
 // (256 = ZSK, 257 = KSK) and returns the public DNSKEY plus its private signer.
 func genKey(t *testing.T, owner string, flags uint16) (*dns.DNSKEY, crypto.Signer) {
