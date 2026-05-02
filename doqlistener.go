@@ -178,6 +178,14 @@ func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Clie
 		log.Warn("failed to decode query", "error", err)
 		return
 	}
+	// A DNS message with QDCOUNT=0 unpacks cleanly but downstream resolvers
+	// (logger, cache, blocklists) all index `q.Question[0]` unconditionally
+	// and panic on an empty Question slice. Reject these at the listener.
+	if len(q.Question) == 0 {
+		s.metrics.err.Add("noquestion", 1)
+		log.Warn("dropping query with no Question section")
+		return
+	}
 	log = log.With("qname", qName(q))
 	log.Debug("received query")
 	s.metrics.query.Add(1)
