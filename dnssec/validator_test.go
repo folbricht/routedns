@@ -42,7 +42,7 @@ func TestGroupRRsByTypeAndName(t *testing.T) {
 	require.Nil(t, sigs[aaaaKey])
 }
 
-func TestVerifyDNSKEYWithDS(t *testing.T) {
+func TestFilterKeysByDS(t *testing.T) {
 	// Use the real IANA root KSK for this test
 	rootKSKRR, err := dns.NewRR(". 172800 IN DNSKEY 257 3 8 AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3 +/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv ArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF 0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+e oZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfd RUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwN R1AkUTV74bU=")
 	require.NoError(t, err)
@@ -52,15 +52,16 @@ func TestVerifyDNSKEYWithDS(t *testing.T) {
 	ds := rootKSK.ToDS(dns.SHA256)
 	require.NotNil(t, ds)
 
-	// Matching should succeed
-	err = verifyDNSKEYWithDS([]*dns.DNSKEY{rootKSK}, []*dns.DS{ds})
-	require.NoError(t, err)
+	// Matching should return the key
+	matched := filterKeysByDS([]*dns.DNSKEY{rootKSK}, []*dns.DS{ds})
+	require.Len(t, matched, 1)
+	require.Same(t, rootKSK, matched[0])
 
-	// Wrong digest should fail
+	// Wrong digest should return nothing
 	badDS := *ds
 	badDS.Digest = "0000000000000000000000000000000000000000000000000000000000000000"
-	err = verifyDNSKEYWithDS([]*dns.DNSKEY{rootKSK}, []*dns.DS{&badDS})
-	require.ErrorIs(t, err, ErrDSMismatch)
+	matched = filterKeysByDS([]*dns.DNSKEY{rootKSK}, []*dns.DS{&badDS})
+	require.Empty(t, matched)
 }
 
 func TestValidateNoRRSIG(t *testing.T) {
