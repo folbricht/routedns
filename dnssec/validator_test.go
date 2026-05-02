@@ -65,11 +65,10 @@ func TestFilterKeysByDS(t *testing.T) {
 }
 
 func TestValidateNoRRSIG(t *testing.T) {
-	// A response with records but no RRSIG should return ErrNoSignature
-	// unless it's an insecure delegation
+	// A response with records but no RRSIG, where the follow-up DS lookup
+	// returns empty without authenticated denial, must be treated as bogus.
 	v := NewValidator(
 		WithResolver(func(q *dns.Msg) (*dns.Msg, error) {
-			// DS lookup returns empty → insecure delegation
 			a := new(dns.Msg)
 			a.SetReply(q)
 			return a, nil
@@ -83,7 +82,7 @@ func TestValidateNoRRSIG(t *testing.T) {
 
 	err := v.Validate(answer)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInsecureDelegation)
+	require.NotErrorIs(t, err, ErrInsecureDelegation)
 }
 
 func TestValidateEmptyAnswer(t *testing.T) {
@@ -208,18 +207,18 @@ func TestFindKeysByTag(t *testing.T) {
 	require.Len(t, found, 0)
 }
 
-func TestValidateInsecureDelegation(t *testing.T) {
+func TestValidateInsecureDelegationRequiresProof(t *testing.T) {
+	// An empty DS response with no NSEC/NSEC3 in authority is not proof of
+	// an insecure delegation. The validator must reject it as bogus so the
+	// caller does not pass forged data through.
 	v := NewValidator(
 		WithResolver(func(q *dns.Msg) (*dns.Msg, error) {
 			a := new(dns.Msg)
 			a.SetReply(q)
-			// Return empty for DS lookups → insecure delegation
-			// Return empty for DNSKEY lookups → will fail
 			return a, nil
 		}),
 	)
 
-	// Build a response with an unsigned A record
 	answer := new(dns.Msg)
 	answer.SetQuestion("insecure.example.", dns.TypeA)
 	rr, _ := dns.NewRR("insecure.example. 300 IN A 1.2.3.4")
@@ -227,5 +226,5 @@ func TestValidateInsecureDelegation(t *testing.T) {
 
 	err := v.Validate(answer)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInsecureDelegation)
+	require.NotErrorIs(t, err, ErrInsecureDelegation)
 }

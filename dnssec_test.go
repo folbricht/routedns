@@ -136,8 +136,10 @@ func TestDNSSECValidatorPassthroughOnError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDNSSECValidatorInsecureDelegationPassthrough(t *testing.T) {
-	// Upstream returns unsigned data for an insecure zone (no DS)
+func TestDNSSECValidatorRejectsUnauthenticatedEmptyDS(t *testing.T) {
+	// Upstream returns unsigned data and an empty DS response with no
+	// NSEC/NSEC3 proof. This is indistinguishable from an on-path attacker
+	// stripping RRSIGs and must SERVFAIL rather than pass through.
 	upstream := &TestResolver{
 		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			a := new(dns.Msg)
@@ -146,7 +148,6 @@ func TestDNSSECValidatorInsecureDelegationPassthrough(t *testing.T) {
 				rr, _ := dns.NewRR("insecure.example. 300 IN A 1.2.3.4")
 				a.Answer = []dns.RR{rr}
 			}
-			// DS lookup returns empty → insecure delegation
 			return a, nil
 		},
 	}
@@ -158,9 +159,8 @@ func TestDNSSECValidatorInsecureDelegationPassthrough(t *testing.T) {
 	q.SetQuestion("insecure.example.", dns.TypeA)
 	answer, err := v.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
-	// Insecure delegations should pass through
-	require.Equal(t, dns.RcodeSuccess, answer.Rcode)
-	require.Len(t, answer.Answer, 1)
+	require.Equal(t, dns.RcodeServerFailure, answer.Rcode)
+	require.Empty(t, answer.Answer)
 }
 
 func TestDNSSECValidatorString(t *testing.T) {

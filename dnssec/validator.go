@@ -105,20 +105,54 @@ func (v *Validator) Validate(answer *dns.Msg) error {
 	return nil
 }
 
-// checkInsecureDelegation checks whether a zone is an insecure delegation
-// (i.e., the parent zone has no DS record for it).
-func (v *Validator) checkInsecureDelegation(zone string) error {
-	if zone == "." {
+// checkInsecureDelegation walks the delegation chain from the root toward
+// name, returning ErrInsecureDelegation at the first cut where the parent
+// authentically proves (via signed NSEC/NSEC3) that no DS record exists.
+// An empty DS response without such proof is bogus, not insecure
+// (RFC 4035 §5.2, RFC 6840 §5.2).
+func (v *Validator) checkInsecureDelegation(name string) error {
+	name = dns.CanonicalName(name)
+	if name == "." {
 		return nil
 	}
-	ds, _, err := v.lookupDS(zone)
-	if err != nil {
-		return err
-	}
-	if len(ds) == 0 {
-		return fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
+	labels := dns.SplitDomainName(name)
+	for i := len(labels) - 1; i >= 0; i-- {
+		zone := dns.Fqdn(strings.Join(labels[i:], "."))
+		insecure, err := v.proveNoDS(zone)
+		if err != nil {
+			return err
+		}
+		if insecure {
+			return fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
+		}
 	}
 	return nil
+}
+
+// proveNoDS returns true when zone has no DS RRset and that absence is
+// authenticated by the parent zone's signed NSEC/NSEC3. It returns false when
+// DS records are present, and an error when the absence cannot be
+// authenticated.
+func (v *Validator) proveNoDS(zone string) (bool, error) {
+	ds, _, resp, err := v.lookupDS(zone)
+	if err != nil {
+		return false, err
+	}
+	if len(ds) > 0 {
+		return false, nil
+	}
+	parent := parentZone(zone)
+	parentZSK, _, err := v.buildChainOfTrust(parent)
+	if err != nil {
+		if errors.Is(err, ErrInsecureDelegation) {
+			return true, nil
+		}
+		return false, err
+	}
+	if err := verifyDSDenial(resp, zone, parentZSK); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // validateRRset validates a set of RRs against the provided RRSIG by
@@ -168,22 +202,29 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 			return nil, nil, ErrNoTrustAnchor
 		}
 	} else {
-		var dsSigs []*dns.RRSIG
-		dsRecords, dsSigs, err = v.lookupDS(zone)
+		var (
+			dsSigs []*dns.RRSIG
+			dsResp *dns.Msg
+		)
+		dsRecords, dsSigs, dsResp, err = v.lookupDS(zone)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to lookup DS for %s: %w", zone, err)
-		}
-		if len(dsRecords) == 0 {
-			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
-		}
-		if len(dsSigs) == 0 {
-			return nil, nil, fmt.Errorf("%w: DS for %s", ErrNoSignature, zone)
 		}
 
 		parent := parentZone(zone)
 		parentZSK, _, err := v.buildChainOfTrust(parent)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build chain of trust for parent %s: %w", parent, err)
+		}
+
+		if len(dsRecords) == 0 {
+			if err := verifyDSDenial(dsResp, zone, parentZSK); err != nil {
+				return nil, nil, err
+			}
+			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
+		}
+		if len(dsSigs) == 0 {
+			return nil, nil, fmt.Errorf("%w: DS for %s", ErrNoSignature, zone)
 		}
 
 		dsRRset := make([]dns.RR, len(dsRecords))
@@ -265,36 +306,35 @@ func (v *Validator) lookupDNSKEY(name string) (zsk, ksk []*dns.DNSKEY, sigs []*d
 	return
 }
 
-// lookupDS queries for DS records for the given zone and returns
-// the DS records and their covering RRSIGs.
-func (v *Validator) lookupDS(name string) ([]*dns.DS, []*dns.RRSIG, error) {
+// lookupDS queries for DS records for the given zone and returns the DS
+// records, their covering RRSIGs, and the full response so callers can
+// inspect the authority section for NSEC/NSEC3 denial.
+func (v *Validator) lookupDS(name string) ([]*dns.DS, []*dns.RRSIG, *dns.Msg, error) {
 	q := new(dns.Msg)
 	q.SetQuestion(dns.CanonicalName(name), dns.TypeDS)
 	q.SetEdns0(4096, true)
 	q.MsgHdr.CheckingDisabled = true
 	a, err := v.resolver(q)
 	if err != nil {
-		return nil, nil, err
-	}
-	if a.Rcode != dns.RcodeSuccess {
-		// NXDOMAIN or other errors mean no DS — insecure delegation
-		return nil, nil, nil
+		return nil, nil, nil, err
 	}
 	var (
 		ds   []*dns.DS
 		sigs []*dns.RRSIG
 	)
-	for _, rr := range a.Answer {
-		switch r := rr.(type) {
-		case *dns.DS:
-			ds = append(ds, r)
-		case *dns.RRSIG:
-			if r.TypeCovered == dns.TypeDS {
-				sigs = append(sigs, r)
+	if a.Rcode == dns.RcodeSuccess {
+		for _, rr := range a.Answer {
+			switch r := rr.(type) {
+			case *dns.DS:
+				ds = append(ds, r)
+			case *dns.RRSIG:
+				if r.TypeCovered == dns.TypeDS {
+					sigs = append(sigs, r)
+				}
 			}
 		}
 	}
-	return ds, sigs, nil
+	return ds, sigs, a, nil
 }
 
 // parentZone returns the parent zone of the given zone name.
