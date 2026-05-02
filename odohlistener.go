@@ -61,11 +61,15 @@ func NewODoHListener(id, addr string, opt ODoHListenerOptions, resolver Resolver
 
 	configSet := odoh.CreateObliviousDoHConfigs([]odoh.ObliviousDoHConfig{keyPair.Config})
 	l := &ODoHListener{
-		id:          id,
-		addr:        addr,
-		r:           resolver,
-		opt:         opt,
-		proxyClient: &http.Client{},
+		id:   id,
+		addr: addr,
+		r:    resolver,
+		opt:  opt,
+		proxyClient: &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		odohKeyPair: keyPair,
 		config:      configSet.Marshal(),
 	}
@@ -150,6 +154,10 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		http.Error(w, http.StatusText(response.StatusCode), response.StatusCode)
+		return
+	}
+	if response.Header.Get("Content-Type") != ODOH_CONTENT_TYPE {
+		http.Error(w, "unexpected response content type from target", http.StatusBadGateway)
 		return
 	}
 
