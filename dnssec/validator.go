@@ -151,7 +151,6 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		return nil, nil, fmt.Errorf("%w: no KSK for %s", ErrNoKey, zone)
 	}
 
-	// Find an RRSIG covering the DNSKEY RRset signed by this zone
 	allKeys := make([]dns.RR, 0, len(fetchedZSK)+len(fetchedKSK))
 	for _, k := range fetchedZSK {
 		allKeys = append(allKeys, k)
@@ -160,34 +159,17 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		allKeys = append(allKeys, k)
 	}
 
-	var dnsSig *dns.RRSIG
-	for _, sig := range dnsSigs {
-		if dns.CanonicalName(sig.SignerName) == zone && sig.TypeCovered == dns.TypeDNSKEY {
-			dnsSig = sig
-			break
-		}
-	}
-	if dnsSig == nil {
-		return nil, nil, fmt.Errorf("%w: no RRSIG covering DNSKEY for %s", ErrNoSignature, zone)
-	}
-
-	// Verify the DNSKEY RRset self-signature using a KSK
-	if err := verifyRRSIG(dnsSig, fetchedKSK, allKeys); err != nil {
-		return nil, nil, fmt.Errorf("DNSKEY self-signature verification failed for %s: %w", zone, err)
-	}
-
+	// Obtain authenticated DS records for this zone — from the configured
+	// trust anchor for the root, or by recursing into the parent otherwise.
+	var dsRecords []*dns.DS
 	if zone == "." {
-		// For the root zone, validate KSK against the trust anchor DS records
-		ds := v.ks.getDS(".")
-		if len(ds) == 0 {
+		dsRecords = v.ks.getDS(".")
+		if len(dsRecords) == 0 {
 			return nil, nil, ErrNoTrustAnchor
 		}
-		if err := verifyDNSKEYWithDS(fetchedKSK, ds); err != nil {
-			return nil, nil, fmt.Errorf("root KSK doesn't match trust anchor: %w", err)
-		}
 	} else {
-		// For non-root zones, look up DS from parent and validate
-		dsRecords, dsSigs, err := v.lookupDS(zone)
+		var dsSigs []*dns.RRSIG
+		dsRecords, dsSigs, err = v.lookupDS(zone)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to lookup DS for %s: %w", zone, err)
 		}
@@ -195,20 +177,17 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
 		}
 
-		// Recursively build chain of trust for the parent zone
 		parent := parentZone(zone)
 		parentZSK, _, err := v.buildChainOfTrust(parent)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build chain of trust for parent %s: %w", parent, err)
 		}
 
-		// Verify the DS RRSIG with the parent's ZSK
 		if len(dsSigs) > 0 {
 			dsRRset := make([]dns.RR, len(dsRecords))
 			for i, d := range dsRecords {
 				dsRRset[i] = d
 			}
-			// Try each DS RRSIG
 			var verified bool
 			for _, dsSig := range dsSigs {
 				if err := verifyRRSIG(dsSig, parentZSK, dsRRset); err == nil {
@@ -220,11 +199,32 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 				return nil, nil, fmt.Errorf("%w: DS RRSIG for %s", ErrSignatureInvalid, zone)
 			}
 		}
+	}
 
-		// Verify that a KSK matches a DS record
-		if err := verifyDNSKEYWithDS(fetchedKSK, dsRecords); err != nil {
-			return nil, nil, fmt.Errorf("KSK doesn't match DS for %s: %w", zone, err)
+	// RFC 4035 §5.2: the DNSKEY RRset must be signed by a key that itself
+	// chains to an authenticated DS. Restrict candidate signing keys to
+	// those matching a DS before accepting the self-signature.
+	trustedKSK := filterKeysByDS(fetchedKSK, dsRecords)
+	if len(trustedKSK) == 0 {
+		return nil, nil, fmt.Errorf("KSK doesn't match DS for %s: %w", zone, ErrDSMismatch)
+	}
+
+	var sigSeen, sigVerified bool
+	for _, sig := range dnsSigs {
+		if dns.CanonicalName(sig.SignerName) != zone || sig.TypeCovered != dns.TypeDNSKEY {
+			continue
 		}
+		sigSeen = true
+		if err := verifyRRSIG(sig, trustedKSK, allKeys); err == nil {
+			sigVerified = true
+			break
+		}
+	}
+	if !sigSeen {
+		return nil, nil, fmt.Errorf("%w: no RRSIG covering DNSKEY for %s", ErrNoSignature, zone)
+	}
+	if !sigVerified {
+		return nil, nil, fmt.Errorf("DNSKEY self-signature verification failed for %s: %w", zone, ErrSignatureInvalid)
 	}
 
 	// Cache the validated keys
@@ -339,22 +339,23 @@ func verifyRRSIG(sig *dns.RRSIG, keys []*dns.DNSKEY, rrset []dns.RR) error {
 	return fmt.Errorf("%w: %v", ErrSignatureInvalid, lastErr)
 }
 
-// verifyDNSKEYWithDS verifies that at least one of the provided KSKs
-// matches one of the DS records by computing the DS digest from the key
-// and comparing it.
-func verifyDNSKEYWithDS(ksk []*dns.DNSKEY, ds []*dns.DS) error {
-	for _, d := range ds {
-		for _, key := range ksk {
+// filterKeysByDS returns the subset of keys whose computed DS digest matches
+// one of the provided DS records.
+func filterKeysByDS(keys []*dns.DNSKEY, ds []*dns.DS) []*dns.DNSKEY {
+	var result []*dns.DNSKEY
+	for _, key := range keys {
+		for _, d := range ds {
 			computed := key.ToDS(d.DigestType)
 			if computed == nil {
 				continue
 			}
 			if strings.EqualFold(computed.Digest, d.Digest) {
-				return nil
+				result = append(result, key)
+				break
 			}
 		}
 	}
-	return ErrDSMismatch
+	return result
 }
 
 // rrsetKey identifies an RRset by name and type.
