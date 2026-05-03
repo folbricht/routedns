@@ -28,6 +28,9 @@ type ListenOptions struct {
 
 	// Linux socket options for fwmark and interface binding.
 	SocketOptions SocketOptions
+
+	// Enable PROXY protocol v1/v2 header parsing on incoming TCP connections.
+	ProxyProtocol bool
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
@@ -46,7 +49,7 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
 	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
-	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() || (s.opt.ProxyProtocol && strings.HasPrefix(s.Net, "tcp")) {
 		return s.startWithSocketSetup()
 	}
 	return s.ListenAndServe()
@@ -59,7 +62,7 @@ func (s DNSListener) startWithSocketSetup() error {
 		if err != nil {
 			return err
 		}
-		s.Server.Listener = ln
+		s.Server.Listener = proxyProtocolListener(ln, s.opt.ProxyProtocol)
 	case strings.HasPrefix(s.Net, "udp"):
 		pc, err := ListenPacketInNetNS(context.Background(), s.opt.NetNS, s.Net, s.Addr, s.opt.SocketOptions)
 		if err != nil {

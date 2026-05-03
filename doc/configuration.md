@@ -54,6 +54,7 @@
   - [SOCKS5 Proxy Support](#socks5-proxy-support)
   - [Network Namespace Support](#network-namespace-support)
   - [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
+  - [PROXY Protocol Support](#proxy-protocol-support)
 - [Templates](#templates)
 
 ## Overview
@@ -135,6 +136,7 @@ Common options for all listeners:
 - `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 - `fwmark` - Linux firewall mark (`SO_MARK`) to set on the listening socket. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 - `bind-if` - Bind the listening socket to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or restricting a listener to one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
+- `proxy-protocol` - Enable PROXY protocol v1/v2 header parsing on incoming connections. When enabled, the real client IP from the PROXY header (sent by an upstream load balancer) is used instead of the direct connection's remote address. Only applies to TCP-based listeners (`tcp`, `dot`, `doh` with TCP transport). Optional, defaults to `false`. See [PROXY Protocol Support](#proxy-protocol-support).
 
 Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificates, keys and peer validation.
 
@@ -2286,6 +2288,48 @@ fwmark = 12
 ```
 
 Example config files: [fwmark-bind-if.toml](../cmd/routedns/example-config/fwmark-bind-if.toml)
+
+### PROXY Protocol Support
+
+When RouteDNS is deployed behind a load balancer (e.g., HAProxy, NGINX, or cloud load balancers), the real client IP is normally lost because all connections appear to come from the load balancer. The [PROXY protocol](https://www.haproxy.org/download/2.0/doc/proxy-protocol.txt) solves this by having the load balancer prepend a header with the original client IP to each TCP connection.
+
+Setting `proxy-protocol = true` on a listener enables parsing of PROXY protocol v1 (text) and v2 (binary) headers. The real client IP from the header is then used throughout the pipeline — in logging, ACLs, routing, and any other component that uses the client IP.
+
+This option only applies to TCP-based listeners: `tcp`, `dot`, `doh` (with TCP transport), `admin` (with TCP transport), and `odoh`. UDP-based listeners (`udp`, `doq`, `dtls`, DoH with QUIC transport) are not affected.
+
+**TCP listener behind a load balancer:**
+
+```toml
+[listeners.tcp-behind-lb]
+address = ":53"
+protocol = "tcp"
+resolver = "upstream"
+proxy-protocol = true
+```
+
+**DoT listener behind a load balancer:**
+
+```toml
+[listeners.dot-behind-lb]
+address = ":853"
+protocol = "dot"
+resolver = "upstream"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+proxy-protocol = true
+```
+
+**DoH listener behind a load balancer:**
+
+```toml
+[listeners.doh-behind-lb]
+address = ":443"
+protocol = "doh"
+resolver = "upstream"
+server-crt = "/path/to/server.crt"
+server-key = "/path/to/server.key"
+proxy-protocol = true
+```
 
 ## Templates
 
