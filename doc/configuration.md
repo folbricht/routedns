@@ -20,6 +20,7 @@
   - [Fail-Rotate group](#fail-rotate-group)
   - [Fail-Back group](#fail-back-group)
   - [Random group](#random-group)
+  - [Load-Balance group](#load-balance-group)
   - [Fastest group](#fastest-group)
   - [Replace](#replace)
   - [Query Blocklist](#query-blocklist)
@@ -622,6 +623,36 @@ resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
 ```
 
 Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
+
+### Load-Balance group
+
+This group picks one resolver for each query using weighted random selection. Resolvers with lower average response times receive more traffic. If a resolver fails, the request is retried with another resolver and the failed resolver receives a response-time penalty, reducing how often it is selected later.
+
+Unlike the [Fastest group](#fastest-group), this group does not send each query to every resolver.
+
+On startup, all resolvers have equal weight. If the selected resolver fails or times out, the group tries the same query with another resolver until one succeeds or all resolvers have been tried.
+
+#### Configuration
+
+Load-Balance groups are instantiated with `type = "load-balance"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - An array of upstream resolvers or modifiers.
+- `failure-penalty` - Floor penalty in seconds applied to a failed resolver's response-time average. The actual penalty recorded is `max(elapsed, failure-penalty)`. Higher values reduce how often failed resolvers are selected while they recover. Default `5`.
+- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a retry with another resolver. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a retry with another resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
+
+#### Examples
+
+```toml
+[groups.load-balanced]
+type = "load-balance"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+failure-penalty = 5
+```
+
+Example config files: [load-balance.toml](../cmd/routedns/example-config/load-balance.toml)
 
 ### Fastest group
 

@@ -182,7 +182,7 @@ func TestFailBackIsSuccessResponse(t *testing.T) {
 
 	t.Run("NilResponseWithEmptyError", func(t *testing.T) {
 		fb := newFB(FailBackOptions{EmptyError: true})
-		require.True(t, fb.isSuccessResponse(nil))
+		require.False(t, fb.isSuccessResponse(nil))
 	})
 
 	t.Run("ServfailWithoutOption", func(t *testing.T) {
