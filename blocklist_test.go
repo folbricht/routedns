@@ -37,6 +37,14 @@ func TestBlocklistRegexp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, r.HitCount())
 	require.Equal(t, dns.RcodeNameError, a.Rcode)
+
+	// A mixed-case variation of a blocked name must still be blocked (DNS
+	// names are case-insensitive); it must not be forwarded upstream.
+	q.SetQuestion("X.EvIl.TeSt.", dns.TypeA)
+	a, err = b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.HitCount())
+	require.Equal(t, dns.RcodeNameError, a.Rcode)
 }
 
 func TestBlocklistAllow(t *testing.T) {
@@ -81,4 +89,18 @@ func TestBlocklistAllow(t *testing.T) {
 	_, err = b.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 2, r.HitCount())
+
+	// A mixed-case blocked name must still be blocked (not forwarded).
+	q.SetQuestion("X.EvIl.TeSt.", dns.TypeA)
+	a, err = b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 2, r.HitCount())
+	require.Equal(t, dns.RcodeNameError, a.Rcode)
+
+	// A mixed-case variation of an allowlisted name must still be allowed
+	// through, consistent with case-insensitive DNS semantics.
+	q.SetQuestion("GoOd.EvIl.TeSt.", dns.TypeA)
+	_, err = b.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 3, r.HitCount())
 }
