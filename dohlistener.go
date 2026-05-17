@@ -226,7 +226,13 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 
 	// TODO: Prefer RFC 7239 Forwarded once https://github.com/golang/go/issues/30963
 	//       is resolved and provides a safe parser.
-	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	//
+	// A request may carry more than one X-Forwarded-For header line; some
+	// reverse proxies append a new line instead of extending the existing
+	// one. Per RFC 7230 these are equivalent to a single comma-separated
+	// value in receive order, so flatten them all. Header.Get would only
+	// see the first (potentially attacker-supplied) line.
+	xForwardedFor := strings.Join(r.Header.Values("X-Forwarded-For"), ", ")
 
 	// Simple case: No proxy (or empty/long X-Forwarded-For).
 	if s.opt.HTTPProxyNet == nil || xForwardedFor == "" || len(xForwardedFor) >= 1024 {
@@ -236,7 +242,7 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 	// If our client is a reverse proxy then use the last entry in X-Forwarded-For.
 	chain := strings.Split(xForwardedFor, ", ")
 	if clientIP != nil && s.opt.HTTPProxyNet.Contains(clientIP) {
-		if ip := net.ParseIP(chain[len(chain)-1]); ip != nil {
+		if ip := net.ParseIP(strings.TrimSpace(chain[len(chain)-1])); ip != nil {
 			// Ignore XFF when the client is local to the proxy.
 			if !ip.IsLoopback() {
 				return ip

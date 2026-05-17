@@ -214,6 +214,16 @@ func TestClientBehindProxy(t *testing.T) {
 	r.Header.Add("X-Forwarded-For", "192.168.1.2, 10.0.0.2")
 	client = s.extractClientAddress(r)
 	require.Equal(t, "10.0.1.6", client.String())
+
+	// The attacker sends a spoofed X-Forwarded-For and our proxy appends
+	// its own as a separate header line (as HAProxy and others do). The
+	// spoofed first line must be ignored in favor of the proxy-supplied one.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Forwarded-For", "1.2.3.4")
+	r.Header.Add("X-Forwarded-For", "10.0.1.5")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "10.0.1.5", client.String())
 }
 
 func TestIPv6Proxy(t *testing.T) {
