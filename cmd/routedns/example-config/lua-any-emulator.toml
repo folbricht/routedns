@@ -1,0 +1,40 @@
+# Emulates ANY queries by querying common record types individually and
+# merging the results. Routes ANY queries to the Lua emulator, everything
+# else goes directly upstream.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.any-emulator]
+type = "lua"
+resolvers = ["cloudflare-dot"]
+lua-script = """
+function Resolve(msg, ci)
+    local reply = Message.new():set_reply(msg)
+    local results = {}
+    for _, t in ipairs({TypeA, TypeAAAA, TypeMX, TypeTXT, TypeCNAME, TypeNS, TypeSOA, TypeSRV}) do
+        local q = Message.new()
+        q.questions = { Question.new(msg.questions[1].name, t) }
+        q.recursion_desired = msg.recursion_desired
+        local a, err = Resolvers[1]:resolve(q, ci)
+        if err == nil and a ~= nil then
+            for _, rr in ipairs(a.answer) do
+                results[#results + 1] = rr
+            end
+        end
+    end
+    reply.answer = results
+    return reply, nil
+end
+"""
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "any-emulator"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "any-emulator"

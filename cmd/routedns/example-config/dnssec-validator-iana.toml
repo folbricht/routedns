@@ -1,0 +1,25 @@
+# DNSSEC validator using a trust anchor fetched from a URL.
+#
+# Instead of the built-in IANA root anchor (see dnssec-validator.toml) or
+# explicitly configured anchors (see dnssec-validator-trust-anchors.toml),
+# the trust anchor is loaded at startup from the official IANA root-anchors
+# XML. This keeps the anchor current without hard-coding key digests.
+
+[resolvers.cloudflare-dot]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[groups.dnssec-validated]
+type = "dnssec-validator"
+resolvers = ["cloudflare-dot"]
+dnssec-trust-anchor-url = "https://data.iana.org/root-anchors/root-anchors.xml"
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dnssec-validated"
+
+[listeners.local-tcp]
+address = "127.0.0.1:53"
+protocol = "tcp"
+resolver = "dnssec-validated"

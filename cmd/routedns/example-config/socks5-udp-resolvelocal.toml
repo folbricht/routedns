@@ -1,0 +1,16 @@
+# DNS though SOCKS. The server address is given as a hostname and instead
+# of resolving it on the SOCKS proxy, we want to resolve it locally (which
+# could be done with a bootstrap-resolver).
+
+[resolvers.cloudflare-udp]
+address = "one.one.one.one:53"
+protocol = "udp"
+socks5-address = "127.0.0.1:1080"
+socks5-username = "test"
+socks5-password = "test"
+socks5-resolve-local = true
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "cloudflare-udp"
