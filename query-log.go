@@ -54,7 +54,9 @@ func NewQueryLogResolver(id string, resolver Resolver, opt QueryLogResolverOptio
 		return nil, fmt.Errorf("invalid output format %q", opt.OutputFormat)
 	}
 	return &QueryLogResolver{
+		id:       id,
 		resolver: resolver,
+		opt:      opt,
 		logger:   logger,
 	}, nil
 }

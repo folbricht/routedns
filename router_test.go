@@ -56,7 +56,7 @@ func TestRouterClass(t *testing.T) {
 
 	// ClassAny should go to r1
 	q.Question = make([]dns.Question, 1)
-	q.Question[0] = dns.Question{"miek.nl.", dns.TypeMX, dns.ClassANY}
+	q.Question[0] = dns.Question{Name: "miek.nl.", Qtype: dns.TypeMX, Qclass: dns.ClassANY}
 	_, err = router.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 1, r1.HitCount())
