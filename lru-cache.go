@@ -25,6 +25,8 @@ type lruKey struct {
 	Question dns.Question
 	Net      string
 	Do       bool
+	CD       bool  // RFC 4035 §4.7 / RFC 6840 §5.9: CD=1 responses are unvalidated and must not be served to CD=0 clients
+	ECSMask  uint8 // ECS source prefix length; responses with differing scope must not collide
 }
 
 type cacheAnswer struct {
@@ -215,7 +217,7 @@ func lruKeyFromQuery(q *dns.Msg) lruKey {
 	question := q.Question[0]
 	// disregard case of the question name when storing
 	question.Name = strings.ToLower(question.Name)
-	key := lruKey{Question: question}
+	key := lruKey{Question: question, CD: q.CheckingDisabled}
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
@@ -224,6 +226,7 @@ func lruKeyFromQuery(q *dns.Msg) lruKey {
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
 				key.Net = subnet.Address.String()
+				key.ECSMask = subnet.SourceNetmask
 			}
 		}
 	}
