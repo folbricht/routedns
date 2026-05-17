@@ -64,7 +64,10 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return r.resolver.Resolve(q, ci)
 	}
 
-	// Modify the query string
+	// Modify the query on a copy so the caller's message (which a listener
+	// may reuse to build a SERVFAIL/error response) is never mutated and
+	// the rewritten internal name cannot leak back to the client.
+	q = q.Copy()
 	q.Question[0].Name = newName
 
 	// Send the query upstream
