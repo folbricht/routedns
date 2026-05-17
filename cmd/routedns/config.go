@@ -267,7 +267,7 @@ func loadConfig(name ...string) (config, error) {
 		}
 		b.WriteString("\n")
 	}
-	_, err := toml.DecodeReader(b, &c)
+	_, err := toml.NewDecoder(b).Decode(&c)
 	return c, err
 }
 
