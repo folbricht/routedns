@@ -1,0 +1,41 @@
+# Static responder that builds a response based on the query name
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "static"
+
+[groups.static]
+type   = "static-responder"
+question = '^(\d+)-(\d+)-(\d+)-(\d+)\.rebind\.$'
+answer = ["IN A $1.2.3.4"]
+ns = [
+    "domain.com. 18000 IN NS ns$2.domain.com.",
+    "domain.com. 18000 IN NS ns2.domain.com.",
+]
+extra = [
+    "ns1.domain.com. 1800 IN A $3.$4.0.1",
+    "ns1.domain.com. 1800 IN AAAA ::1",
+    "ns2.domain.com. 1800 IN A 127.0.0.1",
+    "ns2.domain.com. 1800 IN AAAA ::1",
+]
+
+# [groups.static]
+# type      = "static-responder"
+# question  = '^(.+)\.$'
+# answer    = [ "IN A 0.0.0.0" ]
+# edns0-ede = { code = 15, text = "IP $1 is in the blocklist" }
+
+# [groups.static]
+# type   = "static-responder"
+# answer = ["IN A 1.2.3.4"]
+# ns = [
+#     "domain.com. 18000 IN NS ns1.domain.com.",
+#     "domain.com. 18000 IN NS ns2.domain.com.",
+# ]
+# extra = [
+#     "ns1.domain.com. 1800 IN A 127.0.0.1",
+#     "ns1.domain.com. 1800 IN AAAA ::1",
+#     "ns2.domain.com. 1800 IN A 127.0.0.1",
+#     "ns2.domain.com. 1800 IN AAAA ::1",
+# ]
