@@ -128,6 +128,30 @@ end`,
 	}
 }
 
+func TestLuaQuestionInPlaceMutation(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	msg.questions[1].name = "blocked.invalid."
+	return Resolvers[1]:resolve(msg, ci)
+end`,
+	}
+
+	var ci ClientInfo
+	resolver := new(TestResolver)
+
+	r, err := NewLua("test-lua", opt, resolver)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("attacker.example.com.", dns.TypeA)
+
+	answer, err := r.Resolve(q, ci)
+	require.NoError(t, err)
+	require.Equal(t, 1, resolver.HitCount())
+	require.Equal(t, "blocked.invalid.", answer.Question[0].Name)
+}
+
 func TestLuaQuestionOperations(t *testing.T) {
 	opt := LuaOptions{
 		Script: `
