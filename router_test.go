@@ -159,4 +159,27 @@ func TestRouterECSSource(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, r1.HitCount())
 	require.Equal(t, 2, r2.HitCount())
+
+	// A client-supplied (spoofed) ECS ahead of one appended by a trusted
+	// proxy: the last option must win, so this matches route1 (r1) based on
+	// the proxy's value, not the spoofed leading one.
+	o2 := new(dns.OPT)
+	o2.Hdr.Name = "."
+	o2.Hdr.Rrtype = dns.TypeOPT
+	spoofed := new(dns.EDNS0_SUBNET)
+	spoofed.Code = dns.EDNS0SUBNET
+	spoofed.Family = 1
+	spoofed.SourceNetmask = 32
+	spoofed.Address = net.ParseIP("192.168.1.1") // does not match 10.0.0.0/24
+	proxy := new(dns.EDNS0_SUBNET)
+	proxy.Code = dns.EDNS0SUBNET
+	proxy.Family = 1
+	proxy.SourceNetmask = 32
+	proxy.Address = net.ParseIP("10.0.0.1") // matches 10.0.0.0/24
+	o2.Option = append(o2.Option, spoofed, proxy)
+	q.Extra = append(q.Extra, o2)
+	_, err = router.Resolve(q, ClientInfo{SourceIP: net.ParseIP("192.168.1.100")})
+	require.NoError(t, err)
+	require.Equal(t, 2, r1.HitCount())
+	require.Equal(t, 2, r2.HitCount())
 }
