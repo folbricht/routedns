@@ -61,6 +61,109 @@ func TestDomainDB(t *testing.T) {
 	}
 }
 
+// TestDomainDBOverlap covers exact rules that overlap with more-specific
+// rules. The trie's exact-match marker must survive regardless of the
+// order in which the overlapping rules are inserted.
+func TestDomainDBOverlap(t *testing.T) {
+	cases := []struct {
+		name  string
+		rules []string
+		tests []struct {
+			q     string
+			match bool
+		}
+	}{
+		{
+			name:  "exact apex then exact subdomain",
+			rules: []string{"domain.com", "sub.domain.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"domain.com.", true},
+				{"sub.domain.com.", true},
+				{"other.domain.com.", false},
+			},
+		},
+		{
+			name:  "exact subdomain then exact apex",
+			rules: []string{"sub.domain.com", "domain.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"domain.com.", true},
+				{"sub.domain.com.", true},
+				{"other.domain.com.", false},
+			},
+		},
+		{
+			name:  "exact apex then deep exact subdomain",
+			rules: []string{"domain.com", "sub.domain.com", "deep.sub.domain.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"domain.com.", true},
+				{"sub.domain.com.", true},
+				{"deep.sub.domain.com.", true},
+				{"x.sub.domain.com.", false},
+			},
+		},
+		{
+			name:  "apex+sub rule then exact apex (shared dot sentinel untouched)",
+			rules: []string{".domain.com", "domain.com", ".other.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"domain.com.", true},
+				{"sub.domain.com.", true},
+				{"other.com.", true},
+				{"sub.other.com.", true},
+			},
+		},
+		{
+			name:  "wildcard rule then exact apex (shared star sentinel untouched)",
+			rules: []string{"*.domain.com", "*.other.com", "domain.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"domain.com.", true},
+				{"sub.domain.com.", true},
+				{"other.com.", false},
+				{"sub.other.com.", true},
+			},
+		},
+		{
+			name:  "exact tld then exact apex under it",
+			rules: []string{"com", "domain.com"},
+			tests: []struct {
+				q     string
+				match bool
+			}{
+				{"com.", true},
+				{"domain.com.", true},
+				{"other.com.", false},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := NewDomainDB("testlist", NewStaticLoader(c.rules))
+			require.NoError(t, err)
+			for _, test := range c.tests {
+				msg := new(dns.Msg)
+				msg.SetQuestion(test.q, dns.TypeA)
+				_, _, _, ok := m.Match(msg)
+				require.Equal(t, test.match, ok, "rules=%v query=%s", c.rules, test.q)
+			}
+		})
+	}
+}
+
 func TestDomainSubdomainDB(t *testing.T) {
 	loader := NewStaticLoader([]string{
 		"domain1.com",     // bare entry: apex + subdomains

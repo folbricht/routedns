@@ -29,6 +29,15 @@ type DomainDB struct {
 
 type node map[string]node
 
+// exactKey marks a node as an exact-match terminal that must also act
+// as an interior node for more-specific rules. A nil/empty node still
+// means an exact terminal on its own; exactKey is only added when the
+// same node additionally carries children or other sentinels so the
+// marker isn't masked. The value can never collide with a real label
+// (rules are split on ".", so labels never contain ".") nor with the
+// "" (apex+sub) or "*" (sub-only) sentinels.
+const exactKey = "."
+
 var _ BlocklistDB = &DomainDB{}
 
 // NewDomainDB returns a new instance of a matcher for a list of domain rules.
@@ -99,9 +108,42 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 					subNode = make(node)
 				}
 				n[part] = subNode
-			} else if i != 0 && isSharedShape(subNode) {
+				n = subNode
+				continue
+			}
+
+			// The path segment already exists.
+			if i == 0 {
+				// This rule is an exact match terminating here. A
+				// nil/empty leaf already means an exact terminal, and a
+				// "" sentinel already matches the apex, so in both
+				// cases there's nothing to add. Otherwise the node also
+				// acts as an interior node for more-specific rules, so
+				// record an explicit exact marker that survives
+				// alongside the children. Clone shared shapes before
+				// mutating so siblings sharing the instance aren't
+				// corrupted.
+				if len(subNode) == 0 {
+					break
+				}
+				if _, apex := subNode[""]; apex {
+					break
+				}
+				if isSharedShape(subNode) {
+					subNode = maps.Clone(subNode)
+					n[part] = subNode
+				}
+				subNode[exactKey] = nil
+				break
+			}
+
+			// Descending through an existing segment. Clone/expand
+			// shared shapes so sibling paths that share the instance
+			// aren't corrupted, preserving an exact terminal that a
+			// shorter rule stored here as a nil leaf.
+			if isSharedShape(subNode) {
 				if subNode == nil {
-					subNode = make(node)
+					subNode = node{exactKey: nil}
 				} else {
 					subNode = maps.Clone(subNode)
 				}
@@ -171,13 +213,14 @@ func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, boo
 		}
 		n = subNode
 	}
+	_, exact := n[exactKey]
 	return nil,
 		nil,
 		&BlocklistMatch{
 			List: m.name,
 			Rule: matchedDomainParts("", matched),
 		},
-		len(n) == 0 // exact match
+		len(n) == 0 || exact // exact match
 }
 
 func (m *DomainDB) String() string {
