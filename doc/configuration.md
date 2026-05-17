@@ -1374,6 +1374,14 @@ The `ecs-source` field allows routing based on the IP address provided in the ED
 
 **Important:** To prevent leaking ECS data to upstream resolvers, use an `ecs-modifier` with `ecs-op = "delete"` before forwarding queries. ECS data contains information about the original client's IP address, which may compromise privacy if shared with upstream resolvers. Removing ECS data ensures that upstream resolvers only see the proxy's IP address.
 
+**Security note — ECS is client-controlled:** Unlike `source`, which is derived from the transport connection and cannot be forged, `ecs-source` matches on the ECS option carried in the query itself. Any client that can reach RouteDNS directly can put an arbitrary address in that option and steer routing — bypassing security-relevant policies such as parental controls or per-network filtering. `ecs-source` is only safe for policy decisions when the ECS value is written by a component you trust:
+
+- RouteDNS must **not** be directly reachable by untrusted clients. Place it behind the trusted forwarder/proxy that adds the ECS option and firewall off direct access.
+- Constrain the route with `source` so the ECS value is only honored when the query actually arrives from the trusted proxy, for example `{ source = "10.0.0.1/32", ecs-source = "192.168.1.10/32", resolver = "..." }`. Both conditions must match (logical AND), so a query from any other source IP will not match the ECS route regardless of its ECS contents.
+- Prefer a forwarder that **replaces** the client's ECS option rather than appending to it. RouteDNS evaluates the *last* ECS option in the query, so a proxy that appends its own option after a client-supplied one will take precedence; a proxy that appends but leaves the client's option untouched is still safe, but one that does not normalize at all is not.
+
+Note also that the router runs *before* groups in the pipeline, so an `ecs-modifier` group cannot normalize ECS ahead of the routing decision unless it is placed between the listener and the router (`listener → ecs-modifier → router`).
+
 #### Route Evaluation Order
 
 Routes are evaluated sequentially, and the first matching route is used. **Order matters** when defining routes:

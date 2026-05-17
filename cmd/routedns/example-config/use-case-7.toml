@@ -1,32 +1,58 @@
 # RouteDNS config demonstrating routing based on EDNS Client Subnet (ECS).
 # This allows for per-client policies even when RouteDNS is behind another
 # resolver that forwards the original client IP in an ECS record.
+#
+# SECURITY: ECS is carried in the query and is client-controlled. Used on its
+# own, `ecs-source` can be spoofed by any client able to reach RouteDNS
+# directly, bypassing security-relevant policies (here, the adblock filter).
+# This example uses the safe pattern:
+#
+#   1. RouteDNS only listens on the internal interface facing the trusted
+#      forwarder (10.0.0.1), not on networks reachable by untrusted clients.
+#   2. Each ecs-source route is additionally constrained with `source` so the
+#      ECS value is only honored when the query actually arrives from the
+#      trusted forwarder. Both conditions must match (logical AND).
+#   3. ECS is stripped before forwarding upstream to avoid leaking the
+#      original client's address.
 
-# Listener for the local network, receiving queries from the frontend resolver.
+# Listener for the internal network, receiving queries from the trusted
+# frontend resolver/proxy at 10.0.0.1 only.
 [listeners.local-udp]
-address = ":53"
+address = "10.0.0.2:53"
 protocol = "udp"
 resolver = "ecs-router"
 
-# A router that inspects the ECS data in incoming queries.
+# A router that inspects the ECS data in incoming queries. The `source`
+# constraint pins each ECS route to the trusted forwarder's IP so a client
+# that reaches RouteDNS directly cannot steer routing with a forged ECS.
 [routers.ecs-router]
 routes = [
-    # Route 1: Queries with an ECS source of 192.168.1.10/32 are sent to the adblocker.
-    { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
+    # Route 1: Queries from the trusted forwarder with an ECS source of
+    # 192.168.1.10/32 are sent to the adblocker.
+    { source = "10.0.0.1/32", ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
 
-    # Route 2: Queries with an ECS source of 192.168.1.20/32 are sent to the unfiltered resolver.
-    { ecs-source = "192.168.1.20/32", resolver = "unfiltered-resolver" },
+    # Route 2: Queries from the trusted forwarder with an ECS source of
+    # 192.168.1.20/32 are sent to the unfiltered resolver.
+    { source = "10.0.0.1/32", ecs-source = "192.168.1.20/32", resolver = "remove-ecs" },
 
-    # Route 3 (Default): All other queries (including those without ECS) go to the unfiltered resolver.
-    { resolver = "unfiltered-resolver" },
+    # Route 3 (Default): Everything else (no/other ECS, other source IPs,
+    # direct clients) goes to the unfiltered resolver with ECS removed.
+    { resolver = "remove-ecs" },
 ]
 
-# A simple blocklist resolver for the "strict" policy.
-# It blocks queries for "doubleclick.net" and forwards others.
+# A simple blocklist resolver for the "strict" policy. It blocks queries for
+# "doubleclick.net" and forwards others (with ECS removed first).
 [groups.adblock-resolver]
 type = "blocklist-v2"
-resolvers = ["unfiltered-resolver"]
+resolvers = ["remove-ecs"]
 blocklist = ["doubleclick.net"]
+
+# Strip the client's ECS option before forwarding upstream so the original
+# client address is not leaked to the unfiltered resolver.
+[groups.remove-ecs]
+type = "ecs-modifier"
+resolvers = ["unfiltered-resolver"]
+ecs-op = "delete"
 
 # An unfiltered, secure upstream resolver (Cloudflare DoT).
 [resolvers.unfiltered-resolver]
