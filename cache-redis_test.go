@@ -2,12 +2,45 @@ package rdns
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
 )
+
+// The Redis cache key must distinguish CD=0 from CD=1 (RFC 4035 §4.7 /
+// RFC 6840 §5.9) and ECS responses with a different source-prefix length.
+func TestRedisKeyFromQuery(t *testing.T) {
+	b := &redisBackend{}
+
+	queryCD := func(cd bool) *dns.Msg {
+		q := new(dns.Msg)
+		q.SetQuestion("example.com.", dns.TypeA)
+		q.CheckingDisabled = cd
+		return q
+	}
+	if b.keyFromQuery(queryCD(false)) == b.keyFromQuery(queryCD(true)) {
+		t.Fatal("CD=0 and CD=1 queries produced the same Redis cache key")
+	}
+
+	queryECS := func(mask uint8) *dns.Msg {
+		q := new(dns.Msg)
+		q.SetQuestion("example.com.", dns.TypeA)
+		q.SetEdns0(4096, false)
+		ecs := new(dns.EDNS0_SUBNET)
+		ecs.Code = dns.EDNS0SUBNET
+		ecs.Family = 1
+		ecs.SourceNetmask = mask
+		ecs.Address = net.IP{192, 0, 2, 0}
+		q.IsEdns0().Option = append(q.IsEdns0().Option, ecs)
+		return q
+	}
+	if b.keyFromQuery(queryECS(24)) == b.keyFromQuery(queryECS(16)) {
+		t.Fatal("ECS queries with different source-prefix lengths produced the same Redis cache key")
+	}
+}
 
 func TestEncodeDecode(t *testing.T) {
 	// Create a test DNS message
