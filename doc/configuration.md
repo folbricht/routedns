@@ -140,8 +140,8 @@ Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-
 
 - `server-crt` - Server certificate file. Required.
 - `server-key` - Server key file. Required.
-- `ca` - CA to validate client certificates. Optional. Uses the operating system's CA store by default.
-- `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional.
+- `ca` - CA to validate client certificates. Optional, but required when `mutual-tls` is enabled.
+- `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional. When enabled, `ca` must be set; the listener will refuse to start otherwise (to avoid silently trusting the operating system's CA store for client authentication).
 
 The DNS-over-HTTPS listener also accepts the client IP address from trusted reverse proxies in a particular subnet. X-Forwarded-For headers are only used if they are provided from this subnet.
 
