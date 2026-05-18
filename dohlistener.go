@@ -234,15 +234,24 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 	// see the first (potentially attacker-supplied) line.
 	xForwardedFor := strings.Join(r.Header.Values("X-Forwarded-For"), ", ")
 
-	// Simple case: No proxy (or empty/long X-Forwarded-For).
-	if s.opt.HTTPProxyNet == nil || xForwardedFor == "" || len(xForwardedFor) >= 1024 {
+	// Simple case: No proxy or empty X-Forwarded-For.
+	if s.opt.HTTPProxyNet == nil || xForwardedFor == "" {
 		return clientIP
 	}
 
-	// If our client is a reverse proxy then use the last entry in X-Forwarded-For.
-	chain := strings.Split(xForwardedFor, ", ")
+	// If our client is a reverse proxy then use the last entry in
+	// X-Forwarded-For, i.e. the value the trusted proxy itself appended.
+	// Locate it by the final comma rather than splitting the whole header:
+	// an attacker behind a permissive proxy can pad the (client-controlled)
+	// prefix arbitrarily, so splitting it would allocate over attacker input
+	// and an overall length cap would discard the trusted last entry,
+	// misattributing the request to the proxy's own address.
+	last := xForwardedFor
+	if i := strings.LastIndex(xForwardedFor, ","); i >= 0 {
+		last = xForwardedFor[i+1:]
+	}
 	if clientIP != nil && s.opt.HTTPProxyNet.Contains(clientIP) {
-		if ip := net.ParseIP(strings.TrimSpace(chain[len(chain)-1])); ip != nil {
+		if ip := net.ParseIP(strings.TrimSpace(last)); ip != nil {
 			// Ignore XFF when the client is local to the proxy.
 			if !ip.IsLoopback() {
 				return ip

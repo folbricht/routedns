@@ -3,6 +3,7 @@ package rdns
 import (
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,6 +225,17 @@ func TestClientBehindProxy(t *testing.T) {
 	r.Header.Add("X-Forwarded-For", "10.0.1.5")
 	client = s.extractClientAddress(r)
 	require.Equal(t, "10.0.1.5", client.String())
+
+	// The attacker pads the (client-controlled) X-Forwarded-For prefix past
+	// 1KB to try to make the request be attributed to the trusted proxy IP.
+	// Our proxy still appends the real client IP as the last entry, which
+	// must be used regardless of overall header length.
+	r, _ = http.NewRequest("GET", "https://www.example.com", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	padding := strings.Repeat("A", 1100)
+	r.Header.Add("X-Forwarded-For", "203.0.113.50, "+padding+", 203.0.113.50")
+	client = s.extractClientAddress(r)
+	require.Equal(t, "203.0.113.50", client.String())
 }
 
 func TestIPv6Proxy(t *testing.T) {
