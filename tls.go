@@ -3,6 +3,7 @@ package rdns
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -10,6 +11,9 @@ import (
 // TLSServerConfig is a convenience function that builds a tls.Config instance for TLS servers
 // based on common options and certificate+key files.
 func TLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*tls.Config, error) {
+	if mutualTLS && caFile == "" {
+		return nil, errors.New("mutual-tls requires a ca to be configured to verify client certificates")
+	}
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}
