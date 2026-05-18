@@ -10,7 +10,7 @@ resolver = "load-balanced"
 [groups.load-balanced]
 type = "load-balance"
 resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
-failure-penalty = 5
+failure-penalty = 5  # optional: penalize persistently failing resolvers (default 0, disabled)
 
 [resolvers.cloudflare-dot-1]
 address = "1.1.1.1:853"

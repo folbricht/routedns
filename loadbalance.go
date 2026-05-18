@@ -13,9 +13,10 @@ import (
 
 const (
 	defaultLoadBalanceInitialRTT       = 100 * time.Millisecond
-	defaultLoadBalanceFailurePenalty   = 5 * time.Second
 	defaultLoadBalanceMinimumRTTSample = time.Microsecond
 	defaultLoadBalanceEMAAlpha         = 0.1
+	// consecutive failures required before the failure-penalty is applied.
+	loadBalancePenaltyThreshold = 2
 )
 
 // LoadBalance is a resolver group that prefers resolvers with lower average
@@ -31,8 +32,9 @@ type LoadBalance struct {
 }
 
 type loadBalanceStats struct {
-	rttEMA float64 // exponential moving average in microseconds
-	count  int
+	rttEMA      float64 // exponential moving average in microseconds
+	count       int
+	consecFails int // reset to 0 on success
 }
 
 // LoadBalanceOptions contain settings for the load-balancing resolver group.
@@ -53,9 +55,6 @@ var _ Resolver = &LoadBalance{}
 
 // NewLoadBalance returns a new instance of a load-balancing resolver group.
 func NewLoadBalance(id string, opt LoadBalanceOptions, resolvers ...Resolver) *LoadBalance {
-	if opt.FailurePenalty == 0 {
-		opt.FailurePenalty = defaultLoadBalanceFailurePenalty
-	}
 	return &LoadBalance{
 		id:        id,
 		resolvers: resolvers,
@@ -99,6 +98,7 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		elapsed := time.Since(start)
 		if err == nil && r.isSuccessResponse(a) {
 			r.updateRTT(idx, elapsed)
+			r.resetFails(idx)
 			return a, nil
 		}
 
@@ -106,14 +106,16 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		r.metrics.failover.Add(1)
-		// max so a slow timeout (elapsed > configured penalty) is penalized by its actual latency.
-		penalty := max(elapsed, r.opt.FailurePenalty)
-		Log.Info("penalizing resolver", slog.Group("details",
-			slog.String("group", r.id),
-			slog.String("resolver", resolver.String()),
-			slog.Duration("penalty", penalty),
-		))
-		r.updateRTT(idx, penalty)
+		if r.opt.FailurePenalty > 0 && r.incrementFails(idx) >= loadBalancePenaltyThreshold {
+			Log.Info("penalizing resolver", slog.Group("details",
+				slog.String("group", r.id),
+				slog.String("resolver", resolver.String()),
+				slog.Duration("penalty", r.opt.FailurePenalty),
+			))
+			r.updateRTT(idx, r.opt.FailurePenalty)
+		} else {
+			r.updateRTT(idx, elapsed)
+		}
 
 		remaining = append(remaining[:pos], remaining[pos+1:]...)
 	}
@@ -175,6 +177,19 @@ func (r *LoadBalance) updateRTT(idx int, d time.Duration) {
 		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 	}
 	s.count++
+}
+
+func (r *LoadBalance) incrementFails(idx int) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stats[idx].consecFails++
+	return r.stats[idx].consecFails
+}
+
+func (r *LoadBalance) resetFails(idx int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stats[idx].consecFails = 0
 }
 
 func (r *LoadBalance) isSuccessResponse(a *dns.Msg) bool {

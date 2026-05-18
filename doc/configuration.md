@@ -626,11 +626,11 @@ Example config files: [random-resolver.toml](../cmd/routedns/example-config/rand
 
 ### Load-Balance group
 
-This group picks one resolver for each query using weighted random selection. Resolvers with lower average response times receive more traffic. If a resolver fails, the request is retried with another resolver and the failed resolver receives a response-time penalty, reducing how often it is selected later.
+This group distributes queries across all configured resolvers using weighted random selection based on measured response times. Resolvers with lower average response times receive proportionally more traffic. If the selected resolver fails, the query is retried with another resolver until one succeeds or all have been tried.
 
-Unlike the [Fastest group](#fastest-group), this group does not send each query to every resolver.
+Unlike [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), which send all traffic to a single resolver and only switch on failure, this group actively spreads load across resolvers at all times. Unlike the [Fastest group](#fastest-group), it sends each query to only one resolver rather than all of them simultaneously.
 
-On startup, all resolvers have equal weight. If the selected resolver fails or times out, the group tries the same query with another resolver until one succeeds or all resolvers have been tried.
+On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates.
 
 #### Configuration
 
@@ -639,7 +639,7 @@ Load-Balance groups are instantiated with `type = "load-balance"` in the groups 
 Options:
 
 - `resolvers` - An array of upstream resolvers or modifiers.
-- `failure-penalty` - Floor penalty in seconds applied to a failed resolver's response-time average. The actual penalty recorded is `max(elapsed, failure-penalty)`. Higher values reduce how often failed resolvers are selected while they recover. Default `5`.
+- `failure-penalty` - Penalty in seconds applied to a failed resolver's response-time average after 2 consecutive failures. A single transient failure is absorbed without penalty. Higher values reduce how often persistently failing resolvers are selected. Default `0` (disabled).
 - `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a retry with another resolver. This can happen when DNSSEC validation fails for example. Default `false`.
 - `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a retry with another resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
 

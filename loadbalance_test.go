@@ -57,7 +57,37 @@ func TestLoadBalanceRetriesOnError(t *testing.T) {
 	require.NotNil(t, a)
 	require.Equal(t, 1, bad.HitCount())
 	require.Equal(t, 1, good.HitCount())
-	require.Equal(t, float64(defaultLoadBalanceFailurePenalty.Microseconds()), g.stats[0].rttEMA)
+}
+
+// TestLoadBalanceTransientFailure verifies that a single failure does not
+// trigger the penalty — only consecutive failures at or above the threshold do.
+func TestLoadBalanceTransientFailure(t *testing.T) {
+	var ci ClientInfo
+	calls := 0
+	flaky := &namedTestResolver{name: "flaky"}
+	flaky.ResolveFunc = func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		calls++
+		if calls == 1 {
+			return nil, errors.New("transient")
+		}
+		return new(dns.Msg), nil
+	}
+
+	penalty := 5 * time.Second
+	g := NewLoadBalance("test-lb", LoadBalanceOptions{FailurePenalty: penalty}, flaky)
+	g.randFloat = func() float64 { return 0 }
+
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+
+	// First call: fails once (below threshold), no penalty applied.
+	g.Resolve(q, ci) //nolint:errcheck
+	require.Less(t, g.stats[0].rttEMA, float64(penalty.Microseconds()),
+		"single transient failure should not apply the full penalty")
+
+	// Second call: succeeds, consecFails resets.
+	g.Resolve(q, ci) //nolint:errcheck
+	require.Equal(t, 0, g.stats[0].consecFails)
 }
 
 func TestLoadBalanceFailurePenaltyOption(t *testing.T) {
@@ -68,16 +98,33 @@ func TestLoadBalanceFailurePenaltyOption(t *testing.T) {
 	}
 	good := &namedTestResolver{name: "good"}
 
-	penalty := 250 * time.Millisecond
+	penalty := 5 * time.Second
 	g := NewLoadBalance("test-lb", LoadBalanceOptions{FailurePenalty: penalty}, bad, good)
 	g.randFloat = func() float64 { return 0 }
 
 	q := new(dns.Msg)
 	q.SetQuestion("test.com.", dns.TypeA)
-	_, err := g.Resolve(q, ci)
 
+	// First query: bad fails once (below threshold), good succeeds.
+	_, err := g.Resolve(q, ci)
 	require.NoError(t, err)
-	require.Equal(t, float64(penalty.Microseconds()), g.stats[0].rttEMA)
+	require.Less(t, g.stats[0].rttEMA, float64(penalty.Microseconds()),
+		"first failure should not apply penalty")
+
+	// Seed bad as the only resolver so it fails twice consecutively.
+	bad2 := &namedTestResolver{name: "bad2"}
+	bad2.ResolveFunc = func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		return nil, errors.New("failed")
+	}
+	g2 := NewLoadBalance("test-lb2", LoadBalanceOptions{FailurePenalty: penalty}, bad2)
+	g2.randFloat = func() float64 { return 0 }
+
+	g2.Resolve(q, ci) //nolint:errcheck // fail 1 — below threshold, elapsed recorded
+	require.Less(t, g2.stats[0].consecFails, loadBalancePenaltyThreshold)
+	g2.Resolve(q, ci) //nolint:errcheck // fail 2 — threshold reached, penalty applied
+	require.GreaterOrEqual(t, g2.stats[0].consecFails, loadBalancePenaltyThreshold)
+	require.Greater(t, g2.stats[0].rttEMA, float64(penalty.Microseconds())*defaultLoadBalanceEMAAlpha,
+		"penalty should influence EMA after threshold is reached")
 }
 
 func TestLoadBalanceSERVFAILOption(t *testing.T) {

@@ -123,7 +123,7 @@ type group struct {
 	ResetAfter     *int `toml:"reset-after"`     // Time in seconds after which to reset resolvers in fail-back and random groups, or 0 to reset immediately, default 60.
 	ServfailError  bool `toml:"servfail-error"`  // If true, SERVFAIL responses are considered errors and cause failover etc.
 	EmptyError     bool `toml:"empty-error"`     // If true, empty responses are considered errors and cause failover etc.
-	FailurePenalty *int `toml:"failure-penalty"` // Time in seconds used as a floor penalty for failed resolvers in load-balance groups, default 5.
+	FailurePenalty uint `toml:"failure-penalty"` // Time in seconds recorded as the RTT penalty for persistently failing resolvers in load-balance groups. 0 (default) disables the penalty.
 
 	// Cache options
 	Backend                  *cacheBackend
