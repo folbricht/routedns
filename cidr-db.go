@@ -59,6 +59,11 @@ func (m *CidrDB) Reload() (IPBlocklistDB, error) {
 }
 
 func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
+	// A nil/empty IP can't be in any network; guard here so the trie
+	// lookup never indexes into a zero-length slice and panics.
+	if len(ip) == 0 {
+		return nil, false
+	}
 	if addr := ip.To4(); addr == nil {
 		rule, ok := m.ip6.hasIP(ip)
 		return &BlocklistMatch{List: m.name, Rule: rule}, ok

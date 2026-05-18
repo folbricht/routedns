@@ -25,6 +25,8 @@ func TestCidrDB(t *testing.T) {
 		{ip: net.ParseIP("192.168.1.1"), match: false},
 		{ip: net.ParseIP("2a03:2880:f101:83:1:1:1:1"), match: true},
 		{ip: net.ParseIP("::1"), match: false},
+		{ip: nil, match: false},
+		{ip: net.IP{}, match: false},
 	}
 
 	for _, test := range tests {
