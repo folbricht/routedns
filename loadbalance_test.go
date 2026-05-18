@@ -24,9 +24,9 @@ func TestLoadBalancePickPrefersLowerAverageRTT(t *testing.T) {
 	fastest := &namedTestResolver{name: "fastest"}
 
 	g := NewLoadBalance("test-lb", LoadBalanceOptions{}, slowest, slower, fastest)
-	g.updateRTT(0, 500*time.Millisecond)
-	g.updateRTT(1, 50*time.Millisecond)
-	g.updateRTT(2, 5*time.Millisecond)
+	g.updateOnSuccess(0, 500*time.Millisecond)
+	g.updateOnSuccess(1, 50*time.Millisecond)
+	g.updateOnSuccess(2, 5*time.Millisecond)
 
 	counts := map[int]int{}
 	remaining := []int{0, 1, 2}
@@ -87,7 +87,7 @@ func TestLoadBalanceTransientFailure(t *testing.T) {
 
 	// Second call: succeeds, consecFails resets.
 	g.Resolve(q, ci) //nolint:errcheck
-	require.Equal(t, 0, g.stats[0].consecFails)
+	require.Equal(t, int32(0), g.stats[0].consecFails.Load())
 }
 
 func TestLoadBalanceFailurePenaltyOption(t *testing.T) {
@@ -120,9 +120,9 @@ func TestLoadBalanceFailurePenaltyOption(t *testing.T) {
 	g2.randFloat = func() float64 { return 0 }
 
 	g2.Resolve(q, ci) //nolint:errcheck // fail 1 — below threshold, elapsed recorded
-	require.Less(t, g2.stats[0].consecFails, loadBalancePenaltyThreshold)
+	require.Less(t, g2.stats[0].consecFails.Load(), int32(loadBalancePenaltyThreshold))
 	g2.Resolve(q, ci) //nolint:errcheck // fail 2 — threshold reached, penalty applied
-	require.GreaterOrEqual(t, g2.stats[0].consecFails, loadBalancePenaltyThreshold)
+	require.GreaterOrEqual(t, g2.stats[0].consecFails.Load(), int32(loadBalancePenaltyThreshold))
 	require.Greater(t, g2.stats[0].rttEMA, float64(penalty.Microseconds())*defaultLoadBalanceEMAAlpha,
 		"penalty should influence EMA after threshold is reached")
 }

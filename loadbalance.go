@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"log/slog"
@@ -15,7 +16,8 @@ const (
 	defaultLoadBalanceInitialRTT       = 100 * time.Millisecond
 	defaultLoadBalanceMinimumRTTSample = time.Microsecond
 	defaultLoadBalanceEMAAlpha         = 0.1
-	// consecutive failures required before the failure-penalty is applied.
+	// Two transient failures in a row are unlikely to be coincidental; apply the
+	// penalty only then to avoid suppressing a resolver that had a single slow response.
 	loadBalancePenaltyThreshold = 2
 )
 
@@ -32,9 +34,9 @@ type LoadBalance struct {
 }
 
 type loadBalanceStats struct {
-	rttEMA      float64 // exponential moving average in microseconds
+	rttEMA      float64      // exponential moving average in microseconds
 	count       int
-	consecFails int // reset to 0 on success
+	consecFails atomic.Int32 // reset to 0 on success; never read under mu
 }
 
 // LoadBalanceOptions contain settings for the load-balancing resolver group.
@@ -97,8 +99,7 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		a, err = resolver.Resolve(q, ci)
 		elapsed := time.Since(start)
 		if err == nil && r.isSuccessResponse(a) {
-			r.updateRTT(idx, elapsed)
-			r.resetFails(idx)
+			r.updateOnSuccess(idx, elapsed)
 			return a, nil
 		}
 
@@ -106,18 +107,17 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		r.metrics.failover.Add(1)
-		if r.opt.FailurePenalty > 0 && r.incrementFails(idx) >= loadBalancePenaltyThreshold {
+		penalized := r.updateOnFailure(idx, elapsed)
+		if penalized {
 			Log.Info("penalizing resolver", slog.Group("details",
 				slog.String("group", r.id),
 				slog.String("resolver", resolver.String()),
 				slog.Duration("penalty", r.opt.FailurePenalty),
 			))
-			r.updateRTT(idx, r.opt.FailurePenalty)
-		} else {
-			r.updateRTT(idx, elapsed)
 		}
 
-		remaining = append(remaining[:pos], remaining[pos+1:]...)
+		remaining[pos] = remaining[len(remaining)-1]
+		remaining = remaining[:len(remaining)-1]
 	}
 	if err == nil && a == nil {
 		err = errors.New("no active resolvers left")
@@ -144,9 +144,9 @@ func (r *LoadBalance) pick(remaining []int) int {
 	var total float64
 	for i, idx := range remaining {
 		weight := 1.0
-		stat := r.stats[idx]
-		if stat.count > 0 && stat.rttEMA > 0 {
-			weight = float64(defaultLoadBalanceInitialRTT.Microseconds()) / stat.rttEMA
+		s := &r.stats[idx]
+		if s.count > 0 && s.rttEMA > 0 {
+			weight = float64(defaultLoadBalanceInitialRTT.Microseconds()) / s.rttEMA
 		}
 		weights[i] = weight
 		total += weight
@@ -163,13 +163,13 @@ func (r *LoadBalance) pick(remaining []int) int {
 	return len(remaining) - 1
 }
 
-func (r *LoadBalance) updateRTT(idx int, d time.Duration) {
+// updateOnSuccess records a successful response time and clears the failure streak.
+func (r *LoadBalance) updateOnSuccess(idx int, d time.Duration) {
 	if d < defaultLoadBalanceMinimumRTTSample {
 		d = defaultLoadBalanceMinimumRTTSample
 	}
 	us := float64(d.Microseconds())
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	s := &r.stats[idx]
 	if s.count == 0 {
 		s.rttEMA = us
@@ -177,19 +177,33 @@ func (r *LoadBalance) updateRTT(idx int, d time.Duration) {
 		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 	}
 	s.count++
+	r.mu.Unlock()
+	r.stats[idx].consecFails.Store(0)
 }
 
-func (r *LoadBalance) incrementFails(idx int) int {
+// updateOnFailure records a failed response time and returns true if the
+// failure-penalty was applied (consecutive failure threshold reached).
+func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
+	fails := r.stats[idx].consecFails.Add(1)
+	penalize := r.opt.FailurePenalty > 0 && fails >= loadBalancePenaltyThreshold
+	d := elapsed
+	if penalize {
+		d = r.opt.FailurePenalty
+	}
+	if d < defaultLoadBalanceMinimumRTTSample {
+		d = defaultLoadBalanceMinimumRTTSample
+	}
+	us := float64(d.Microseconds())
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.stats[idx].consecFails++
-	return r.stats[idx].consecFails
-}
-
-func (r *LoadBalance) resetFails(idx int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.stats[idx].consecFails = 0
+	s := &r.stats[idx]
+	if s.count == 0 {
+		s.rttEMA = us
+	} else {
+		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
+	}
+	s.count++
+	r.mu.Unlock()
+	return penalize
 }
 
 func (r *LoadBalance) isSuccessResponse(a *dns.Msg) bool {
