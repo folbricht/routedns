@@ -77,3 +77,70 @@ func TestPipelineInFlightCleanup(t *testing.T) {
 	p.inFlight.mu.Unlock()
 	require.Equal(t, 0, n, "in-flight map should be empty after all callers timed out")
 }
+
+// A response that echoes back a matching Question must be accepted.
+func TestPipelineQuestionMatch(t *testing.T) {
+	server, client := net.Pipe()
+	go func() { // upstream that echoes the question and adds an answer
+		conn := &dns.Conn{Conn: server}
+		query, err := conn.ReadMsg()
+		if err != nil {
+			return
+		}
+		resp := new(dns.Msg)
+		resp.SetReply(query)
+		resp.Answer = []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(192, 0, 2, 1),
+		}}
+		_ = conn.WriteMsg(resp)
+	}()
+	t.Cleanup(func() { server.Close() })
+
+	df := func(address string) (*dns.Conn, error) {
+		return &dns.Conn{Conn: client}, nil
+	}
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	a, err := p.Resolve(q)
+	require.NoError(t, err)
+	require.Len(t, a.Answer, 1)
+}
+
+// A spoofed response with QDCOUNT=0 must be rejected even when the transaction
+// ID matches, instead of silently bypassing the RFC 5452 9.1 / RFC 7858 3.3
+// anti-spoofing question check.
+func TestPipelineRejectEmptyQuestion(t *testing.T) {
+	server, client := net.Pipe()
+	go func() { // upstream that replies with a matching ID but no Question
+		conn := &dns.Conn{Conn: server}
+		query, err := conn.ReadMsg()
+		if err != nil {
+			return
+		}
+		resp := new(dns.Msg)
+		resp.Id = query.Id // matching transaction ID, as a spoofer would brute-force
+		resp.Response = true
+		// Deliberately no Question section (QDCOUNT=0).
+		resp.Answer = []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(192, 0, 2, 1),
+		}}
+		_ = conn.WriteMsg(resp)
+	}()
+	t.Cleanup(func() { server.Close() })
+
+	df := func(address string) (*dns.Conn, error) {
+		return &dns.Conn{Conn: client}, nil
+	}
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err := p.Resolve(q)
+	require.Error(t, err, "response with empty question section must be rejected")
+}

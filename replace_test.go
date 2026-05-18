@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"net"
 	"testing"
 
@@ -54,4 +55,39 @@ func TestReplace(t *testing.T) {
 	require.Equal(t, "my.test.com.", a.Answer[0].Header().Name)
 	require.Equal(t, "my.test.com.", a.Question[0].Name)
 	require.Equal(t, "your.test.com.", actualQueryName)
+}
+
+// On an upstream error, Replace must not leave the caller's query mutated
+// with the rewritten (internal) name. A listener reuses that same message to
+// build the SERVFAIL response, so a leaked name would be disclosed to the
+// unauthenticated client.
+func TestReplaceErrorDoesNotLeakName(t *testing.T) {
+	var ci ClientInfo
+	var actualQueryName string
+	r := &TestResolver{
+		ResolveFunc: func(req *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			actualQueryName = req.Question[0].Name
+			return nil, errors.New("upstream failure")
+		},
+	}
+
+	exp := []ReplaceOperation{
+		{From: `^my\.(.*)`, To: `your.${1}`},
+	}
+
+	b, err := NewReplace("test-replace", r, exp...)
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("my.test.com.", dns.TypeA)
+
+	a, err := b.Resolve(q, ci)
+	require.Error(t, err)
+	require.Nil(t, a)
+
+	// The rewrite still happened upstream...
+	require.Equal(t, "your.test.com.", actualQueryName)
+	// ...but the caller's message must be untouched so the SERVFAIL built
+	// from it doesn't disclose the internal name.
+	require.Equal(t, "my.test.com.", q.Question[0].Name)
 }

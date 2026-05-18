@@ -118,12 +118,17 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 		var ecsIP net.IP
 		opt := q.IsEdns0()
 		if opt != nil {
-			// According to RFC 7871, there should be only one EDNS0_SUBNET option per query.
-			// This code checks only the first found EDNS0_SUBNET option.
+			// According to RFC 7871 there should be only one EDNS0_SUBNET
+			// option per query. If a client injects its own ECS option ahead
+			// of one added by a trusted forwarder/proxy, both are present.
+			// Use the last option found so that an option appended by a proxy
+			// takes precedence over a client-supplied (potentially spoofed)
+			// value. Note that ecs-source still trusts client-controlled data
+			// when RouteDNS is reachable directly; see the security note in
+			// doc/configuration.md.
 			for _, s := range opt.Option {
 				if e, ok := s.(*dns.EDNS0_SUBNET); ok {
 					ecsIP = e.Address
-					break
 				}
 			}
 		}

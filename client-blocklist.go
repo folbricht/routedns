@@ -70,6 +70,14 @@ func (r *ClientBlocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 	}
 
+	// Internal or anonymous lookups (DNSSEC validation, prefetch, ODoH)
+	// carry no client IP. A client blocklist can't act on a missing IP, so
+	// let the query through rather than risk matching (or panicking) on nil.
+	if ip == nil {
+		r.metrics.allowed.Add(1)
+		return r.resolver.Resolve(q, ci)
+	}
+
 	if match, ok := r.BlocklistDB.Match(ip); ok {
 		log := Log.With(
 			slog.String("id", r.id),

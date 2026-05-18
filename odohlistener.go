@@ -237,6 +237,12 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
 
+	// A nil response from the resolvers means "drop", return blank response
+	if a == nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	p, err := a.Pack()
 	if err != nil {
 		Log.Error("failed to encode response", "error", err)

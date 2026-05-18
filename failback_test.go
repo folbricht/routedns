@@ -120,7 +120,7 @@ func TestFailBackServfailOKOption(t *testing.T) {
 	a, err := g1.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
-	require.Equal(t, 0, goodResolver.hitCount)
+	require.Equal(t, 0, goodResolver.HitCount())
 
 	// With ServfailError == true
 	g2 := NewFailBack("test-fb", FailBackOptions{ResetAfter: time.Second, ServfailError: true}, failResolver, goodResolver)
@@ -128,7 +128,7 @@ func TestFailBackServfailOKOption(t *testing.T) {
 	a, err = g2.Resolve(q, ci)
 	require.NoError(t, err)
 	require.NotEqual(t, dns.RcodeServerFailure, a.Rcode)
-	require.Equal(t, 1, goodResolver.hitCount)
+	require.Equal(t, 1, goodResolver.HitCount())
 }
 
 func TestFailBackIsSuccessResponse(t *testing.T) {

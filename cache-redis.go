@@ -270,6 +270,12 @@ func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
 	key.WriteByte(':')
 	key.WriteString(dns.Type(q.Question[0].Qtype).String())
 	key.WriteByte(':')
+	// CD=1 responses are unvalidated (RFC 4035 §4.7 / RFC 6840 §5.9) and
+	// must be keyed separately from CD=0 ones.
+	if q.CheckingDisabled {
+		key.WriteString("cd")
+	}
+	key.WriteByte(':')
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
@@ -279,6 +285,8 @@ func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
 				key.WriteString(subnet.Address.String())
+				key.WriteByte('/')
+				key.WriteString(fmt.Sprintf("%d", subnet.SourceNetmask))
 			}
 		}
 	}

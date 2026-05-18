@@ -141,8 +141,8 @@ Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-
 
 - `server-crt` - Server certificate file. Required.
 - `server-key` - Server key file. Required.
-- `ca` - CA to validate client certificates. Optional. Uses the operating system's CA store by default.
-- `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional.
+- `ca` - CA to validate client certificates. Optional, but required when `mutual-tls` is enabled.
+- `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional. When enabled, `ca` must be set; the listener will refuse to start otherwise (to avoid silently trusting the operating system's CA store for client authentication).
 
 The DNS-over-HTTPS listener also accepts the client IP address from trusted reverse proxies in a particular subnet. X-Forwarded-For headers are only used if they are provided from this subnet.
 
@@ -1404,6 +1404,14 @@ Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.
 The `ecs-source` field allows routing based on the IP address provided in the EDNS Client Subnet (ECS) option ([RFC 7871](https://tools.ietf.org/html/rfc7871)). This is useful when RouteDNS is behind a resolver or proxy that forwards the original client IP using ECS, such as Dnsmasq with `add-subnet=32`. Since all queries arrive at RouteDNS from the same source IP (the proxy), standard `source` routing cannot differentiate between clients.
 
 **Important:** To prevent leaking ECS data to upstream resolvers, use an `ecs-modifier` with `ecs-op = "delete"` before forwarding queries. ECS data contains information about the original client's IP address, which may compromise privacy if shared with upstream resolvers. Removing ECS data ensures that upstream resolvers only see the proxy's IP address.
+
+**Security note — ECS is client-controlled:** Unlike `source`, which is derived from the transport connection and cannot be forged, `ecs-source` matches on the ECS option carried in the query itself. Any client that can reach RouteDNS directly can put an arbitrary address in that option and steer routing — bypassing security-relevant policies such as parental controls or per-network filtering. `ecs-source` is only safe for policy decisions when the ECS value is written by a component you trust:
+
+- RouteDNS must **not** be directly reachable by untrusted clients. Place it behind the trusted forwarder/proxy that adds the ECS option and firewall off direct access.
+- Constrain the route with `source` so the ECS value is only honored when the query actually arrives from the trusted proxy, for example `{ source = "10.0.0.1/32", ecs-source = "192.168.1.10/32", resolver = "..." }`. Both conditions must match (logical AND), so a query from any other source IP will not match the ECS route regardless of its ECS contents.
+- Prefer a forwarder that **replaces** the client's ECS option rather than appending to it. RouteDNS evaluates the *last* ECS option in the query, so a proxy that appends its own option after a client-supplied one will take precedence; a proxy that appends but leaves the client's option untouched is still safe, but one that does not normalize at all is not.
+
+Note also that the router runs *before* groups in the pipeline, so an `ecs-modifier` group cannot normalize ECS ahead of the routing decision unless it is placed between the listener and the router (`listener → ecs-modifier → router`).
 
 #### Route Evaluation Order
 

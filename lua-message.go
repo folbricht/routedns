@@ -31,8 +31,8 @@ func (s *LuaScript) RegisterMessageType() {
 			switch fieldName {
 			case "questions":
 				table := L.CreateTable(len(msg.Question), 0)
-				for _, q := range msg.Question {
-					lv := userDataWithMetatable(L, luaQuestionMetatableName, &q)
+				for i := range msg.Question {
+					lv := userDataWithMetatable(L, luaQuestionMetatableName, &msg.Question[i])
 					table.Append(lv)
 				}
 				L.Push(table)

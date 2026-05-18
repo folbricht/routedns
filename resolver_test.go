@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/miekg/dns"
 )
@@ -18,12 +19,16 @@ func init() {
 // defined externally.
 type TestResolver struct {
 	ResolveFunc func(*dns.Msg, ClientInfo) (*dns.Msg, error)
-	hitCount    int
-	shouldFail  bool
+	// hitCount is atomic because Fastest (and similar groups) abandon
+	// slower resolvers' goroutines, which keep calling Resolve after
+	// the group has returned, concurrently with the test reading
+	// HitCount().
+	hitCount   atomic.Int64
+	shouldFail bool
 }
 
 func (r *TestResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	r.hitCount++
+	r.hitCount.Add(1)
 	if r.shouldFail {
 		return nil, errors.New("failed")
 	}
@@ -38,7 +43,7 @@ func (r *TestResolver) String() string {
 }
 
 func (r *TestResolver) HitCount() int {
-	return r.hitCount
+	return int(r.hitCount.Load())
 }
 
 func (r *TestResolver) SetFail(f bool) {

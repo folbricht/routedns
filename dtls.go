@@ -3,6 +3,7 @@ package rdns
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 
@@ -12,6 +13,9 @@ import (
 // DTLSServerConfig is a convenience function that builds a dtls.Config instance for DTLS servers
 // based on common options and certificate+key files.
 func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*dtls.Config, error) {
+	if mutualTLS && caFile == "" {
+		return nil, errors.New("mutual-tls requires a ca to be configured to verify client certificates")
+	}
 	dtlsConfig := &dtls.Config{}
 	if mutualTLS {
 		dtlsConfig.ClientAuth = dtls.RequireAndVerifyClientCert
