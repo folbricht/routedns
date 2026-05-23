@@ -628,7 +628,7 @@ Example config files: [random-resolver.toml](../cmd/routedns/example-config/rand
 
 This group distributes queries across all configured resolvers using weighted random selection based on measured response times. Resolvers with lower average response times receive proportionally more traffic. If the selected resolver fails, the query is retried with another resolver until one succeeds or all have been tried.
 
-Unlike [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), which send all traffic to a single resolver and only switch on failure, this group actively spreads load across resolvers at all times. Unlike the [Fastest group](#fastest-group), it sends each query to only one resolver rather than all of them simultaneously.
+Compared to [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), load is spread across all resolvers at all times rather than concentrating on one until it fails. Compared to [Random](#random-group), selection is weighted by measured response time so faster resolvers naturally receive more traffic; resolvers are never removed from the pool — instead their weight is suppressed via EMA, with an optional `failure-penalty` to accelerate suppression of persistently failing resolvers. Compared to [Fastest](#fastest-group), each query goes to a single resolver rather than all of them simultaneously.
 
 On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates.
 
