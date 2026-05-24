@@ -26,15 +26,16 @@ const (
 )
 
 type netnsSubscriber struct {
-	name string
-	ch   chan NetNSState
+	name    string
+	ch      chan NetNSState
+	last    NetNSState
+	hasLast bool
 }
 
 type netnsWatcher struct {
-	mu          sync.Mutex
-	fd          int
-	watchActive bool
-	subs        []*netnsSubscriber
+	mu   sync.Mutex
+	fd   int
+	subs []*netnsSubscriber
 }
 
 var (
@@ -44,8 +45,9 @@ var (
 )
 
 // SubscribeNetNS returns a channel that receives state changes for the named
-// network namespace, plus a cancel function to unsubscribe. The first value
-// sent reflects the current state once the watcher is established.
+// network namespace, plus a cancel function to unsubscribe. The current state
+// is delivered immediately on subscription, even if /var/run/netns does not
+// exist yet; subsequent values reflect changes.
 func SubscribeNetNS(name string) (<-chan NetNSState, func(), error) {
 	nsWatcherOnce.Do(func() {
 		nsWatcher, nsWatcherErr = newNetNSWatcher()
@@ -74,13 +76,16 @@ func (w *netnsWatcher) ensureWatch() {
 	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
 	for {
 		if _, err := unix.InotifyAddWatch(w.fd, netnsDir, mask); err == nil {
+			// Re-sync every subscriber: events that occurred before the
+			// watch was installed (e.g. while the directory didn't exist
+			// yet) were missed. notifyLocked drops any state that hasn't
+			// actually changed, so this won't re-warn for an unchanged
+			// namespace.
 			w.mu.Lock()
-			w.watchActive = true
-			subs := append([]*netnsSubscriber(nil), w.subs...)
-			w.mu.Unlock()
-			for _, s := range subs {
-				sendState(s.ch, currentNetNSState(s.name))
+			for _, s := range w.subs {
+				w.notifyLocked(s, currentNetNSState(s.name))
 			}
+			w.mu.Unlock()
 			return
 		} else if !errors.Is(err, unix.ENOENT) {
 			Log.Warn("netns watcher: inotify_add_watch failed", "dir", netnsDir, "error", err)
@@ -138,21 +143,22 @@ func (w *netnsWatcher) dispatch(name string, state NetNSState) {
 	defer w.mu.Unlock()
 	for _, s := range w.subs {
 		if s.name == name {
-			sendState(s.ch, state)
+			w.notifyLocked(s, state)
 		}
 	}
 }
 
 func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	s := &netnsSubscriber{name: name, ch: make(chan NetNSState, 16)}
+	state := currentNetNSState(name)
+
 	w.mu.Lock()
 	w.subs = append(w.subs, s)
-	active := w.watchActive
+	// Deliver the current state immediately so the caller learns the
+	// namespace is absent even when /var/run/netns doesn't exist yet and the
+	// inotify watch hasn't been installed.
+	w.notifyLocked(s, state)
 	w.mu.Unlock()
-
-	if active {
-		sendState(s.ch, currentNetNSState(name))
-	}
 
 	cancel := func() {
 		w.mu.Lock()
@@ -174,9 +180,19 @@ func currentNetNSState(name string) NetNSState {
 	return NetNSAbsent
 }
 
-func sendState(ch chan NetNSState, s NetNSState) {
+// notifyLocked delivers a state change to a subscriber, skipping it if the
+// subscriber's last delivered state is identical. The send is non-blocking; if
+// the channel buffer is full the state is dropped without being recorded, so
+// it is retried on the next event rather than being deduplicated away. Must be
+// called with w.mu held.
+func (w *netnsWatcher) notifyLocked(s *netnsSubscriber, state NetNSState) {
+	if s.hasLast && s.last == state {
+		return
+	}
 	select {
-	case ch <- s:
+	case s.ch <- state:
+		s.last = state
+		s.hasLast = true
 	default:
 	}
 }
