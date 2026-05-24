@@ -35,6 +35,10 @@ type DoHListener struct {
 	mu         sync.Mutex
 	httpServer *http.Server
 	quicServer *http3.Server
+	// quicTransport/quicConn back quicServer. quic-go does not close a
+	// caller-supplied PacketConn, so they are closed explicitly in Stop().
+	quicTransport *quic.Transport
+	quicConn      *net.UDPConn
 
 	id   string
 	addr string
@@ -175,6 +179,8 @@ func (s *DoHListener) startQUIC() error {
 	}
 	s.mu.Lock()
 	s.quicServer = quicServer
+	s.quicTransport = transport
+	s.quicConn = udpConn
 	s.mu.Unlock()
 	return quicServer.ServeListener(quicLn)
 }
@@ -184,12 +190,19 @@ func (s *DoHListener) Stop() error {
 	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
 	s.mu.Lock()
 	httpServer, quicServer := s.httpServer, s.quicServer
+	quicTransport, quicConn := s.quicTransport, s.quicConn
 	s.mu.Unlock()
 	if s.opt.Transport == "quic" {
 		if quicServer == nil {
 			return nil
 		}
-		return quicServer.Close()
+		err := quicServer.Close()
+		// quic-go's Transport.Close does not close a caller-supplied
+		// PacketConn, so close both explicitly to avoid leaking the socket
+		// on each rebuild.
+		quicTransport.Close()
+		quicConn.Close()
+		return err
 	}
 	if httpServer == nil {
 		return nil

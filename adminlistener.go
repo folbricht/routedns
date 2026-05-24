@@ -22,6 +22,10 @@ type AdminListener struct {
 	mu         sync.Mutex
 	httpServer *http.Server
 	quicServer *http3.Server
+	// quicTransport/quicConn back quicServer. quic-go does not close a
+	// caller-supplied PacketConn, so they are closed explicitly in Stop().
+	quicTransport *quic.Transport
+	quicConn      *net.UDPConn
 
 	id   string
 	addr string
@@ -121,6 +125,8 @@ func (s *AdminListener) startQUIC() error {
 	}
 	s.mu.Lock()
 	s.quicServer = quicServer
+	s.quicTransport = transport
+	s.quicConn = udpConn
 	s.mu.Unlock()
 	return quicServer.ServeListener(quicLn)
 }
@@ -133,12 +139,19 @@ func (s *AdminListener) Stop() error {
 		"addr", s.addr)
 	s.mu.Lock()
 	httpServer, quicServer := s.httpServer, s.quicServer
+	quicTransport, quicConn := s.quicTransport, s.quicConn
 	s.mu.Unlock()
 	if s.opt.Transport == "quic" {
 		if quicServer == nil {
 			return nil
 		}
-		return quicServer.Close()
+		err := quicServer.Close()
+		// quic-go's Transport.Close does not close a caller-supplied
+		// PacketConn, so close both explicitly to avoid leaking the socket
+		// on each rebuild.
+		quicTransport.Close()
+		quicConn.Close()
+		return err
 	}
 	if httpServer == nil {
 		return nil
