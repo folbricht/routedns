@@ -1,8 +1,11 @@
 package rdns
 
 import (
+	"bytes"
+	"expvar"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -277,4 +280,44 @@ func TestIPv6Proxy(t *testing.T) {
 	r.Header.Add("X-Forwarded-For", "10.0.1.5")
 	client = s.extractClientAddress(r)
 	require.Equal(t, net.IPv4(10, 0, 1, 5), client)
+}
+
+// TestDoHListenerPostBodySizeLimit verifies the DoH POST handler bounds the
+// request body, so a client can't drive the server into memory exhaustion with
+// an oversized body. Healthy queries are still accepted. See issue #556.
+func TestDoHListenerPostBodySizeLimit(t *testing.T) {
+	upstream := new(TestResolver)
+	s, err := NewDoHListener("test-doh-bodylimit", "127.0.0.1:0", DoHListenerOptions{NoTLS: true}, upstream)
+	require.NoError(t, err)
+
+	// A valid, small DNS query must be accepted and forwarded to the resolver.
+	t.Run("healthy", func(t *testing.T) {
+		q := new(dns.Msg)
+		q.SetQuestion("example.com.", dns.TypeA)
+		packed, err := q.Pack()
+		require.NoError(t, err)
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/dns-query", bytes.NewReader(packed))
+		req.RemoteAddr = "10.0.0.1:1234"
+		s.postHandler(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 1, upstream.HitCount())
+	})
+
+	// An oversized body must be rejected with 413 and never reach the resolver.
+	t.Run("oversized", func(t *testing.T) {
+		before := upstream.HitCount()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/dns-query", bytes.NewReader(make([]byte, maxDoHRequestSize+1024)))
+		req.RemoteAddr = "10.0.0.1:1234"
+		s.postHandler(rec, req)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, before, upstream.HitCount()) // resolver must not be hit
+		v := s.metrics.err.Get("toolarge")
+		require.NotNil(t, v)
+		require.Equal(t, int64(1), v.(*expvar.Int).Value())
+	})
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -109,9 +108,13 @@ func (d *ODoHClient) decodeProxyResponse(resp *http.Response, queryContext odoh.
 	if resp.Header.Get("content-type") != ODOH_CONTENT_TYPE {
 		return nil, errors.New("received invalid odoh header from proxy")
 	}
-	rb, err := io.ReadAll(resp.Body)
+	rb, err := readBoundedBody(resp.Body, maxDoHResponseSize)
 	if err != nil {
-		d.proxy.metrics.err.Add("read", 1)
+		if errors.Is(err, errResponseTooLarge) {
+			d.proxy.metrics.err.Add("toolarge", 1)
+		} else {
+			d.proxy.metrics.err.Add("read", 1)
+		}
 		return nil, err
 	}
 	odohQueryResponse, err := odoh.UnmarshalDNSMessage(rb)
@@ -193,7 +196,7 @@ func (d *ODoHClient) refreshTargetKey() (*odoh.ObliviousDoHConfig, time.Time, er
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readBoundedBody(resp.Body, maxDoHResponseSize)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
