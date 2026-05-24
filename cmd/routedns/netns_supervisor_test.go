@@ -5,6 +5,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	rdns "github.com/folbricht/routedns"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeNetNSListener simulates a listener whose Stop() is a no-op for its first
@@ -95,5 +98,54 @@ func TestStopNetNSListenerStopsImmediately(t *testing.T) {
 	}
 	if c := f.calls(); c != 1 {
 		t.Fatalf("expected exactly 1 Stop() call, got %d", c)
+	}
+}
+
+// A listener that fails to build while its namespace is present must be retried
+// on a timer rather than waiting for the next namespace event.
+func TestNetNSSupervisorRetriesBuildFailure(t *testing.T) {
+	old := netnsRetryInterval
+	netnsRetryInterval = 10 * time.Millisecond
+	defer func() { netnsRetryInterval = old }()
+
+	var (
+		mu       sync.Mutex
+		attempts int
+		started  *fakeNetNSListener
+	)
+	build := func() (rdns.Listener, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		attempts++
+		if attempts < 3 {
+			return nil, errors.New("address already in use")
+		}
+		started = newFakeNetNSListener(0)
+		return started, nil
+	}
+
+	events := make(chan rdns.NetNSState, 1)
+	done := make(chan struct{})
+	go func() {
+		runNetNSSupervisor("test", "ns", events, build)
+		close(done)
+	}()
+
+	// Namespace is present but the first two builds fail; the supervisor must
+	// keep retrying on the timer until the third build succeeds.
+	events <- rdns.NetNSPresent
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return attempts >= 3 && started != nil
+	}, 2*time.Second, 5*time.Millisecond, "build was not retried until it succeeded")
+
+	// Tear down: namespace goes away (stops the listener), then end the loop.
+	events <- rdns.NetNSAbsent
+	close(events)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("supervisor did not exit")
 	}
 }

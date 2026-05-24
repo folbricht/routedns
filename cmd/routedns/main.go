@@ -1105,6 +1105,12 @@ func networkForIPVersion(base string, ipVersion int) string {
 	return base + strconv.Itoa(ipVersion)
 }
 
+// netnsRetryInterval is how long the supervisor waits before retrying a
+// listener that failed to build or start while its namespace is present. It
+// matches the retry cadence used for listeners that aren't bound to a
+// namespace. It is a var so tests can shorten it.
+var netnsRetryInterval = time.Second
+
 // superviseNetNSListener gates a listener on the presence of a network
 // namespace. When the namespace appears, build is called and the resulting
 // listener is started; when it disappears, the listener is stopped. A fresh
@@ -1117,11 +1123,37 @@ func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, erro
 		return
 	}
 	defer cancel()
+	runNetNSSupervisor(id, nsName, events, build)
+}
 
+// runNetNSSupervisor drives the listener lifecycle off namespace state events.
+// It builds and starts the listener when the namespace is present, stops it
+// when the namespace goes away, and retries on a timer when a build or start
+// fails (or the listener exits) while the namespace is still present, so a
+// transient failure such as a temporarily-bound address doesn't leave the
+// listener down until the namespace happens to flap.
+func runNetNSSupervisor(id, nsName string, events <-chan rdns.NetNSState, build func() (rdns.Listener, error)) {
 	var (
 		ln       rdns.Listener
 		startErr chan error
+		present  bool
+		retryC   <-chan time.Time // non-nil while a (re)start is pending
 	)
+
+	launch := func() {
+		retryC = nil
+		inner, err := build()
+		if err != nil {
+			rdns.Log.Warn("failed to build listener, retrying", "id", id, "error", err)
+			retryC = time.After(netnsRetryInterval)
+			return
+		}
+		ln = inner
+		startErr = make(chan error, 1)
+		go func(l rdns.Listener, done chan error) {
+			done <- l.Start()
+		}(ln, startErr)
+	}
 
 	for {
 		select {
@@ -1131,21 +1163,15 @@ func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, erro
 			}
 			switch state {
 			case rdns.NetNSPresent:
+				present = true
 				if ln != nil {
 					continue
 				}
 				rdns.Log.Info("netns present, starting listener", "netns", nsName, "id", id)
-				inner, err := build()
-				if err != nil {
-					rdns.Log.Warn("failed to build listener", "id", id, "error", err)
-					continue
-				}
-				ln = inner
-				startErr = make(chan error, 1)
-				go func(l rdns.Listener, done chan error) {
-					done <- l.Start()
-				}(ln, startErr)
+				launch()
 			case rdns.NetNSAbsent:
+				present = false
+				retryC = nil // namespace is gone; cancel any pending retry
 				if ln == nil {
 					rdns.Log.Warn("netns not present, waiting", "netns", nsName, "id", id)
 					continue
@@ -1159,7 +1185,18 @@ func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, erro
 			startErr = nil
 			ln = nil
 			if err != nil {
-				rdns.Log.Warn("listener exited, will retry on next netns event", "id", id, "error", err)
+				rdns.Log.Warn("listener exited", "id", id, "error", err)
+			}
+			// The listener stopped on its own while the namespace is still
+			// present (crash or transient bind failure); retry on a timer.
+			if present {
+				retryC = time.After(netnsRetryInterval)
+			}
+		case <-retryC:
+			retryC = nil
+			if present && ln == nil {
+				rdns.Log.Info("retrying listener start", "netns", nsName, "id", id)
+				launch()
 			}
 		}
 	}
