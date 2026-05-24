@@ -75,7 +75,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 }
 
 // Start the QUIC server.
-func (s DoQListener) Start() error {
+func (s *DoQListener) Start() error {
 	var err error
 	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
@@ -108,12 +108,15 @@ func (s DoQListener) Start() error {
 }
 
 // Stop the server.
-func (s DoQListener) Stop() error {
+func (s *DoQListener) Stop() error {
 	s.log.Info("stopping listener", slog.Group("details", slog.String("protocol", "quic"), slog.String("addr", s.addr)))
+	if s.ln == nil {
+		return nil
+	}
 	return s.ln.Close()
 }
 
-func (s DoQListener) handleConnection(connection *quic.Conn) {
+func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	tlsServerName := connection.ConnectionState().TLS.ServerName
 
 	ci := ClientInfo{
@@ -149,7 +152,7 @@ func (s DoQListener) handleConnection(connection *quic.Conn) {
 	}
 }
 
-func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)
@@ -231,6 +234,6 @@ func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Clie
 	s.metrics.response.Add(rCode(a), 1)
 }
 
-func (s DoQListener) String() string {
+func (s *DoQListener) String() string {
 	return s.id
 }
