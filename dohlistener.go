@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -21,6 +22,12 @@ import (
 
 // Read/Write timeout in the DoH server
 const dohServerTimeout = 10 * time.Second
+
+// maxDoHRequestSize is the largest POST request body the DoH server will buffer.
+// A DNS message can't exceed 65535 bytes (the 16-bit length used over TCP), so
+// this never rejects a legitimate query while preventing a client from driving
+// the server into memory exhaustion with an oversized or slow-streamed body.
+const maxDoHRequestSize = 65535
 
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
 type DoHListener struct {
@@ -210,8 +217,18 @@ func (s *DoHListener) getHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DoHListener) postHandler(w http.ResponseWriter, r *http.Request) {
-	b, err := io.ReadAll(r.Body)
+	// Bound the request body so a client can't force the server to buffer an
+	// arbitrarily large (or slowly streamed) POST body into memory before any
+	// DNS-level validation. This protects both the TCP and QUIC transports,
+	// which share this handler.
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxDoHRequestSize))
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			s.metrics.err.Add("toolarge", 1)
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
