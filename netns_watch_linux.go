@@ -45,7 +45,8 @@ var (
 )
 
 // SubscribeNetNS returns a channel that receives state changes for the named
-// network namespace, plus a cancel function to unsubscribe. The current state
+// network namespace, plus a cancel function to unsubscribe. name must be a
+// namespace name under /var/run/netns, not an absolute path. The current state
 // is delivered immediately on subscription, even if /var/run/netns does not
 // exist yet; subsequent values reflect changes.
 func SubscribeNetNS(name string) (<-chan NetNSState, func(), error) {

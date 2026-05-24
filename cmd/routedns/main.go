@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -345,7 +346,15 @@ func start(opt options, args []string) error {
 			return fmt.Errorf("unsupported protocol '%s' for listener '%s'", l.Protocol, id)
 		}
 
-		pl := pendingListener{id: id, nsName: l.NetNS, build: build}
+		// The lazy supervisor watches /var/run/netns by name and can't track
+		// an absolute namespace path (e.g. /proc/<pid>/ns/net). Those fall
+		// back to eager start + retry, which binds via NetNS.nsPath() exactly
+		// as before this feature.
+		nsName := l.NetNS
+		if filepath.IsAbs(nsName) {
+			nsName = ""
+		}
+		pl := pendingListener{id: id, nsName: nsName, build: build}
 		if pl.nsName == "" {
 			pl.ln, err = build()
 			if err != nil {
