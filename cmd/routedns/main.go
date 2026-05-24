@@ -1151,10 +1151,7 @@ func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, erro
 					continue
 				}
 				rdns.Log.Warn("netns gone, stopping listener", "netns", nsName, "id", id)
-				if err := ln.Stop(); err != nil {
-					rdns.Log.Warn("error stopping listener", "id", id, "error", err)
-				}
-				<-startErr
+				stopNetNSListener(id, ln, startErr)
 				ln = nil
 				startErr = nil
 			}
@@ -1163,6 +1160,35 @@ func superviseNetNSListener(id, nsName string, build func() (rdns.Listener, erro
 			ln = nil
 			if err != nil {
 				rdns.Log.Warn("listener exited, will retry on next netns event", "id", id, "error", err)
+			}
+		}
+	}
+}
+
+// stopNetNSListener stops a running listener and waits for its Start
+// goroutine to return. Stop is retried on a short interval because for some
+// listener types it is a no-op until the listener is actually serving: a
+// dns.Server's Shutdown returns "server not started" before it begins
+// serving, and a freshly-built DoQ listener isn't bound yet. A single early
+// Stop would then leave Start serving forever and this call blocking on its
+// result. Gives up after a few seconds so a listener that refuses to stop
+// can't wedge the supervisor permanently.
+func stopNetNSListener(id string, ln rdns.Listener, startErr <-chan error) {
+	const (
+		retryInterval = 100 * time.Millisecond
+		maxAttempts   = 30
+	)
+	for attempt := 0; ; attempt++ {
+		if err := ln.Stop(); err != nil {
+			rdns.Log.Warn("error stopping listener", "id", id, "error", err)
+		}
+		select {
+		case <-startErr:
+			return
+		case <-time.After(retryInterval):
+			if attempt >= maxAttempts {
+				rdns.Log.Error("listener did not stop, abandoning", "id", id)
+				return
 			}
 		}
 	}

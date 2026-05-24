@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"expvar"
 	"io"
 	"net"
@@ -99,6 +100,11 @@ func (s *DoQListener) Start() error {
 	for {
 		connection, err := s.ln.Accept(context.Background())
 		if err != nil {
+			// The listener was closed by Stop(); return cleanly so the
+			// caller's Start() unblocks instead of spinning on Accept.
+			if errors.Is(err, quic.ErrServerClosed) {
+				return nil
+			}
 			s.log.Warn("failed to accept", "error", err)
 			continue
 		}
