@@ -26,6 +26,30 @@ import (
 // defaultDoHIdleTimeout is the default idle connection timeout for DoH TCP transport.
 const defaultDoHIdleTimeout = 30 * time.Second
 
+// maxDoHResponseSize is the largest HTTP response body a DoH/ODoH client will
+// buffer before attempting to parse it. A DNS message can't exceed 65535 bytes
+// (the 16-bit length prefix used over TCP); the extra slack covers ODoH
+// AEAD/encoding overhead. Bounding the read prevents a malicious or compromised
+// upstream from forcing RouteDNS to buffer an arbitrarily large response body.
+const maxDoHResponseSize = 65535 + 512
+
+// errResponseTooLarge is returned when an upstream HTTP response body exceeds
+// maxDoHResponseSize.
+var errResponseTooLarge = errors.New("upstream response body exceeds maximum size")
+
+// readBoundedBody reads up to limit bytes from r. It returns errResponseTooLarge
+// if the body is larger than limit rather than buffering it in full.
+func readBoundedBody(r io.Reader, limit int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, errResponseTooLarge
+	}
+	return b, nil
+}
+
 // DoHClientOptions contains options used by the DNS-over-HTTP resolver.
 type DoHClientOptions struct {
 	// Query method, either GET or POST. If empty, POST is used.
@@ -243,9 +267,13 @@ func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 		d.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
-	rb, err := io.ReadAll(resp.Body)
+	rb, err := readBoundedBody(resp.Body, maxDoHResponseSize)
 	if err != nil {
-		d.metrics.err.Add("read", 1)
+		if errors.Is(err, errResponseTooLarge) {
+			d.metrics.err.Add("toolarge", 1)
+		} else {
+			d.metrics.err.Add("read", 1)
+		}
 		return nil, err
 	}
 	a := new(dns.Msg)
