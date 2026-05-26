@@ -51,7 +51,7 @@ func (s DoTListener) Start() error {
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)
-	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+	if s.opt.NetNS.isSet() || s.opt.SocketOptions.active() {
 		ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.Addr, s.opt.SocketOptions)
 		if err != nil {
 			return err

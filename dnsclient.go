@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 	"time"
@@ -118,12 +119,13 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 	network = strings.TrimSuffix(network, "-tls")
 
 	dialer := d.Dialer
+	var localAddr net.IP
 	if dialer == nil {
 		// Resolve hostname to IP so selectLocalAddr can determine the address
 		// family. Use the resolved address for the dial to avoid double resolution.
 		address = resolveEndpointAddr(address)
 		nd := &net.Dialer{Timeout: d.Timeout, Control: d.SocketOptions.dialerControl()}
-		localAddr := selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
+		localAddr = selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
 		if localAddr != nil {
 			switch network {
 			case "tcp":
@@ -142,15 +144,23 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		err error
 	)
 	// Open a raw connection, optionally in a network namespace
-	if d.NetNS != nil && d.NetNS.Name != "" {
-		if netDialer, ok := dialer.(*net.Dialer); ok {
-			conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
-		} else {
-			err = RunInNetNS(d.NetNS, func() error {
-				var e error
-				conn.Conn, e = dialer.Dial(network, address)
-				return e
-			})
+	if d.NetNS.isSet() {
+		switch {
+		case d.NetNS.usesXSocket():
+			if d.Dialer != nil {
+				return nil, errors.New("xsocket is not supported with a custom dialer (e.g. SOCKS proxy)")
+			}
+			conn.Conn, err = dialXSocket(d.NetNS.XSocket, network, address, d.SocketOptions, localAddr, d.Timeout)
+		default:
+			if netDialer, ok := dialer.(*net.Dialer); ok {
+				conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
+			} else {
+				err = RunInNetNS(d.NetNS, func() error {
+					var e error
+					conn.Conn, e = dialer.Dial(network, address)
+					return e
+				})
+			}
 		}
 	} else {
 		conn.Conn, err = dialer.Dial(network, address)

@@ -307,7 +307,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	}
 
 	// Use a custom dialer if a bootstrap address, local address, proxy, netns, or socket options were provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") || opt.SocketOptions.active() {
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || opt.NetNS.isSet() || opt.SocketOptions.active() {
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
 				_, port, err := net.SplitHostPort(addr)
@@ -317,6 +317,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
+				if opt.NetNS.usesXSocket() {
+					return nil, errors.New("xsocket is not supported with a SOCKS proxy")
+				}
 				var conn net.Conn
 				err := RunInNetNS(opt.NetNS, func() error {
 					var e error
@@ -334,6 +337,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 			}
 			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
+			if opt.NetNS.usesXSocket() {
+				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, 0)
+			}
 			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {

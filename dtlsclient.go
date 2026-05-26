@@ -139,6 +139,9 @@ type dtlsDialer struct {
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
+	if d.netns.usesXSocket() {
+		return nil, fmt.Errorf("xsocket is not supported for DTLS clients")
+	}
 	var pConn net.PacketConn
 	err := RunInNetNS(d.netns, func() error {
 		laddr := ":0"

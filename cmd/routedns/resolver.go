@@ -12,9 +12,9 @@ import (
 func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolver) error {
 	var err error
 
-	var netns *rdns.NetNS
-	if r.NetNS != "" {
-		netns = &rdns.NetNS{Name: r.NetNS}
+	netns, err := buildNetNS(r.NetNS, r.XSocket)
+	if err != nil {
+		return fmt.Errorf("resolver '%s': %w", id, err)
 	}
 
 	sockOpts := rdns.SocketOptions{

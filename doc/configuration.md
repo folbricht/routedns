@@ -134,6 +134,7 @@ Common options for all listeners:
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 - `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `xsocket` - Path to an `xsocket-server` Unix socket. The listening socket is created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 - `fwmark` - Linux firewall mark (`SO_MARK`) to set on the listening socket. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 - `bind-if` - Bind the listening socket to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or restricting a listener to one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 
@@ -1971,6 +1972,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. Not supported for DTLS or SOCKS5-proxied resolvers. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 
@@ -2271,6 +2273,35 @@ netns = "container"
 ```
 
 Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
+
+#### Without elevated privileges: xsocket
+
+The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold `CAP_SYS_ADMIN`. The `xsocket` option is an alternative that avoids this. It relies on [xsocket](https://github.com/koro666/xsocket): a small privileged `xsocket-server` runs inside the target namespace and listens on a Unix socket. RouteDNS connects to that socket, asks the server to create a socket in its namespace, and receives the file descriptor back over the Unix socket (`SCM_RIGHTS`). RouteDNS then binds or connects that descriptor itself - so only the tiny `xsocket-server` needs privileges, not RouteDNS.
+
+The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`.
+
+```toml
+[resolvers.res]
+address = "9.9.9.9:53"
+protocol = "udp"
+xsocket = "/var/tmp/xsocket/ns1"
+
+[listeners.local-udp]
+address = "[::]:1053"
+protocol = "udp"
+resolver = "res"
+xsocket = "/var/tmp/xsocket/ns2"
+```
+
+Notes and limitations:
+
+- `xsocket` and `netns` are mutually exclusive on the same component.
+- Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
+- `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
+- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3) and `doq`. Not supported for DTLS or SOCKS5-proxied resolvers (these create their own sockets internally) - configuring `xsocket` for them returns an error.
+- Linux only.
+
+Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml)
 
 ### Firewall Mark and Interface Binding
 

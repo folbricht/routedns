@@ -13,9 +13,26 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// NetNS represents a Linux network namespace.
+// NetNS represents a target Linux network namespace and how to reach it.
+//
+// Name selects the namespace via setns(2) (requires CAP_SYS_ADMIN). XSocket
+// instead points at the Unix socket of an xsocket-server running inside the
+// target namespace, which hands back sockets created in that namespace via
+// SCM_RIGHTS - avoiding the need for elevated privileges. The two are mutually
+// exclusive.
 type NetNS struct {
-	Name string
+	Name    string
+	XSocket string
+}
+
+// isSet reports whether a namespace target is configured (either mechanism).
+func (ns *NetNS) isSet() bool {
+	return ns != nil && (ns.Name != "" || ns.XSocket != "")
+}
+
+// usesXSocket reports whether sockets should be obtained from an xsocket-server.
+func (ns *NetNS) usesXSocket() bool {
+	return ns != nil && ns.XSocket != ""
 }
 
 // nsPath returns the filesystem path for this namespace.
@@ -32,6 +49,9 @@ func (ns *NetNS) nsPath() string {
 // has an empty Name, fn is executed in the current namespace (no-op).
 // The calling goroutine is locked to its OS thread for the duration.
 func RunInNetNS(ns *NetNS, fn func() error) error {
+	if ns.usesXSocket() {
+		return fmt.Errorf("xsocket is not supported for this operation; use setns-based netns instead")
+	}
 	if ns == nil || ns.Name == "" {
 		return fn()
 	}
@@ -68,6 +88,9 @@ func RunInNetNS(ns *NetNS, fn func() error) error {
 // Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
 // net.ListenConfig.Control so that interface binding works correctly.
 func ListenInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.Listener, error) {
+	if ns.usesXSocket() {
+		return listenXSocket(ns.XSocket, network, address, opts)
+	}
 	var ln net.Listener
 	err := RunInNetNS(ns, func() error {
 		lc := net.ListenConfig{Control: opts.dialerControl()}
@@ -82,6 +105,9 @@ func ListenInNetNS(ctx context.Context, ns *NetNS, network, address string, opts
 // Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
 // net.ListenConfig.Control so that interface binding works correctly.
 func ListenPacketInNetNS(ctx context.Context, ns *NetNS, network, address string, opts SocketOptions) (net.PacketConn, error) {
+	if ns.usesXSocket() {
+		return listenPacketXSocket(ns.XSocket, network, address, opts)
+	}
 	var pc net.PacketConn
 	err := RunInNetNS(ns, func() error {
 		lc := net.ListenConfig{Control: opts.dialerControl()}
@@ -96,6 +122,9 @@ func ListenPacketInNetNS(ctx context.Context, ns *NetNS, network, address string
 // Socket options (SO_MARK, SO_BINDTODEVICE) are applied before bind() via
 // net.ListenConfig.Control so that interface binding works correctly.
 func ListenUDPInNetNS(ctx context.Context, ns *NetNS, network string, laddr *net.UDPAddr, opts SocketOptions) (*net.UDPConn, error) {
+	if ns.usesXSocket() {
+		return listenUDPXSocket(ns.XSocket, network, laddr, opts)
+	}
 	var conn *net.UDPConn
 	err := RunInNetNS(ns, func() error {
 		lc := net.ListenConfig{Control: opts.dialerControl()}
@@ -116,6 +145,9 @@ func ListenUDPInNetNS(ctx context.Context, ns *NetNS, network string, laddr *net
 
 // DialInNetNS dials a connection in the given network namespace.
 func DialInNetNS(ns *NetNS, network, address string, dialer *net.Dialer) (net.Conn, error) {
+	if ns.usesXSocket() {
+		return nil, fmt.Errorf("xsocket dial must be handled by the caller, not DialInNetNS")
+	}
 	var conn net.Conn
 	err := RunInNetNS(ns, func() error {
 		var e error

@@ -46,7 +46,7 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 // Start the DNS listener.
 func (s DNSListener) Start() error {
 	Log.Info("starting listener", "id", s.id, "protocol", s.Net, "addr", s.Addr)
-	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+	if s.opt.NetNS.isSet() || s.opt.SocketOptions.active() {
 		return s.startWithSocketSetup()
 	}
 	return s.ListenAndServe()
