@@ -181,8 +181,9 @@ func TestFailBackIsSuccessResponse(t *testing.T) {
 	})
 
 	t.Run("NilResponseWithEmptyError", func(t *testing.T) {
+		// nil is a deliberate signal (e.g. DropResolver) and is always success.
 		fb := newFB(FailBackOptions{EmptyError: true})
-		require.False(t, fb.isSuccessResponse(nil))
+		require.True(t, fb.isSuccessResponse(nil))
 	})
 
 	t.Run("ServfailWithoutOption", func(t *testing.T) {

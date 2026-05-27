@@ -41,7 +41,10 @@ type loadBalanceStats struct {
 
 // LoadBalanceOptions contain settings for the load-balancing resolver group.
 type LoadBalanceOptions struct {
-	// Duration used as the response-time penalty for failed lookups.
+	// Duration recorded as the RTT penalty for persistently failing resolvers
+	// (after loadBalancePenaltyThreshold consecutive failures). 0 disables the
+	// penalty; without it fast-failing resolvers are still prevented from
+	// gaining weight via the upward-only EMA update on failure.
 	FailurePenalty time.Duration
 
 	// Determines if a SERVFAIL returned by a resolver should be considered an
@@ -96,7 +99,7 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
 
 		start := time.Now()
-		a, err = resolver.Resolve(q, ci)
+		a, err = resolver.Resolve(q.Copy(), ci)
 		elapsed := time.Since(start)
 		if err == nil && r.isSuccessResponse(a) {
 			r.updateOnSuccess(idx, elapsed)
@@ -109,7 +112,7 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		r.metrics.failover.Add(1)
 		penalized := r.updateOnFailure(idx, elapsed)
 		if penalized {
-			Log.Info("penalizing resolver", slog.Group("details",
+			Log.Debug("penalizing resolver", slog.Group("details",
 				slog.String("group", r.id),
 				slog.String("resolver", resolver.String()),
 				slog.Duration("penalty", r.opt.FailurePenalty),
@@ -183,6 +186,10 @@ func (r *LoadBalance) updateOnSuccess(idx int, d time.Duration) {
 
 // updateOnFailure records a failed response time and returns true if the
 // failure-penalty was applied (consecutive failure threshold reached).
+//
+// Without a penalty, only allow the EMA to move upward on failure. This
+// prevents fast-failing resolvers (e.g. connection refused, returning in
+// microseconds) from appearing artificially fast and attracting more traffic.
 func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	fails := r.stats[idx].consecFails.Add(1)
 	penalize := r.opt.FailurePenalty > 0 && fails >= loadBalancePenaltyThreshold
@@ -197,9 +204,14 @@ func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	r.mu.Lock()
 	s := &r.stats[idx]
 	if s.count == 0 {
-		s.rttEMA = us
+		// Seed with at least the baseline RTT so a fast first failure doesn't
+		// give this resolver a large weight advantage over unprobed resolvers.
+		s.rttEMA = max(us, float64(defaultLoadBalanceInitialRTT.Microseconds()))
 	} else {
-		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
+		newEMA := defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
+		if penalize || newEMA > s.rttEMA {
+			s.rttEMA = newEMA
+		}
 	}
 	s.count++
 	r.mu.Unlock()

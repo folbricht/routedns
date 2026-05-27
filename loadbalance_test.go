@@ -191,13 +191,34 @@ func TestLoadBalanceEmptyErrorOption(t *testing.T) {
 		require.Equal(t, 0, good.HitCount())
 	})
 
-	t.Run("Enabled", func(t *testing.T) {
+	// A nil response is a deliberate signal (e.g. DropResolver) and is always
+	// treated as success regardless of EmptyError; it is not retried.
+	t.Run("Enabled_NilIsSuccess", func(t *testing.T) {
 		drop := &namedTestResolver{name: "drop"}
 		drop.ResolveFunc = func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return nil, nil
 		}
 		good := &namedTestResolver{name: "good"}
-		g := NewLoadBalance("test-lb-empty-enabled", LoadBalanceOptions{EmptyError: true}, drop, good)
+		g := NewLoadBalance("test-lb-empty-enabled-nil", LoadBalanceOptions{EmptyError: true}, drop, good)
+		g.randFloat = func() float64 { return 0 }
+
+		q := new(dns.Msg)
+		q.SetQuestion("test.com.", dns.TypeA)
+		a, err := g.Resolve(q, ci)
+
+		require.NoError(t, err)
+		require.Nil(t, a)
+		require.Equal(t, 1, drop.HitCount())
+		require.Equal(t, 0, good.HitCount())
+	})
+
+	t.Run("Enabled_EmptyMsgIsRetried", func(t *testing.T) {
+		empty := &namedTestResolver{name: "empty"}
+		empty.ResolveFunc = func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			return new(dns.Msg), nil
+		}
+		good := &namedTestResolver{name: "good"}
+		g := NewLoadBalance("test-lb-empty-enabled-msg", LoadBalanceOptions{EmptyError: true}, empty, good)
 		g.randFloat = func() float64 { return 0 }
 
 		q := new(dns.Msg)
@@ -206,7 +227,7 @@ func TestLoadBalanceEmptyErrorOption(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, a)
-		require.Equal(t, 1, drop.HitCount())
+		require.Equal(t, 1, empty.HitCount())
 		require.Equal(t, 1, good.HitCount())
 	})
 }

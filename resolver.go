@@ -13,11 +13,12 @@ type Resolver interface {
 }
 
 // isSuccessResponse returns true if the response should be considered a
-// successful result given the provided options. A nil response is treated as
-// empty and handled according to emptyError.
+// successful result given the provided options. A nil response is always
+// treated as success — it is a deliberate signal (e.g. from DropResolver)
+// and must not be conflated with an empty DNS answer.
 func isSuccessResponse(a *dns.Msg, servfailError, emptyError bool) bool {
 	if a == nil {
-		return !emptyError
+		return true
 	}
 	if (a.Rcode == dns.RcodeServerFailure && servfailError) ||
 		a.Rcode == dns.RcodeRefused ||
