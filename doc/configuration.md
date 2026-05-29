@@ -2298,7 +2298,8 @@ Notes and limitations:
 - `xsocket` and `netns` are mutually exclusive on the same component.
 - Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
 - `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
-- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3) and `doq`. Not supported for DTLS or SOCKS5-proxied resolvers (these create their own sockets internally) - configuring `xsocket` for them returns an error.
+- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `admin` and `odoh`, on both listeners and resolvers. Not supported for DTLS or SOCKS5-proxied resolvers (these create their own sockets internally) - configuring `xsocket` for them returns an error.
+- SOCKS5-proxied resolvers can't use `xsocket` because the SOCKS5 library opens its own connection to the proxy, leaving no descriptor for the `xsocket-server` to hand over. To combine the two, run the SOCKS5 proxy inside the target namespace instead: RouteDNS reaching the proxy from its own namespace is fine, since the proxy's outbound connections are already made in the right namespace.
 - Linux only.
 
 Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml)
