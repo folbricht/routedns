@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"expvar"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -17,13 +19,16 @@ import (
 
 // DoQListener is a DNS listener/server for QUIC.
 type DoQListener struct {
-	id      string
-	addr    string
-	r       Resolver
-	opt     DoQListenerOptions
-	ln      *quic.EarlyListener
-	log     *slog.Logger
-	metrics *DoQListenerMetrics
+	id        string
+	addr      string
+	r         Resolver
+	opt       DoQListenerOptions
+	mu        sync.Mutex
+	ln        *quic.EarlyListener
+	transport *quic.Transport
+	conn      *net.UDPConn
+	log       *slog.Logger
+	metrics   *DoQListenerMetrics
 }
 
 var _ Listener = &DoQListener{}
@@ -75,8 +80,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 }
 
 // Start the QUIC server.
-func (s DoQListener) Start() error {
-	var err error
+func (s *DoQListener) Start() error {
 	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
 		return err
@@ -86,7 +90,7 @@ func (s DoQListener) Start() error {
 		return err
 	}
 	transport := &quic.Transport{Conn: udpConn}
-	s.ln, err = transport.ListenEarly(s.opt.TLSConfig, &quic.Config{
+	ln, err := transport.ListenEarly(s.opt.TLSConfig, &quic.Config{
 		Allow0RTT:      true,
 		MaxIdleTimeout: 5 * time.Minute,
 	})
@@ -94,11 +98,23 @@ func (s DoQListener) Start() error {
 		udpConn.Close()
 		return err
 	}
+	// Publish the handles under the lock; Stop() runs on another goroutine
+	// and reads them to tear the listener down.
+	s.mu.Lock()
+	s.conn = udpConn
+	s.transport = transport
+	s.ln = ln
+	s.mu.Unlock()
 	s.log.Info("starting listener")
 
 	for {
-		connection, err := s.ln.Accept(context.Background())
+		connection, err := ln.Accept(context.Background())
 		if err != nil {
+			// The listener was closed by Stop(); return cleanly so the
+			// caller's Start() unblocks instead of spinning on Accept.
+			if errors.Is(err, quic.ErrServerClosed) {
+				return nil
+			}
 			s.log.Warn("failed to accept", "error", err)
 			continue
 		}
@@ -108,12 +124,25 @@ func (s DoQListener) Start() error {
 }
 
 // Stop the server.
-func (s DoQListener) Stop() error {
+func (s *DoQListener) Stop() error {
 	s.log.Info("stopping listener", slog.Group("details", slog.String("protocol", "quic"), slog.String("addr", s.addr)))
-	return s.ln.Close()
+	s.mu.Lock()
+	ln, transport, conn := s.ln, s.transport, s.conn
+	s.mu.Unlock()
+	if ln == nil {
+		// Start() hasn't bound yet; nothing to stop. The supervisor retries
+		// Stop() until Start() has published its handles.
+		return nil
+	}
+	err := ln.Close()
+	// quic-go's Transport.Close does not close a caller-supplied PacketConn,
+	// so close both explicitly to avoid leaking the socket on each rebuild.
+	transport.Close()
+	conn.Close()
+	return err
 }
 
-func (s DoQListener) handleConnection(connection *quic.Conn) {
+func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	tlsServerName := connection.ConnectionState().TLS.ServerName
 
 	ci := ClientInfo{
@@ -149,7 +178,7 @@ func (s DoQListener) handleConnection(connection *quic.Conn) {
 	}
 }
 
-func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)
@@ -231,6 +260,6 @@ func (s DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Clie
 	s.metrics.response.Add(rCode(a), 1)
 }
 
-func (s DoQListener) String() string {
+func (s *DoQListener) String() string {
 	return s.id
 }

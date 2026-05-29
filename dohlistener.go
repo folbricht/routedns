@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -31,8 +32,13 @@ const maxDoHRequestSize = 65535
 
 // DoHListener is a DNS listener/server for DNS-over-HTTPS.
 type DoHListener struct {
+	mu         sync.Mutex
 	httpServer *http.Server
 	quicServer *http3.Server
+	// quicTransport/quicConn back quicServer. quic-go does not close a
+	// caller-supplied PacketConn, so they are closed explicitly in Stop().
+	quicTransport *quic.Transport
+	quicConn      *net.UDPConn
 
 	id   string
 	addr string
@@ -121,13 +127,16 @@ func (s *DoHListener) Start() error {
 
 // Start the DoH server with TCP transport.
 func (s *DoHListener) startTCP() error {
-	s.httpServer = &http.Server{
+	httpServer := &http.Server{
 		Addr:         s.addr,
 		TLSConfig:    s.opt.TLSConfig,
 		ReadTimeout:  dohServerTimeout,
 		WriteTimeout: dohServerTimeout,
 		Handler:      s.opt.customMux,
 	}
+	s.mu.Lock()
+	s.httpServer = httpServer
+	s.mu.Unlock()
 
 	ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.addr, s.opt.SocketOptions)
 	if err != nil {
@@ -135,9 +144,9 @@ func (s *DoHListener) startTCP() error {
 	}
 	defer ln.Close()
 	if s.opt.NoTLS {
-		return s.httpServer.Serve(ln)
+		return httpServer.Serve(ln)
 	}
-	return s.httpServer.ServeTLS(ln, "", "")
+	return httpServer.ServeTLS(ln, "", "")
 }
 
 // Start the DoH server with QUIC transport.
@@ -160,7 +169,7 @@ func (s *DoHListener) startQUIC() error {
 		udpConn.Close()
 		return err
 	}
-	s.quicServer = &http3.Server{
+	quicServer := &http3.Server{
 		TLSConfig: s.opt.TLSConfig,
 		QUICConfig: &quic.Config{
 			Allow0RTT:      true,
@@ -168,16 +177,37 @@ func (s *DoHListener) startQUIC() error {
 		},
 		Handler: s.opt.customMux,
 	}
-	return s.quicServer.ServeListener(quicLn)
+	s.mu.Lock()
+	s.quicServer = quicServer
+	s.quicTransport = transport
+	s.quicConn = udpConn
+	s.mu.Unlock()
+	return quicServer.ServeListener(quicLn)
 }
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
 	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
+	s.mu.Lock()
+	httpServer, quicServer := s.httpServer, s.quicServer
+	quicTransport, quicConn := s.quicTransport, s.quicConn
+	s.mu.Unlock()
 	if s.opt.Transport == "quic" {
-		return s.quicServer.Close()
+		if quicServer == nil {
+			return nil
+		}
+		err := quicServer.Close()
+		// quic-go's Transport.Close does not close a caller-supplied
+		// PacketConn, so close both explicitly to avoid leaking the socket
+		// on each rebuild.
+		quicTransport.Close()
+		quicConn.Close()
+		return err
 	}
-	return s.httpServer.Shutdown(context.Background())
+	if httpServer == nil {
+		return nil
+	}
+	return httpServer.Shutdown(context.Background())
 }
 
 func (s *DoHListener) String() string {

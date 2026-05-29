@@ -321,3 +321,21 @@ func TestDoHListenerPostBodySizeLimit(t *testing.T) {
 		require.Equal(t, int64(1), v.(*expvar.Int).Value())
 	})
 }
+
+// TestDoHListenerStopBeforeStart verifies Stop() is a no-op rather than a
+// nil-panic when called before Start() has assigned the server. The netns
+// supervisor can call Stop() this early when a namespace flaps.
+func TestDoHListenerStopBeforeStart(t *testing.T) {
+	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
+	require.NoError(t, err)
+
+	for _, transport := range []string{"tcp", "quic"} {
+		t.Run(transport, func(t *testing.T) {
+			s, err := NewDoHListener("test-doh", "127.0.0.1:0", DoHListenerOptions{TLSConfig: tlsServerConfig, Transport: transport}, new(TestResolver))
+			require.NoError(t, err)
+			require.NotPanics(t, func() {
+				require.NoError(t, s.Stop())
+			})
+		})
+	}
+}

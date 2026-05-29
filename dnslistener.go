@@ -72,6 +72,10 @@ func (s DNSListener) startWithSocketSetup() error {
 	return s.ActivateAndServe()
 }
 
+func (s DNSListener) Stop() error {
+	return s.Server.Shutdown()
+}
+
 func (s DNSListener) String() string {
 	return s.id
 }

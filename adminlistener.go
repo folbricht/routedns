@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -18,8 +19,13 @@ const adminServerTimeout = 10 * time.Second
 
 // AdminListener is a DNS listener/server for admin services.
 type AdminListener struct {
+	mu         sync.Mutex
 	httpServer *http.Server
 	quicServer *http3.Server
+	// quicTransport/quicConn back quicServer. quic-go does not close a
+	// caller-supplied PacketConn, so they are closed explicitly in Stop().
+	quicTransport *quic.Transport
+	quicConn      *net.UDPConn
 
 	id   string
 	addr string
@@ -76,20 +82,23 @@ func (s *AdminListener) Start() error {
 
 // Start the admin server with TCP transport.
 func (s *AdminListener) startTCP() error {
-	s.httpServer = &http.Server{
+	httpServer := &http.Server{
 		Addr:         s.addr,
 		TLSConfig:    s.opt.TLSConfig,
 		Handler:      s.mux,
 		ReadTimeout:  adminServerTimeout,
 		WriteTimeout: adminServerTimeout,
 	}
+	s.mu.Lock()
+	s.httpServer = httpServer
+	s.mu.Unlock()
 
 	ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.addr, s.opt.SocketOptions)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	return s.httpServer.ServeTLS(ln, "", "")
+	return httpServer.ServeTLS(ln, "", "")
 }
 
 // Start the admin server with QUIC transport.
@@ -109,12 +118,17 @@ func (s *AdminListener) startQUIC() error {
 		udpConn.Close()
 		return err
 	}
-	s.quicServer = &http3.Server{
+	quicServer := &http3.Server{
 		TLSConfig:  s.opt.TLSConfig,
 		Handler:    s.mux,
 		QUICConfig: &quic.Config{},
 	}
-	return s.quicServer.ServeListener(quicLn)
+	s.mu.Lock()
+	s.quicServer = quicServer
+	s.quicTransport = transport
+	s.quicConn = udpConn
+	s.mu.Unlock()
+	return quicServer.ServeListener(quicLn)
 }
 
 // Stop the server.
@@ -123,10 +137,26 @@ func (s *AdminListener) Stop() error {
 		"id", s.id,
 		"protocol", s.opt.Transport,
 		"addr", s.addr)
+	s.mu.Lock()
+	httpServer, quicServer := s.httpServer, s.quicServer
+	quicTransport, quicConn := s.quicTransport, s.quicConn
+	s.mu.Unlock()
 	if s.opt.Transport == "quic" {
-		return s.quicServer.Close()
+		if quicServer == nil {
+			return nil
+		}
+		err := quicServer.Close()
+		// quic-go's Transport.Close does not close a caller-supplied
+		// PacketConn, so close both explicitly to avoid leaking the socket
+		// on each rebuild.
+		quicTransport.Close()
+		quicConn.Close()
+		return err
 	}
-	return s.httpServer.Shutdown(context.Background())
+	if httpServer == nil {
+		return nil
+	}
+	return httpServer.Shutdown(context.Background())
 }
 
 func (s *AdminListener) String() string {
