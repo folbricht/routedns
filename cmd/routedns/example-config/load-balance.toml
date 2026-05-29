@@ -1,0 +1,25 @@
+# Example of how to use a Load-Balance group of resolvers. Queries are routed
+# to one upstream resolver at a time, preferring resolvers with lower average
+# response times and retrying with another resolver after a failure.
+
+[listeners.local-udp]
+address = "127.0.0.1:53"
+protocol = "udp"
+resolver = "load-balanced"
+
+[groups.load-balanced]
+type = "load-balance"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+failure-penalty = 5  # optional: penalize persistently failing resolvers (default 0, disabled)
+
+[resolvers.cloudflare-dot-1]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[resolvers.cloudflare-dot-2]
+address = "1.0.0.1:853"
+protocol = "dot"
+
+[resolvers.google-dot]
+address = "8.8.8.8:853"
+protocol = "dot"

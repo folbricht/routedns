@@ -20,6 +20,7 @@
   - [Fail-Rotate group](#fail-rotate-group)
   - [Fail-Back group](#fail-back-group)
   - [Random group](#random-group)
+  - [Load-Balance group](#load-balance-group)
   - [Fastest group](#fastest-group)
   - [Replace](#replace)
   - [Query Blocklist](#query-blocklist)
@@ -622,6 +623,36 @@ resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
 ```
 
 Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
+
+### Load-Balance group
+
+This group distributes queries across all configured resolvers using weighted random selection based on measured response times. Resolvers with lower average response times receive proportionally more traffic. If the selected resolver fails, the query is retried with another resolver until one succeeds or all have been tried.
+
+Compared to [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), load is spread across all resolvers at all times rather than concentrating on one until it fails. Compared to [Random](#random-group), selection is weighted by measured response time so faster resolvers naturally receive more traffic; resolvers are never removed from the pool — on failure their EMA is only allowed to move upward (preventing fast-failing resolvers from appearing artificially fast), and the optional `failure-penalty` accelerates suppression after persistent failures. Compared to [Fastest](#fastest-group), each query goes to a single resolver rather than all of them simultaneously.
+
+On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates.
+
+#### Configuration
+
+Load-Balance groups are instantiated with `type = "load-balance"` in the groups section of the configuration.
+
+Options:
+
+- `resolvers` - An array of upstream resolvers or modifiers.
+- `failure-penalty` - Penalty in seconds injected into a failed resolver's response-time average after 2 consecutive failures, accelerating its suppression beyond the baseline upward-only EMA clamp. A single transient failure is absorbed without penalty. Default `0` (disabled).
+- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a retry with another resolver. This can happen when DNSSEC validation fails for example. Default `false`.
+- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a retry with another resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
+
+#### Examples
+
+```toml
+[groups.load-balanced]
+type = "load-balance"
+resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
+failure-penalty = 5
+```
+
+Example config files: [load-balance.toml](../cmd/routedns/example-config/load-balance.toml)
 
 ### Fastest group
 

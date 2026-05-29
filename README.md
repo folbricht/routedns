@@ -59,7 +59,7 @@ Listeners receive queries over any supported protocol. Routers, groups and modif
 **Resilience & Performance**
 - Caching with memory or Redis backend, negative-TTL support, and prefetch
 - TTL manipulation (min/max clamping)
-- Multiple load-balancing algorithms: round-robin, fail-rotate, fastest, random
+- Multiple load-balancing algorithms: round-robin, fail-rotate, load-balance, fastest, random
 - Request deduplication
 - Rate limiting per client subnet
 - Truncate-retry (automatic TCP fallback on truncated UDP responses)

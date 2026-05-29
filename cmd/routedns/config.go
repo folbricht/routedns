@@ -21,19 +21,19 @@ type config struct {
 }
 
 type listener struct {
-	Address    string
-	Protocol   string
-	IPVersion  int `toml:"ip-version"` // 4 = IPv4, 6 = IPv6
-	Transport  string
-	Resolver   string
-	CA         string
-	ServerKey  string   `toml:"server-key"`
-	ServerCrt  string   `toml:"server-crt"`
-	MutualTLS  bool     `toml:"mutual-tls"`
-	NoTLS      bool     `toml:"no-tls"` // Disable TLS in DoH servers
-	AllowedNet []string `toml:"allowed-net"`
-	KeySeed    string   `toml:"key-seed"`  // ODoH HPKE key seed, 16 byte hex key. Generate for example with: "openssl rand -hex 16"
-	OdohMode   string   `toml:"odoh-mode"` // ODoH mode - accepts "proxy", "target" or "dual", default is target mode
+	Address       string
+	Protocol      string
+	IPVersion     int `toml:"ip-version"` // 4 = IPv4, 6 = IPv6
+	Transport     string
+	Resolver      string
+	CA            string
+	ServerKey     string   `toml:"server-key"`
+	ServerCrt     string   `toml:"server-crt"`
+	MutualTLS     bool     `toml:"mutual-tls"`
+	NoTLS         bool     `toml:"no-tls"` // Disable TLS in DoH servers
+	AllowedNet    []string `toml:"allowed-net"`
+	KeySeed       string   `toml:"key-seed"`  // ODoH HPKE key seed, 16 byte hex key. Generate for example with: "openssl rand -hex 16"
+	OdohMode      string   `toml:"odoh-mode"` // ODoH mode - accepts "proxy", "target" or "dual", default is target mode
 	AllowDoH      bool     `toml:"allow-doh"` // Allow ODoH listeners to also handle DoH queries to /dns-query
 	NetNS         string   `toml:"netns"`     // Linux network namespace name or absolute path
 	FWMark        uint32   `toml:"fwmark"`    // Linux firewall mark (SO_MARK) for the listening socket
@@ -56,9 +56,9 @@ type resolver struct {
 	ClientCrt     string `toml:"client-crt"`
 	ServerName    string `toml:"server-name"` // TLS server name presented in the server certificate
 	BootstrapAddr string `toml:"bootstrap-address"`
-	LocalAddr   string `toml:"local-address"`
-	LocalAddrV4 string `toml:"local-address-v4"`
-	LocalAddrV6 string `toml:"local-address-v6"`
+	LocalAddr     string `toml:"local-address"`
+	LocalAddrV4   string `toml:"local-address-v4"`
+	LocalAddrV6   string `toml:"local-address-v6"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
 	NetNS         string `toml:"netns"`          // Linux network namespace name or absolute path
@@ -100,8 +100,8 @@ type cacheBackend struct {
 	RedisKeyPrefix       string `toml:"redis-key-prefix"`        // Prefix any cache entry
 	RedisMaxRetries      int    `toml:"redis-max-retries"`       // Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
 	RedisMinRetryBackoff int    `toml:"redis-min-retry-backoff"` // Minimum back-off between each retry. Default is 8 milliseconds; -1 disables back-off.
-	RedisMaxRetryBackoff int  `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
-	RedisSyncSet         bool `toml:"redis-sync-set"`          // When true, perform Redis SET synchronously. Default is false (async writes).
+	RedisMaxRetryBackoff int    `toml:"redis-max-retry-backoff"` // Maximum back-off between each retry. Default is 512 milliseconds; -1 disables back-off.
+	RedisSyncSet         bool   `toml:"redis-sync-set"`          // When true, perform Redis SET synchronously. Default is false (async writes).
 }
 
 type group struct {
@@ -120,9 +120,10 @@ type group struct {
 	EDNS0Data  []byte                  `toml:"edns0-data"`  // EDNS0 modifier option data
 
 	// Failover/Failback options
-	ResetAfter    *int `toml:"reset-after"`    // Time in seconds after which to reset resolvers in fail-back and random groups, or 0 to reset immediately, default 60.
-	ServfailError bool `toml:"servfail-error"` // If true, SERVFAIL responses are considered errors and cause failover etc.
-	EmptyError    bool `toml:"empty-error"`    // If true, empty responses are considered errors and cause failover etc.
+	ResetAfter     *int `toml:"reset-after"`     // Time in seconds after which to reset resolvers in fail-back and random groups, or 0 to reset immediately, default 60.
+	ServfailError  bool `toml:"servfail-error"`  // If true, SERVFAIL responses are considered errors and cause failover etc.
+	EmptyError     bool `toml:"empty-error"`     // If true, empty responses are considered errors and cause failover etc.
+	FailurePenalty uint `toml:"failure-penalty"` // Time in seconds recorded as the RTT penalty for persistently failing resolvers in load-balance groups. 0 (default) disables the penalty.
 
 	// Cache options
 	Backend                  *cacheBackend
@@ -200,10 +201,10 @@ type group struct {
 	OutputFormat string `toml:"output-format"` // "text" or "json"
 
 	// Prefetch options
-	PrefetchWindow    time.Duration `toml:"prefetch-window"`    // Time period to track queries for prefetching, default 1h
-	PrefetchThreshold uint64        `toml:"prefetch-threshold"` // Minimum number of queries per window to enable prefetching, default 5
-	PrefetchCacheSize int			`toml:"prefetch-cache-size"` // Maximum number of items to cache
-	PrefetchMaxItems  int           `toml:"prefetch-max-items"` // Maximum number of items to track prefetch, default (0) unlimited
+	PrefetchWindow    time.Duration `toml:"prefetch-window"`     // Time period to track queries for prefetching, default 1h
+	PrefetchThreshold uint64        `toml:"prefetch-threshold"`  // Minimum number of queries per window to enable prefetching, default 5
+	PrefetchCacheSize int           `toml:"prefetch-cache-size"` // Maximum number of items to cache
+	PrefetchMaxItems  int           `toml:"prefetch-max-items"`  // Maximum number of items to track prefetch, default (0) unlimited
 
 	// Lua scripting options
 	LuaScript       string `toml:"lua-script"`        // Inline Lua script

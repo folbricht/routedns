@@ -427,6 +427,13 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		resolvers[id] = rdns.NewFailBack(id, opt, gr...)
 	case "fastest":
 		resolvers[id] = rdns.NewFastest(id, gr...)
+	case "load-balance":
+		opt := rdns.LoadBalanceOptions{
+			FailurePenalty: time.Duration(g.FailurePenalty) * time.Second,
+			ServfailError:  g.ServfailError,
+			EmptyError:     g.EmptyError,
+		}
+		resolvers[id] = rdns.NewLoadBalance(id, opt, gr...)
 	case "random":
 		var resetAfterDefault int = 60
 		if g.ResetAfter == nil {

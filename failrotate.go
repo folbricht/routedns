@@ -96,39 +96,6 @@ func (r *FailRotate) errorFrom(i int) {
 	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 }
 
-// Returns true if the response is considered successful given the options.
 func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {
-	if a == nil {
-		return true // !r.opt.EmptyError
-	}
-	if a.Rcode == dns.RcodeServerFailure && r.opt.ServfailError || a.Rcode == dns.RcodeRefused || a.Rcode == dns.RcodeNotImplemented {
-		return false
-	}
-	if !r.opt.EmptyError {
-		return true
-	}
-	if len(a.Answer) > 0 && len(a.Question) > 0 {
-		// Check if the reply has useful records (SOA is not useful)
-		for _, rr := range a.Answer {
-			if rr.Header().Rrtype == a.Question[0].Qtype {
-				return true
-			}
-		}
-		if a.Question[0].Qtype == dns.TypeANY {
-			return !(len(a.Answer) == 1 && a.Answer[0].Header().Rrtype == dns.TypeHINFO)
-		}
-	} else {
-		// Check if the reply was deliberately empty
-		if edns0 := a.IsEdns0(); edns0 != nil {
-			for _, opt := range edns0.Option {
-				if ede, ok := opt.(*dns.EDNS0_EDE); ok {
-					switch ede.InfoCode {
-					case dns.ExtendedErrorCodeBlocked, dns.ExtendedErrorCodeCensored, dns.ExtendedErrorCodeFiltered:
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
+	return isSuccessResponse(a, r.opt.ServfailError, r.opt.EmptyError)
 }
