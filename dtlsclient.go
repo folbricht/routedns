@@ -139,23 +139,21 @@ type dtlsDialer struct {
 }
 
 func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
-	if d.netns.usesXSocket() {
-		return nil, fmt.Errorf("xsocket is not supported for DTLS clients")
+	// pion/dtls operates on a caller-supplied net.PacketConn, so socket options
+	// and the network namespace (including xsocket) are handled when we create
+	// the underlying UDP socket.
+	laddr := ":0"
+	if d.laddr != nil {
+		laddr = d.laddr.String()
 	}
-	var pConn net.PacketConn
-	err := RunInNetNS(d.netns, func() error {
-		laddr := ":0"
-		if d.laddr != nil {
-			laddr = d.laddr.String()
-		}
-		lc := net.ListenConfig{Control: d.socketOptions.dialerControl()}
-		var e error
-		pConn, e = lc.ListenPacket(context.Background(), "udp", laddr)
-		return e
-	})
+	pConn, err := ListenPacketInNetNS(context.Background(), d.netns, "udp", laddr, d.socketOptions)
 	if err != nil {
 		return nil, err
 	}
 	c, err := dtls.Client(pConn, d.raddr, d.dtlsConfig)
-	return &dns.Conn{Conn: &dtlsConn{Conn: c}}, err
+	if err != nil {
+		pConn.Close()
+		return nil, err
+	}
+	return &dns.Conn{Conn: &dtlsConn{Conn: c}}, nil
 }
