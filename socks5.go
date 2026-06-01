@@ -89,7 +89,12 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 
 	localAddr := selectLocalAddr(d.addr, d.opt.LocalAddr, d.opt.LocalAddrV4, d.opt.LocalAddrV6)
 	if localAddr != nil {
-		return d.Client.DialWithLocalAddr(network, localAddr.String(), d.addr, nil)
+		// The socks5 library resolves the source address with
+		// net.ResolveTCPAddr, which requires a host:port. Bind the configured
+		// local IP with port 0 so the OS picks the source port; a bare IP would
+		// fail with "missing port in address".
+		src := net.JoinHostPort(localAddr.String(), "0")
+		return d.Client.DialWithLocalAddr(network, src, d.addr, nil)
 	}
 	return d.Client.Dial(network, d.addr)
 }
