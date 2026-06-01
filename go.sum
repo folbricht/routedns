@@ -95,8 +95,8 @@ github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD
 github.com/txthinking/runnergroup v0.0.0-20210608031112-152c7c4432bf/go.mod h1:CLUSJbazqETbaR+i0YAhXBICV9TrKH93pziccMhmhpM=
 github.com/txthinking/runnergroup v0.0.0-20250224021307-5864ffeb65ae h1:ArVM1jICfm7g4E4dBet+KHUFMLuxmj1Nxdp/tr3ByCU=
 github.com/txthinking/runnergroup v0.0.0-20250224021307-5864ffeb65ae/go.mod h1:cldYm15/XHcGt7ndItnEWHwFZo7dinU+2QoyjfErhsI=
-github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e h1:xA7GVlbz6teIF4FdvuqwbX6C4tiqNk2PH7FRPIDerao=
-github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e/go.mod h1:ntmMHL/xPq1WLeKiw8p/eRATaae6PiVRNipHFJxI8PM=
+github.com/txthinking/socks5 v0.0.0-20260601051520-339b044ab0eb h1:cFSmrCbLJPb87QrwDhUTnguVLezlIqDiJuY8xKcFZnw=
+github.com/txthinking/socks5 v0.0.0-20260601051520-339b044ab0eb/go.mod h1:ntmMHL/xPq1WLeKiw8p/eRATaae6PiVRNipHFJxI8PM=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yuin/gopher-lua v1.1.2-0.20241109074121-ccacf662c9d2 h1:PF/PSu+RcSOzNpCqGo6KEO+4qw+LEiX/oqVxGm8rup8=
 github.com/yuin/gopher-lua v1.1.2-0.20241109074121-ccacf662c9d2/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
