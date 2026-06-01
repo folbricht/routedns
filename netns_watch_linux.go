@@ -5,6 +5,7 @@ package rdns
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,7 +15,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const netnsDir = "/var/run/netns"
+// netnsDir is where "ip netns" mounts named network namespaces. It is a var
+// so tests can point it at a temporary directory.
+var netnsDir = "/var/run/netns"
 
 // NetNSState represents whether a Linux network namespace is currently
 // present in the filesystem.
@@ -35,6 +38,7 @@ type netnsSubscriber struct {
 type netnsWatcher struct {
 	mu   sync.Mutex
 	fd   int
+	dir  string // directory holding the namespace files, netnsDir
 	subs []*netnsSubscriber
 }
 
@@ -65,18 +69,21 @@ func newNetNSWatcher() (*netnsWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &netnsWatcher{fd: fd}
+	w := &netnsWatcher{fd: fd, dir: netnsDir}
 	go w.read()
 	go w.ensureWatch()
 	return w, nil
 }
 
-// ensureWatch installs the inotify watch on the netns directory, retrying
-// with a slow backoff if the directory does not yet exist.
+// ensureWatch installs the inotify watch on the netns directory. The directory
+// itself is created by the first "ip netns add" after boot, so when it doesn't
+// exist yet, its creation is awaited via an inotify watch on the parent
+// directory rather than by polling.
 func (w *netnsWatcher) ensureWatch() {
 	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
 	for {
-		if _, err := unix.InotifyAddWatch(w.fd, netnsDir, mask); err == nil {
+		_, err := unix.InotifyAddWatch(w.fd, w.dir, mask)
+		if err == nil {
 			// Re-sync every subscriber: events that occurred before the
 			// watch was installed (e.g. while the directory didn't exist
 			// yet) were missed. notifyLocked drops any state that hasn't
@@ -84,14 +91,50 @@ func (w *netnsWatcher) ensureWatch() {
 			// namespace.
 			w.mu.Lock()
 			for _, s := range w.subs {
-				w.notifyLocked(s, currentNetNSState(s.name))
+				w.notifyLocked(s, w.currentState(s.name))
 			}
 			w.mu.Unlock()
 			return
-		} else if !errors.Is(err, unix.ENOENT) {
-			Log.Warn("netns watcher: inotify_add_watch failed", "dir", netnsDir, "error", err)
 		}
+		if errors.Is(err, unix.ENOENT) {
+			waitForDir(w.dir)
+			continue
+		}
+		Log.Warn("netns watcher: inotify_add_watch failed", "dir", w.dir, "error", err)
 		time.Sleep(5 * time.Second)
+	}
+}
+
+// waitForDir blocks until dir exists, watching its parent directory with a
+// dedicated inotify instance so the wait is event-driven. If the parent can't
+// be watched, it falls back to polling slowly.
+func waitForDir(dir string) {
+	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
+	if err == nil {
+		defer unix.Close(fd)
+		_, err = unix.InotifyAddWatch(fd, filepath.Dir(dir), unix.IN_CREATE|unix.IN_MOVED_TO)
+	}
+	if err != nil {
+		Log.Warn("netns watcher: can't watch for netns directory creation, polling", "dir", dir, "error", err)
+		for {
+			if _, err := os.Stat(dir); err == nil {
+				return
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}
+	// Stat before each read: the directory may have been created before the
+	// parent watch became active, and an event arriving between the stat and
+	// the read just makes the read return immediately.
+	buf := make([]byte, 4096)
+	for {
+		if _, err := os.Stat(dir); err == nil {
+			return
+		}
+		if _, err := unix.Read(fd, buf); err != nil && !errors.Is(err, unix.EINTR) {
+			Log.Warn("netns watcher: parent watch read failed, polling", "dir", dir, "error", err)
+			time.Sleep(5 * time.Second)
+		}
 	}
 }
 
@@ -151,7 +194,7 @@ func (w *netnsWatcher) dispatch(name string, state NetNSState) {
 
 func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	s := &netnsSubscriber{name: name, ch: make(chan NetNSState, 16)}
-	state := currentNetNSState(name)
+	state := w.currentState(name)
 
 	w.mu.Lock()
 	w.subs = append(w.subs, s)
@@ -174,8 +217,67 @@ func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	return s.ch, cancel
 }
 
-func currentNetNSState(name string) NetNSState {
-	if _, err := os.Stat(filepath.Join(netnsDir, name)); err == nil {
+// WaitNetNSReady blocks until the named network namespace is fully set up and
+// usable, the namespace file disappears, or the timeout expires. name is
+// either a namespace name under /var/run/netns or an absolute path.
+//
+// "ip netns add" is not atomic: it first creates a placeholder file (which is
+// what fires the inotify CREATE event the watcher reacts to), then bind-mounts
+// the actual namespace onto it. In the gap between the two, opening the path
+// fails (EACCES on the mode-000 placeholder for a non-root process, EINVAL
+// from setns otherwise). The bind mount completing fires no inotify event, but
+// it does change the mount table, and the kernel signals POLLPRI on
+// /proc/self/mountinfo whenever that happens. So this waits by checking
+// whether the path is an nsfs mount (statfs) and sleeping on a mountinfo poll
+// between checks — entirely event-driven, no retry intervals.
+func WaitNetNSReady(name string, timeout time.Duration) error {
+	path := name
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(netnsDir, name)
+	}
+
+	// The poll baseline (mount-table generation counter) is established when
+	// the file is opened, so a mount landing any time after this open is
+	// guaranteed to wake the poll below. No reads or parsing are needed.
+	mounts, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
+		return fmt.Errorf("failed to open mountinfo: %w", err)
+	}
+	defer mounts.Close()
+
+	deadline := time.Now().Add(timeout)
+	for {
+		var st unix.Statfs_t
+		err := unix.Statfs(path, &st)
+		switch {
+		case err == nil && st.Type == unix.NSFS_MAGIC:
+			return nil // the real namespace is mounted over the placeholder
+		case errors.Is(err, unix.ENOENT):
+			return fmt.Errorf("netns %q does not exist", name)
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("timed out waiting for netns %q to be mounted", name)
+		}
+		ms := int(remaining.Milliseconds())
+		if ms < 1 {
+			ms = 1
+		}
+		pfds := []unix.PollFd{{Fd: int32(mounts.Fd()), Events: unix.POLLPRI}}
+		if _, err := unix.Poll(pfds, ms); err != nil && !errors.Is(err, unix.EINTR) {
+			return fmt.Errorf("failed to poll mountinfo: %w", err)
+		}
+	}
+}
+
+// currentState reports whether the named namespace file currently exists.
+func (w *netnsWatcher) currentState(name string) NetNSState {
+	dir := w.dir
+	if dir == "" {
+		dir = netnsDir
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 		return NetNSPresent
 	}
 	return NetNSAbsent

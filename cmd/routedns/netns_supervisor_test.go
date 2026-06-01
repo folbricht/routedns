@@ -101,12 +101,20 @@ func TestStopNetNSListenerStopsImmediately(t *testing.T) {
 	}
 }
 
+// stubWaitNetNSReady replaces waitNetNSReady for the duration of a test.
+func stubWaitNetNSReady(t *testing.T, fn func(name string, timeout time.Duration) error) {
+	old := waitNetNSReady
+	waitNetNSReady = fn
+	t.Cleanup(func() { waitNetNSReady = old })
+}
+
 // A listener that fails to build while its namespace is present must be retried
 // on a timer rather than waiting for the next namespace event.
 func TestNetNSSupervisorRetriesBuildFailure(t *testing.T) {
 	old := netnsRetryInterval
 	netnsRetryInterval = 10 * time.Millisecond
 	defer func() { netnsRetryInterval = old }()
+	stubWaitNetNSReady(t, func(string, time.Duration) error { return nil })
 
 	var (
 		mu       sync.Mutex
@@ -139,6 +147,61 @@ func TestNetNSSupervisorRetriesBuildFailure(t *testing.T) {
 		defer mu.Unlock()
 		return attempts >= 3 && started != nil
 	}, 2*time.Second, 5*time.Millisecond, "build was not retried until it succeeded")
+
+	// Tear down: namespace goes away (stops the listener), then end the loop.
+	events <- rdns.NetNSAbsent
+	close(events)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("supervisor did not exit")
+	}
+}
+
+// When a namespace appears, the supervisor must wait for it to be fully set up
+// (the bind mount "ip netns add" performs after creating the file) before
+// building and starting the listener, so the listener never tries to bind into
+// the unmounted placeholder.
+func TestNetNSSupervisorWaitsForReady(t *testing.T) {
+	ready := make(chan struct{})
+	stubWaitNetNSReady(t, func(string, time.Duration) error {
+		<-ready
+		return nil
+	})
+
+	var (
+		mu     sync.Mutex
+		builds int
+	)
+	build := func() (rdns.Listener, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		builds++
+		return newFakeNetNSListener(0), nil
+	}
+	buildCount := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return builds
+	}
+
+	events := make(chan rdns.NetNSState, 1)
+	done := make(chan struct{})
+	go func() {
+		runNetNSSupervisor("test", "ns", events, build)
+		close(done)
+	}()
+
+	// The namespace appears, but isn't ready yet: no build must happen.
+	events <- rdns.NetNSPresent
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, 0, buildCount(), "listener must not be built before the namespace is ready")
+
+	// The namespace becomes ready: the listener must be built and started.
+	close(ready)
+	require.Eventually(t, func() bool {
+		return buildCount() == 1
+	}, 2*time.Second, 5*time.Millisecond, "listener was not started after the namespace became ready")
 
 	// Tear down: namespace goes away (stops the listener), then end the loop.
 	events <- rdns.NetNSAbsent
