@@ -1972,7 +1972,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
-- `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. Not supported for SOCKS5-proxied resolvers. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. For SOCKS5-proxied resolvers it is the connection to the proxy that is made in the target namespace. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 
@@ -2298,8 +2298,8 @@ Notes and limitations:
 - `xsocket` and `netns` are mutually exclusive on the same component.
 - Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
 - `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
-- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `dtls`, `admin` and `odoh`, on both listeners and resolvers. Not supported for SOCKS5-proxied resolvers (the SOCKS5 library creates its own sockets internally) - configuring `xsocket` for them returns an error.
-- SOCKS5-proxied resolvers can't use `xsocket` because the SOCKS5 library opens its own connection to the proxy, leaving no descriptor for the `xsocket-server` to hand over. To combine the two, run the SOCKS5 proxy inside the target namespace instead: RouteDNS reaching the proxy from its own namespace is fine, since the proxy's outbound connections are already made in the right namespace.
+- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `dtls`, `admin` and `odoh`, on both listeners and resolvers.
+- For SOCKS5-proxied resolvers, `xsocket` controls the connection to the proxy: RouteDNS asks the `xsocket-server` for the socket used to reach the proxy, so the proxy is contacted from inside the target namespace. The proxy's own outbound connections to the upstream resolver are made by the proxy and unaffected. Alternatively, run the SOCKS5 proxy inside the target namespace and reach it from RouteDNS's own namespace without `xsocket`.
 - Linux only.
 
 Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml)

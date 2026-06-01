@@ -60,7 +60,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
-			Dialer:        socks5DialerFromConfig(r),
+			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			NetNS:         netns,
 			SocketOptions: sockOpts,
 		}
@@ -107,7 +107,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
 			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
-			Dialer:        socks5DialerFromConfig(r),
+			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			Use0RTT:       r.Use0RTT,
 			NetNS:         netns,
 			SocketOptions: sockOpts,
@@ -147,7 +147,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
-			Dialer:        socks5DialerFromConfig(r),
+			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			NetNS:         netns,
 			SocketOptions: sockOpts,
 		}
@@ -161,22 +161,25 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	return nil
 }
 
-// Returns a dialer if a socks5 proxy is configured, nil otherwise
-func socks5DialerFromConfig(cfg resolver) rdns.Dialer {
+// Returns a dialer if a socks5 proxy is configured, nil otherwise. The netns
+// and socket options are used for the connection to the proxy itself.
+func socks5DialerFromConfig(cfg resolver, netns *rdns.NetNS, sockOpts rdns.SocketOptions) rdns.Dialer {
 	if cfg.Socks5Address == "" {
 		return nil
 	}
 	r := rdns.NewSocks5Dialer(
 		cfg.Socks5Address,
 		rdns.Socks5DialerOptions{
-			Username:     cfg.Socks5Username,
-			Password:     cfg.Socks5Password,
-			TCPTimeout:   0,
-			UDPTimeout:   5 * time.Second,
-			ResolveLocal: cfg.Socks5ResolveLocal,
-			LocalAddr:    net.ParseIP(cfg.LocalAddr),
-			LocalAddrV4:  net.ParseIP(cfg.LocalAddrV4),
-			LocalAddrV6:  net.ParseIP(cfg.LocalAddrV6),
+			Username:      cfg.Socks5Username,
+			Password:      cfg.Socks5Password,
+			TCPTimeout:    0,
+			UDPTimeout:    5 * time.Second,
+			ResolveLocal:  cfg.Socks5ResolveLocal,
+			LocalAddr:     net.ParseIP(cfg.LocalAddr),
+			LocalAddrV4:   net.ParseIP(cfg.LocalAddrV4),
+			LocalAddrV6:   net.ParseIP(cfg.LocalAddrV6),
+			NetNS:         netns,
+			SocketOptions: sockOpts,
 		})
 	return r
 }

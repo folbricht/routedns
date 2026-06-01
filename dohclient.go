@@ -317,21 +317,28 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
-				if opt.NetNS.usesXSocket() {
-					return nil, errors.New("xsocket is not supported with a SOCKS proxy")
-				}
 				var conn net.Conn
-				err := RunInNetNS(opt.NetNS, func() error {
-					var e error
-					conn, e = opt.Dialer.Dial(network, addr)
-					return e
-				})
+				var err error
+				if opt.NetNS.usesXSocket() {
+					// The dialer (e.g. SOCKS5) reaches the proxy through the
+					// xsocket-server itself, applying socket options to that
+					// socket, so use it directly without entering a namespace.
+					conn, err = opt.Dialer.Dial(network, addr)
+				} else {
+					err = RunInNetNS(opt.NetNS, func() error {
+						var e error
+						conn, e = opt.Dialer.Dial(network, addr)
+						return e
+					})
+				}
 				if err != nil {
 					return nil, err
 				}
-				if err := opt.SocketOptions.applyToConn(conn); err != nil {
-					conn.Close()
-					return nil, err
+				if !opt.NetNS.usesXSocket() {
+					if err := opt.SocketOptions.applyToConn(conn); err != nil {
+						conn.Close()
+						return nil, err
+					}
 				}
 				return conn, nil
 			}

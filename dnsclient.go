@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"crypto/tls"
-	"errors"
 	"net"
 	"strings"
 	"time"
@@ -148,9 +147,13 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		switch {
 		case d.NetNS.usesXSocket():
 			if d.Dialer != nil {
-				return nil, errors.New("xsocket is not supported with a custom dialer (e.g. SOCKS proxy)")
+				// A custom dialer (e.g. SOCKS5) reaches the proxy through the
+				// xsocket-server itself, applying socket options to that
+				// socket, so just use it directly.
+				conn.Conn, err = d.Dialer.Dial(network, address)
+			} else {
+				conn.Conn, err = dialXSocket(d.NetNS.XSocket, network, address, d.SocketOptions, localAddr, d.Timeout)
 			}
-			conn.Conn, err = dialXSocket(d.NetNS.XSocket, network, address, d.SocketOptions, localAddr, d.Timeout)
 		default:
 			if netDialer, ok := dialer.(*net.Dialer); ok {
 				conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
@@ -174,8 +177,9 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 	// Custom dialers (e.g. SOCKS5) don't expose a Control callback,
 	// so we apply post-connect. SO_MARK still affects future packets
 	// on the socket; SO_BINDTODEVICE has no routing effect after
-	// connect but is applied for consistency.
-	if d.Dialer != nil {
+	// connect but is applied for consistency. The xsocket path is
+	// excluded: the dialer already applied options to the proxy socket.
+	if d.Dialer != nil && !d.NetNS.usesXSocket() {
 		if err := d.SocketOptions.applyToConn(conn.Conn); err != nil {
 			conn.Conn.Close()
 			return nil, err

@@ -19,7 +19,8 @@
 #     giving resolver addresses as IPs.
 #   - "fwmark"/"bind-if" still require CAP_NET_ADMIN/CAP_NET_RAW in the RouteDNS
 #     process even with xsocket.
-#   - Not supported for DTLS or SOCKS5-proxied resolvers.
+#   - For SOCKS5-proxied resolvers, xsocket controls the connection to the
+#     proxy (the proxy is reached from inside the target namespace).
 #   - Linux only.
 
 [resolvers.res]

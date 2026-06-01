@@ -148,3 +148,27 @@ func TestSocks5DialerLocalAddr(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ping", string(buf))
 }
+
+func TestSocks5LocalIP(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string // "" means nil
+	}{
+		{"", ""},
+		{"1.2.3.4", "1.2.3.4"},
+		{"1.2.3.4:0", "1.2.3.4"},
+		{"1.2.3.4:5353", "1.2.3.4"},
+		{"[::1]:53", "::1"},
+		{"::1", "::1"},
+		{"bogus", ""},
+	}
+	for _, tc := range tests {
+		got := socks5LocalIP(tc.in)
+		if tc.want == "" {
+			assert.Nil(t, got, "socks5LocalIP(%q)", tc.in)
+			continue
+		}
+		require.NotNil(t, got, "socks5LocalIP(%q)", tc.in)
+		assert.True(t, got.Equal(net.ParseIP(tc.want)), "socks5LocalIP(%q) = %v, want %s", tc.in, got, tc.want)
+	}
+}
