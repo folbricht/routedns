@@ -101,12 +101,88 @@ func TestStopNetNSListenerStopsImmediately(t *testing.T) {
 	}
 }
 
+// flakyStartListener fails its first failStarts Start() calls (mirroring the
+// EACCES seen while "ip netns add" has only created the mode-000 placeholder
+// but not yet bind-mounted the namespace), then blocks like a healthy listener.
+type flakyStartListener struct {
+	mu         sync.Mutex
+	startCalls int
+	failStarts int
+	stop       chan struct{}
+}
+
+func (f *flakyStartListener) Start() error {
+	f.mu.Lock()
+	f.startCalls++
+	n := f.startCalls
+	f.mu.Unlock()
+	if n <= f.failStarts {
+		return errors.New("failed to open target netns \"ns\": permission denied")
+	}
+	<-f.stop
+	return nil
+}
+
+func (f *flakyStartListener) Stop() error {
+	select {
+	case <-f.stop:
+	default:
+		close(f.stop)
+	}
+	return nil
+}
+
+func (f *flakyStartListener) String() string { return "flaky" }
+
+func (f *flakyStartListener) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.startCalls
+}
+
+// When a freshly-created namespace isn't mounted yet, the first start fails;
+// the supervisor must retry on the short initial interval and bind successfully
+// once the namespace becomes usable, rather than waiting a full second.
+func TestNetNSSupervisorRetriesStartFailureFast(t *testing.T) {
+	oldMax, oldInit := netnsRetryInterval, netnsInitialRetryInterval
+	netnsRetryInterval = 50 * time.Millisecond
+	netnsInitialRetryInterval = 2 * time.Millisecond
+	defer func() { netnsRetryInterval, netnsInitialRetryInterval = oldMax, oldInit }()
+
+	ln := &flakyStartListener{failStarts: 2, stop: make(chan struct{})}
+	build := func() (rdns.Listener, error) { return ln, nil }
+
+	events := make(chan rdns.NetNSState, 1)
+	done := make(chan struct{})
+	go func() {
+		runNetNSSupervisor("test", "ns", events, build)
+		close(done)
+	}()
+
+	events <- rdns.NetNSPresent
+	// Two fast retries (2ms + 4ms) plus scheduling overhead must land well
+	// under the 50ms cap; require completion inside a window far shorter than
+	// three full-interval retries would take.
+	require.Eventually(t, func() bool {
+		return ln.calls() >= 3
+	}, 200*time.Millisecond, 1*time.Millisecond, "start was not retried quickly enough")
+
+	events <- rdns.NetNSAbsent
+	close(events)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("supervisor did not exit")
+	}
+}
+
 // A listener that fails to build while its namespace is present must be retried
 // on a timer rather than waiting for the next namespace event.
 func TestNetNSSupervisorRetriesBuildFailure(t *testing.T) {
-	old := netnsRetryInterval
+	oldMax, oldInit := netnsRetryInterval, netnsInitialRetryInterval
 	netnsRetryInterval = 10 * time.Millisecond
-	defer func() { netnsRetryInterval = old }()
+	netnsInitialRetryInterval = 2 * time.Millisecond
+	defer func() { netnsRetryInterval, netnsInitialRetryInterval = oldMax, oldInit }()
 
 	var (
 		mu       sync.Mutex

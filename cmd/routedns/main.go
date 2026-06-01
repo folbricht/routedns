@@ -1121,11 +1121,26 @@ func networkForIPVersion(base string, ipVersion int) string {
 	return base + strconv.Itoa(ipVersion)
 }
 
-// netnsRetryInterval is how long the supervisor waits before retrying a
-// listener that failed to build or start while its namespace is present. It
-// matches the retry cadence used for listeners that aren't bound to a
-// namespace. It is a var so tests can shorten it.
+// netnsRetryInterval is the upper bound on how long the supervisor waits
+// before retrying a listener that failed to build or start while its namespace
+// is present. It matches the retry cadence used for listeners that aren't
+// bound to a namespace. It is a var so tests can shorten it.
 var netnsRetryInterval = time.Second
+
+// netnsInitialRetryInterval is the first (shortest) retry delay after a start
+// or build failure while the namespace is present. Retries back off
+// exponentially from here up to netnsRetryInterval.
+//
+// "ip netns add" is not atomic: it first creates a mode-000 placeholder file
+// (which is what fires the inotify CREATE event we react to), then a moment
+// later bind-mounts the real namespace onto it. In the gap between the two,
+// opening the path fails (EACCES on the placeholder for a non-root process, or
+// EINVAL once setns sees a non-namespace fd). No inotify event marks the bind
+// mount completing, so we can't wait for a "ready" signal — we just retry
+// quickly. The namespace becomes usable within a millisecond or two, so a short
+// first delay binds the listener well before a namespace creator that issues
+// its first query (and tears the namespace down on failure) gives up.
+var netnsInitialRetryInterval = 25 * time.Millisecond
 
 // superviseNetNSListener gates a listener on the presence of a network
 // namespace. When the namespace appears, build is called and the resulting
@@ -1154,14 +1169,26 @@ func runNetNSSupervisor(id, nsName string, events <-chan rdns.NetNSState, build 
 		startErr chan error
 		present  bool
 		retryC   <-chan time.Time // non-nil while a (re)start is pending
+		backoff  = netnsInitialRetryInterval
 	)
+
+	// scheduleRetry arms the retry timer using the current backoff, then grows
+	// the backoff toward the netnsRetryInterval cap for the next failure. The
+	// backoff is reset to netnsInitialRetryInterval whenever the namespace
+	// transitions present/absent, so each fresh appearance retries fast again.
+	scheduleRetry := func() {
+		retryC = time.After(backoff)
+		if backoff *= 2; backoff > netnsRetryInterval {
+			backoff = netnsRetryInterval
+		}
+	}
 
 	launch := func() {
 		retryC = nil
 		inner, err := build()
 		if err != nil {
 			rdns.Log.Warn("failed to build listener, retrying", "id", id, "error", err)
-			retryC = time.After(netnsRetryInterval)
+			scheduleRetry()
 			return
 		}
 		ln = inner
@@ -1183,10 +1210,12 @@ func runNetNSSupervisor(id, nsName string, events <-chan rdns.NetNSState, build 
 				if ln != nil {
 					continue
 				}
+				backoff = netnsInitialRetryInterval // fresh appearance: retry fast
 				rdns.Log.Info("netns present, starting listener", "netns", nsName, "id", id)
 				launch()
 			case rdns.NetNSAbsent:
 				present = false
+				backoff = netnsInitialRetryInterval
 				retryC = nil // namespace is gone; cancel any pending retry
 				if ln == nil {
 					rdns.Log.Warn("netns not present, waiting", "netns", nsName, "id", id)
@@ -1204,9 +1233,10 @@ func runNetNSSupervisor(id, nsName string, events <-chan rdns.NetNSState, build 
 				rdns.Log.Warn("listener exited", "id", id, "error", err)
 			}
 			// The listener stopped on its own while the namespace is still
-			// present (crash or transient bind failure); retry on a timer.
+			// present (crash, or a transient open/bind failure because the
+			// namespace isn't fully mounted yet); retry on a backoff timer.
 			if present {
-				retryC = time.After(netnsRetryInterval)
+				scheduleRetry()
 			}
 		case <-retryC:
 			retryC = nil
