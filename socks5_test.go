@@ -7,6 +7,9 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // startMinimalSocks5Proxy starts a no-auth SOCKS5 CONNECT proxy that relays to
@@ -15,9 +18,7 @@ import (
 func startMinimalSocks5Proxy(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("proxy listen: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { ln.Close() })
 	go func() {
 		for {
@@ -99,9 +100,7 @@ func serveSocks5Connect(c net.Conn) {
 func startEchoTCPServer(t *testing.T) net.Listener {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("echo listen: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { ln.Close() })
 	go func() {
 		for {
@@ -133,29 +132,19 @@ func TestSocks5DialerLocalAddr(t *testing.T) {
 	})
 
 	conn, err := d.Dial("tcp", echo.Addr().String())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	// The connection to the proxy should be bound to the configured local IP.
 	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
-	if err != nil {
-		t.Fatalf("parse local addr %q: %v", conn.LocalAddr(), err)
-	}
-	if host != "127.0.0.1" {
-		t.Errorf("connection bound to %q, want source IP 127.0.0.1", host)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1", host, "connection should be bound to the configured source IP")
 
-	if _, err := conn.Write([]byte("ping")); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err = conn.Write([]byte("ping"))
+	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
 	buf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(buf) != "ping" {
-		t.Errorf("got %q, want \"ping\"", buf)
-	}
+	_, err = io.ReadFull(conn, buf)
+	require.NoError(t, err)
+	assert.Equal(t, "ping", string(buf))
 }
