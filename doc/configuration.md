@@ -2276,7 +2276,9 @@ Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
 
 #### Without elevated privileges: xsocket
 
-The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold `CAP_SYS_ADMIN`. The `xsocket` option is an alternative that avoids this. It relies on [xsocket](https://github.com/koro666/xsocket): a small privileged `xsocket-server` runs inside the target namespace and listens on a Unix socket. RouteDNS connects to that socket, asks the server to create a socket in its namespace, and receives the file descriptor back over the Unix socket (`SCM_RIGHTS`). RouteDNS then binds or connects that descriptor itself - so only the tiny `xsocket-server` needs privileges, not RouteDNS.
+The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold `CAP_SYS_ADMIN`. The `xsocket` option is an alternative that avoids this. It relies on [xsocket](https://github.com/koro666/xsocket): a small `xsocket-server` runs inside the target namespace and listens on a Unix socket. RouteDNS connects to that socket, asks the server to create a socket in its namespace, and receives the file descriptor back over the Unix socket (`SCM_RIGHTS`). RouteDNS then binds or connects that descriptor itself - so RouteDNS itself needs no elevated privileges at all, while still listening in and connecting to any number of namespaces.
+
+Placing `xsocket-server` inside the target namespace usually requires privilege to set up (e.g. `ip netns exec`, which needs root), but the server process itself can drop to an unprivileged user once there: creating sockets and passing file descriptors needs no capabilities. It only needs to retain privileges - e.g. `CAP_NET_ADMIN`/`CAP_NET_RAW`, possibly via an `LD_PRELOAD` shim - if it must apply privileged socket options such as firewall marks (`fwmark`) itself.
 
 The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`.
 
@@ -2296,6 +2298,7 @@ xsocket = "/var/tmp/xsocket/ns2"
 Notes and limitations:
 
 - `xsocket` and `netns` are mutually exclusive on the same component.
+- Security boundary: anyone who can connect to the `xsocket-server`'s Unix socket can obtain sockets in its namespace. Access is controlled entirely by filesystem ownership, permissions and ACLs on the socket (and its parent directory) - set these up restrictively. Abstract sockets (`@name`) have no filesystem entry and so cannot be permission-controlled; they are reachable by any process in the server's network namespace. Prefer a pathname socket with restrictive permissions when access control matters.
 - Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
 - `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
 - Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `dtls`, `admin` and `odoh`, on both listeners and resolvers.
