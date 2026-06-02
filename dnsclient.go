@@ -172,19 +172,10 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		return nil, err
 	}
 
-	// Apply socket options to connections made by custom dialers.
-	// For net.Dialer, options were already applied via Control.
-	// Custom dialers (e.g. SOCKS5) don't expose a Control callback,
-	// so we apply post-connect. SO_MARK still affects future packets
-	// on the socket; SO_BINDTODEVICE has no routing effect after
-	// connect but is applied for consistency. The xsocket path is
-	// excluded: the dialer already applied options to the proxy socket.
-	if d.Dialer != nil && !d.NetNS.usesXSocket() {
-		if err := d.SocketOptions.applyToConn(conn.Conn); err != nil {
-			conn.Conn.Close()
-			return nil, err
-		}
-	}
+	// For net.Dialer, socket options were applied via Control. Custom dialers
+	// (e.g. SOCKS5) apply them when creating their own sockets; the returned
+	// conn doesn't expose the underlying descriptor, so they can't be applied
+	// here post-connect (nor would SO_BINDTODEVICE affect routing by then).
 
 	// Trick dns.Conn.ReadMsg() into thinking this is a packet connection (udp) so it
 	// correctly handles any length-prefixes

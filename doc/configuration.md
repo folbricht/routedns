@@ -2314,7 +2314,7 @@ On Linux, listeners and resolvers support two socket-level options for advanced 
 - `fwmark` - Sets the `SO_MARK` socket option. The firewall mark is attached to all packets sent from the socket, allowing Linux netfilter (`iptables`/`nftables`) and policy routing (`ip rule`) to match and route them. The value is an integer and supports TOML hex notation (e.g. `0xb`).
 - `bind-if` - Sets the `SO_BINDTODEVICE` socket option. Binds the socket to a specific network interface so that traffic can only flow through that interface. This is useful with [VRFs](https://docs.kernel.org/networking/vrf.html) or as a safeguard against route leaks. On kernels >= 5.7, `SO_BINDTODEVICE` does not require root privileges.
 
-Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged).
+Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged). On a resolver with `socks5-address`, the options are applied to the sockets reaching the SOCKS5 proxy.
 
 **Resolver with fwmark and interface binding:**
 

@@ -317,12 +317,14 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
+				// The dialer (e.g. SOCKS5) creates the sockets reaching the
+				// proxy itself and applies socket options to them, whether via
+				// xsocket or not.
 				var conn net.Conn
 				var err error
 				if opt.NetNS.usesXSocket() {
-					// The dialer (e.g. SOCKS5) reaches the proxy through the
-					// xsocket-server itself, applying socket options to that
-					// socket, so use it directly without entering a namespace.
+					// The proxy is reached through the xsocket-server, so use
+					// the dialer directly without entering a namespace.
 					conn, err = opt.Dialer.Dial(network, addr)
 				} else {
 					err = RunInNetNS(opt.NetNS, func() error {
@@ -331,16 +333,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 						return e
 					})
 				}
-				if err != nil {
-					return nil, err
-				}
-				if !opt.NetNS.usesXSocket() {
-					if err := opt.SocketOptions.applyToConn(conn); err != nil {
-						conn.Close()
-						return nil, err
-					}
-				}
-				return conn, nil
+				return conn, err
 			}
 			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
