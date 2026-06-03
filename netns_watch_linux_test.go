@@ -125,14 +125,10 @@ func TestWaitNetNSReadyTimeout(t *testing.T) {
 	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond, "should have waited for the timeout")
 }
 
-// A namespace file deleted while waiting must be detected within the bounded
-// re-check interval, not only when the timeout expires. Deleting a plain file
-// changes no mount state, so no mountinfo poll wakeup ever arrives for it —
-// this is what happens when a "namespace creator" service gives up and cleans
-// up its namespace while the wait is in progress. The same bounded re-check
-// covers namespace mounts that become visible without waking the poll, e.g.
-// mounts propagated from the host into a sandboxed (slave) mount namespace on
-// kernels that don't propagate the wakeup.
+// A namespace file deleted while waiting must be detected within the re-check
+// interval, not only when the timeout expires. This is what happens when a
+// "namespace creator" service gives up and cleans up its namespace while the
+// wait is in progress.
 func TestWaitNetNSReadyDetectsDeletionWhileWaiting(t *testing.T) {
 	placeholder := filepath.Join(t.TempDir(), "ns")
 	require.NoError(t, os.WriteFile(placeholder, nil, 0o000))
@@ -149,9 +145,9 @@ func TestWaitNetNSReadyDetectsDeletionWhileWaiting(t *testing.T) {
 	require.Less(t, elapsed, time.Second, "deletion should be detected by the bounded re-check, not the timeout")
 }
 
-// The poll on /proc/self/mountinfo must wake up when the namespace is
-// bind-mounted over the placeholder, completing the wait without any retry
-// interval. This is the exact sequence "ip netns add" performs. Requires root.
+// The wait must complete promptly once the namespace is bind-mounted over the
+// placeholder. This is the exact sequence "ip netns add" performs. Requires
+// root.
 func TestWaitNetNSReadyOnMount(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root to bind-mount a namespace")

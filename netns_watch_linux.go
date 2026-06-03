@@ -217,14 +217,15 @@ func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	return s.ch, cancel
 }
 
-// netnsReadyRecheckInterval caps how long WaitNetNSReady sleeps on the
-// mountinfo poll before re-checking the path. The poll wakeup is the fast
-// path, but it is not guaranteed to fire in every environment: when routedns
-// runs in its own mount namespace (e.g. sandboxed by systemd's DynamicUser),
-// a namespace mount propagating in from the host doesn't wake mountinfo
-// pollers on all kernels, and deletion of the namespace file changes no mount
-// state at all. The bounded re-check keeps both cases from stalling until the
-// timeout.
+// netnsReadyRecheckInterval is how often WaitNetNSReady re-checks the
+// namespace path. The bind mount completing fires no inotify event, and the
+// event-driven alternative — poll(POLLPRI) on /proc/self/mountinfo — isn't
+// reliable: when routedns runs in its own mount namespace (e.g. sandboxed by
+// systemd's DynamicUser), a namespace mount propagating in from the host
+// doesn't wake mountinfo pollers on all kernels, and deletion of the
+// namespace file changes no mount state at all. So a short fixed interval is
+// used instead; it bounds both the listener-start latency after
+// "ip netns add" and the detection of a namespace deleted mid-wait.
 const netnsReadyRecheckInterval = 10 * time.Millisecond
 
 // WaitNetNSReady blocks until the named network namespace is fully set up and
@@ -235,26 +236,13 @@ const netnsReadyRecheckInterval = 10 * time.Millisecond
 // what fires the inotify CREATE event the watcher reacts to), then bind-mounts
 // the actual namespace onto it. In the gap between the two, opening the path
 // fails (EACCES on the mode-000 placeholder for a non-root process, EINVAL
-// from setns otherwise). The bind mount completing fires no inotify event, but
-// it does change the mount table, and the kernel signals POLLPRI on
-// /proc/self/mountinfo whenever that happens. So this waits by checking
-// whether the path is an nsfs mount (statfs) and sleeping on a mountinfo poll
-// between checks. The poll is capped at netnsReadyRecheckInterval so progress
-// doesn't depend on the wakeup actually arriving.
+// from setns otherwise). So this waits by checking whether the path is an
+// nsfs mount (statfs) every netnsReadyRecheckInterval.
 func WaitNetNSReady(name string, timeout time.Duration) error {
 	path := name
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(netnsDir, name)
 	}
-
-	// The poll baseline (mount-table generation counter) is established when
-	// the file is opened, so a mount landing any time after this open is
-	// guaranteed to wake the poll below. No reads or parsing are needed.
-	mounts, err := os.Open("/proc/self/mountinfo")
-	if err != nil {
-		return fmt.Errorf("failed to open mountinfo: %w", err)
-	}
-	defer mounts.Close()
 
 	deadline := time.Now().Add(timeout)
 	for {
@@ -271,14 +259,7 @@ func WaitNetNSReady(name string, timeout time.Duration) error {
 		if remaining <= 0 {
 			return fmt.Errorf("timed out waiting for netns %q to be mounted", name)
 		}
-		ms := int(min(remaining, netnsReadyRecheckInterval).Milliseconds())
-		if ms < 1 {
-			ms = 1
-		}
-		pfds := []unix.PollFd{{Fd: int32(mounts.Fd()), Events: unix.POLLPRI}}
-		if _, err := unix.Poll(pfds, ms); err != nil && !errors.Is(err, unix.EINTR) {
-			return fmt.Errorf("failed to poll mountinfo: %w", err)
-		}
+		time.Sleep(min(remaining, netnsReadyRecheckInterval))
 	}
 }
 
