@@ -1124,15 +1124,15 @@ func networkForIPVersion(base string, ipVersion int) string {
 // netnsRetryInterval is how long the supervisor waits before retrying a
 // listener that failed to build or start while its namespace is present. It
 // matches the retry cadence used for listeners that aren't bound to a
-// namespace. It is a var so tests can shorten it.
-var netnsRetryInterval = time.Second
+// namespace.
+const netnsRetryInterval = time.Second
 
 // netnsReadyTimeout is the longest the supervisor waits for a namespace that
 // just appeared to become fully set up (see waitNetNSReady) before trying to
 // start the listener anyway. Normally the wait completes within a few
 // milliseconds; the timeout only matters in pathological cases such as a
 // stray non-namespace file under /var/run/netns.
-var netnsReadyTimeout = time.Second
+const netnsReadyTimeout = time.Second
 
 // waitNetNSReady is rdns.WaitNetNSReady, indirected so tests can stub it out.
 var waitNetNSReady = rdns.WaitNetNSReady
