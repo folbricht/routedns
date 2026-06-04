@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"golang.org/x/sys/unix"
@@ -22,10 +21,7 @@ type NetNS struct {
 // If Name starts with '/', it is used as-is; otherwise it is looked up
 // under /var/run/netns/.
 func (ns *NetNS) nsPath() string {
-	if filepath.IsAbs(ns.Name) {
-		return ns.Name
-	}
-	return filepath.Join("/var/run/netns", ns.Name)
+	return netnsPath(ns.Name)
 }
 
 // RunInNetNS executes fn in the given network namespace. If ns is nil or

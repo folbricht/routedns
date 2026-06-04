@@ -1124,8 +1124,18 @@ func networkForIPVersion(base string, ipVersion int) string {
 // netnsRetryInterval is how long the supervisor waits before retrying a
 // listener that failed to build or start while its namespace is present. It
 // matches the retry cadence used for listeners that aren't bound to a
-// namespace. It is a var so tests can shorten it.
-var netnsRetryInterval = time.Second
+// namespace.
+const netnsRetryInterval = time.Second
+
+// netnsReadyTimeout is the longest the supervisor waits for a namespace that
+// just appeared to become fully set up (see waitNetNSReady) before trying to
+// start the listener anyway. Normally the wait completes within a few
+// milliseconds; the timeout only matters in pathological cases such as a
+// stray non-namespace file under /var/run/netns.
+const netnsReadyTimeout = time.Second
+
+// waitNetNSReady is rdns.WaitNetNSReady, indirected so tests can stub it out.
+var waitNetNSReady = rdns.WaitNetNSReady
 
 // superviseNetNSListener gates a listener on the presence of a network
 // namespace. When the namespace appears, build is called and the resulting
@@ -1184,6 +1194,15 @@ func runNetNSSupervisor(id, nsName string, events <-chan rdns.NetNSState, build 
 					continue
 				}
 				rdns.Log.Info("netns present, starting listener", "netns", nsName, "id", id)
+				// "ip netns add" creates the namespace file before mounting
+				// the actual namespace onto it, and the inotify event fires on
+				// the former. Wait for the mount so the listener doesn't try
+				// to bind into the placeholder. On error (namespace deleted
+				// again, timeout, ...) still attempt the start: a failure
+				// there is visible to the user and retried on a timer.
+				if err := waitNetNSReady(nsName, netnsReadyTimeout); err != nil {
+					rdns.Log.Warn("netns not ready", "netns", nsName, "id", id, "error", err)
+				}
 				launch()
 			case rdns.NetNSAbsent:
 				present = false

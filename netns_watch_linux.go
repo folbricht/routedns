@@ -5,6 +5,7 @@ package rdns
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,7 +15,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const netnsDir = "/var/run/netns"
+// netnsDir is where "ip netns" mounts named network namespaces. It is a var
+// so tests can point it at a temporary directory.
+var netnsDir = "/var/run/netns"
+
+// netnsPath resolves a namespace reference to a filesystem path: an absolute
+// path is used as-is, anything else is looked up under netnsDir.
+func netnsPath(name string) string {
+	if filepath.IsAbs(name) {
+		return name
+	}
+	return filepath.Join(netnsDir, name)
+}
 
 // NetNSState represents whether a Linux network namespace is currently
 // present in the filesystem.
@@ -46,9 +58,12 @@ var (
 
 // SubscribeNetNS returns a channel that receives state changes for the named
 // network namespace, plus a cancel function to unsubscribe. name must be a
-// namespace name under /var/run/netns, not an absolute path. The current state
-// is delivered immediately on subscription, even if /var/run/netns does not
-// exist yet; subsequent values reflect changes.
+// namespace name under /var/run/netns, not an absolute path. The current
+// state is delivered immediately on subscription; subsequent values reflect
+// changes. It fails if /var/run/netns does not exist: the directory is
+// created by the first "ip netns add" after boot, so routedns must either be
+// started after that or the directory created beforehand (e.g. with
+// "ExecStartPre=+mkdir -p /run/netns" in a systemd unit).
 func SubscribeNetNS(name string) (<-chan NetNSState, func(), error) {
 	nsWatcherOnce.Do(func() {
 		nsWatcher, nsWatcherErr = newNetNSWatcher()
@@ -65,34 +80,17 @@ func newNetNSWatcher() (*netnsWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
+	if _, err := unix.InotifyAddWatch(fd, netnsDir, mask); err != nil {
+		unix.Close(fd)
+		if errors.Is(err, unix.ENOENT) {
+			return nil, fmt.Errorf("netns directory %s does not exist; create it before starting routedns, or start routedns after the first \"ip netns add\"", netnsDir)
+		}
+		return nil, fmt.Errorf("failed to watch %s: %w", netnsDir, err)
+	}
 	w := &netnsWatcher{fd: fd}
 	go w.read()
-	go w.ensureWatch()
 	return w, nil
-}
-
-// ensureWatch installs the inotify watch on the netns directory, retrying
-// with a slow backoff if the directory does not yet exist.
-func (w *netnsWatcher) ensureWatch() {
-	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
-	for {
-		if _, err := unix.InotifyAddWatch(w.fd, netnsDir, mask); err == nil {
-			// Re-sync every subscriber: events that occurred before the
-			// watch was installed (e.g. while the directory didn't exist
-			// yet) were missed. notifyLocked drops any state that hasn't
-			// actually changed, so this won't re-warn for an unchanged
-			// namespace.
-			w.mu.Lock()
-			for _, s := range w.subs {
-				w.notifyLocked(s, currentNetNSState(s.name))
-			}
-			w.mu.Unlock()
-			return
-		} else if !errors.Is(err, unix.ENOENT) {
-			Log.Warn("netns watcher: inotify_add_watch failed", "dir", netnsDir, "error", err)
-		}
-		time.Sleep(5 * time.Second)
-	}
 }
 
 // read pulls events from the inotify fd and dispatches them to subscribers.
@@ -174,8 +172,52 @@ func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	return s.ch, cancel
 }
 
+// netnsReadyRecheckInterval is how often WaitNetNSReady re-checks the
+// namespace path. The bind mount completing fires no inotify event, and the
+// event-driven alternative — poll(POLLPRI) on /proc/self/mountinfo — isn't
+// reliable: when routedns runs in its own mount namespace (e.g. sandboxed by
+// systemd's DynamicUser), a namespace mount propagating in from the host
+// doesn't wake mountinfo pollers on all kernels, and deletion of the
+// namespace file changes no mount state at all. So a short fixed interval is
+// used instead; it bounds both the listener-start latency after
+// "ip netns add" and the detection of a namespace deleted mid-wait.
+const netnsReadyRecheckInterval = 10 * time.Millisecond
+
+// WaitNetNSReady blocks until the named network namespace is fully set up and
+// usable, the namespace file disappears, or the timeout expires. name is
+// either a namespace name under /var/run/netns or an absolute path.
+//
+// "ip netns add" is not atomic: it first creates a placeholder file (which is
+// what fires the inotify CREATE event the watcher reacts to), then bind-mounts
+// the actual namespace onto it. In the gap between the two, opening the path
+// fails (EACCES on the mode-000 placeholder for a non-root process, EINVAL
+// from setns otherwise). So this waits by checking whether the path is an
+// nsfs mount (statfs) every netnsReadyRecheckInterval.
+func WaitNetNSReady(name string, timeout time.Duration) error {
+	path := netnsPath(name)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		var st unix.Statfs_t
+		err := unix.Statfs(path, &st)
+		switch {
+		case err == nil && st.Type == unix.NSFS_MAGIC:
+			return nil // the real namespace is mounted over the placeholder
+		case errors.Is(err, unix.ENOENT):
+			return fmt.Errorf("netns %q does not exist", name)
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("timed out waiting for netns %q to be mounted", name)
+		}
+		time.Sleep(min(remaining, netnsReadyRecheckInterval))
+	}
+}
+
+// currentNetNSState reports whether the named namespace file currently exists.
 func currentNetNSState(name string) NetNSState {
-	if _, err := os.Stat(filepath.Join(netnsDir, name)); err == nil {
+	if _, err := os.Stat(netnsPath(name)); err == nil {
 		return NetNSPresent
 	}
 	return NetNSAbsent
