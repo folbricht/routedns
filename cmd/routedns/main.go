@@ -1132,7 +1132,7 @@ var netnsRetryInterval = time.Second
 // start the listener anyway. Normally the wait completes within a few
 // milliseconds; the timeout only matters in pathological cases such as a
 // stray non-namespace file under /var/run/netns.
-var netnsReadyTimeout = 5 * time.Second
+var netnsReadyTimeout = time.Second
 
 // waitNetNSReady is rdns.WaitNetNSReady, indirected so tests can stub it out.
 var waitNetNSReady = rdns.WaitNetNSReady
