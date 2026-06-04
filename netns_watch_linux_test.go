@@ -26,7 +26,7 @@ func TestNetNSWatcherSubscribeDeliversInitialState(t *testing.T) {
 	case state := <-ch:
 		require.Equal(t, NetNSAbsent, state)
 	case <-time.After(time.Second):
-		t.Fatal("expected initial state on subscribe, got none")
+		require.Fail(t, "expected initial state on subscribe, got none")
 	}
 }
 
@@ -66,7 +66,7 @@ func TestNetNSWatcherDetectsCreation(t *testing.T) {
 	case state := <-ch:
 		require.Equal(t, NetNSPresent, state)
 	case <-time.After(2 * time.Second):
-		t.Fatal("namespace creation not detected")
+		require.Fail(t, "namespace creation not detected")
 	}
 }
 
@@ -85,7 +85,7 @@ func TestNetNSWatcherDeduplicatesState(t *testing.T) {
 	w.dispatch(testNonexistentNS, NetNSAbsent)
 	select {
 	case <-ch:
-		t.Fatal("duplicate Absent should have been deduplicated")
+		require.Fail(t, "duplicate Absent should have been deduplicated")
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -95,7 +95,7 @@ func TestNetNSWatcherDeduplicatesState(t *testing.T) {
 	case state := <-ch:
 		require.Equal(t, NetNSPresent, state)
 	case <-time.After(time.Second):
-		t.Fatal("expected NetNSPresent to be delivered")
+		require.Fail(t, "expected NetNSPresent to be delivered")
 	}
 }
 

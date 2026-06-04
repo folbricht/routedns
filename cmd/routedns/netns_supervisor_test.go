@@ -68,9 +68,7 @@ func TestStopNetNSListenerRetriesUntilStopped(t *testing.T) {
 
 		stopNetNSListener("test", f, startErr)
 
-		if c := f.calls(); c < 2 {
-			t.Fatalf("expected Stop() to be retried, got %d call(s)", c)
-		}
+		require.GreaterOrEqual(t, f.calls(), 2, "expected Stop() to be retried")
 	})
 }
 
@@ -84,9 +82,7 @@ func TestStopNetNSListenerStopsImmediately(t *testing.T) {
 
 		stopNetNSListener("test", f, startErr)
 
-		if c := f.calls(); c != 1 {
-			t.Fatalf("expected exactly 1 Stop() call, got %d", c)
-		}
+		require.Equal(t, 1, f.calls(), "expected exactly 1 Stop() call")
 	})
 }
 
