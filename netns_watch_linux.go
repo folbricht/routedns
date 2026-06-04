@@ -50,9 +50,12 @@ var (
 
 // SubscribeNetNS returns a channel that receives state changes for the named
 // network namespace, plus a cancel function to unsubscribe. name must be a
-// namespace name under /var/run/netns, not an absolute path. The current state
-// is delivered immediately on subscription, even if /var/run/netns does not
-// exist yet; subsequent values reflect changes.
+// namespace name under /var/run/netns, not an absolute path. The current
+// state is delivered immediately on subscription; subsequent values reflect
+// changes. It fails if /var/run/netns does not exist: the directory is
+// created by the first "ip netns add" after boot, so routedns must either be
+// started after that or the directory created beforehand (e.g. with
+// "ExecStartPre=+mkdir -p /run/netns" in a systemd unit).
 func SubscribeNetNS(name string) (<-chan NetNSState, func(), error) {
 	nsWatcherOnce.Do(func() {
 		nsWatcher, nsWatcherErr = newNetNSWatcher()
@@ -69,73 +72,17 @@ func newNetNSWatcher() (*netnsWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
+	if _, err := unix.InotifyAddWatch(fd, netnsDir, mask); err != nil {
+		unix.Close(fd)
+		if errors.Is(err, unix.ENOENT) {
+			return nil, fmt.Errorf("netns directory %s does not exist; create it before starting routedns, or start routedns after the first \"ip netns add\"", netnsDir)
+		}
+		return nil, fmt.Errorf("failed to watch %s: %w", netnsDir, err)
+	}
 	w := &netnsWatcher{fd: fd, dir: netnsDir}
 	go w.read()
-	go w.ensureWatch()
 	return w, nil
-}
-
-// ensureWatch installs the inotify watch on the netns directory. The directory
-// itself is created by the first "ip netns add" after boot, so when it doesn't
-// exist yet, its creation is awaited via an inotify watch on the parent
-// directory rather than by polling.
-func (w *netnsWatcher) ensureWatch() {
-	const mask = unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM
-	for {
-		_, err := unix.InotifyAddWatch(w.fd, w.dir, mask)
-		if err == nil {
-			// Re-sync every subscriber: events that occurred before the
-			// watch was installed (e.g. while the directory didn't exist
-			// yet) were missed. notifyLocked drops any state that hasn't
-			// actually changed, so this won't re-warn for an unchanged
-			// namespace.
-			w.mu.Lock()
-			for _, s := range w.subs {
-				w.notifyLocked(s, w.currentState(s.name))
-			}
-			w.mu.Unlock()
-			return
-		}
-		if errors.Is(err, unix.ENOENT) {
-			waitForDir(w.dir)
-			continue
-		}
-		Log.Warn("netns watcher: inotify_add_watch failed", "dir", w.dir, "error", err)
-		time.Sleep(5 * time.Second)
-	}
-}
-
-// waitForDir blocks until dir exists, watching its parent directory with a
-// dedicated inotify instance so the wait is event-driven. If the parent can't
-// be watched, it falls back to polling slowly.
-func waitForDir(dir string) {
-	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
-	if err == nil {
-		defer unix.Close(fd)
-		_, err = unix.InotifyAddWatch(fd, filepath.Dir(dir), unix.IN_CREATE|unix.IN_MOVED_TO)
-	}
-	if err != nil {
-		Log.Warn("netns watcher: can't watch for netns directory creation, polling", "dir", dir, "error", err)
-		for {
-			if _, err := os.Stat(dir); err == nil {
-				return
-			}
-			time.Sleep(5 * time.Second)
-		}
-	}
-	// Stat before each read: the directory may have been created before the
-	// parent watch became active, and an event arriving between the stat and
-	// the read just makes the read return immediately.
-	buf := make([]byte, 4096)
-	for {
-		if _, err := os.Stat(dir); err == nil {
-			return
-		}
-		if _, err := unix.Read(fd, buf); err != nil && !errors.Is(err, unix.EINTR) {
-			Log.Warn("netns watcher: parent watch read failed, polling", "dir", dir, "error", err)
-			time.Sleep(5 * time.Second)
-		}
-	}
 }
 
 // read pulls events from the inotify fd and dispatches them to subscribers.

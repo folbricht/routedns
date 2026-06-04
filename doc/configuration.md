@@ -2253,6 +2253,8 @@ The `netns` value can be either:
 
 The option is supported on all listener protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, Admin) and all resolver protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, ODoH). On non-Linux platforms, configuring `netns` returns an error.
 
+Listeners bound to a named namespace are supervised: the listener starts when the namespace appears and stops when it is removed, so namespaces can come and go while RouteDNS runs. This requires `/var/run/netns` to exist when RouteDNS starts; the directory is created by the first `ip netns add` after boot. If RouteDNS starts before that, the listener is disabled with an error. To start RouteDNS independent of namespace creation order, create the directory beforehand, e.g. with `ExecStartPre=+mkdir -p /run/netns` in a systemd unit.
+
 Examples:
 
 Listen in a container namespace, resolve in the host namespace:

@@ -14,12 +14,10 @@ import (
 
 const testNonexistentNS = "rdns-test-nonexistent-namespace"
 
-// Subscribing must deliver the current state immediately, without waiting for
-// the inotify watch to be installed. This is the case that previously logged
-// nothing at startup when /var/run/netns did not exist yet: the watch never
-// became active, so no initial state was ever delivered.
+// Subscribing must deliver the current state immediately, so the supervisor
+// logs "waiting" right away for a namespace that doesn't exist yet.
 func TestNetNSWatcherSubscribeDeliversInitialState(t *testing.T) {
-	w := &netnsWatcher{} // no read/ensureWatch goroutines started
+	w := &netnsWatcher{} // no watch installed, no read goroutine started
 
 	ch, cancel := w.subscribe(testNonexistentNS)
 	defer cancel()
@@ -32,14 +30,26 @@ func TestNetNSWatcherSubscribeDeliversInitialState(t *testing.T) {
 	}
 }
 
-// The watcher must become active promptly when the netns directory itself is
-// created after startup. After a reboot, /var/run/netns doesn't exist until
-// the first "ip netns add" creates it, and a namespace created moments later
-// must still be picked up immediately — not after a polling interval.
-func TestNetNSWatcherDetectsDirCreation(t *testing.T) {
+// When the netns directory doesn't exist, the watcher must fail with a clear
+// error rather than watching or polling for the directory's creation. The
+// directory is created by the first "ip netns add" after boot; starting
+// routedns before that is a setup error the user has to resolve.
+func TestNetNSWatcherMissingDir(t *testing.T) {
 	oldDir := netnsDir
 	netnsDir = filepath.Join(t.TempDir(), "netns")
 	defer func() { netnsDir = oldDir }()
+
+	_, err := newNetNSWatcher()
+	require.ErrorContains(t, err, "does not exist")
+}
+
+// A namespace file created after the watcher starts must be detected via the
+// inotify event, not a polling interval.
+func TestNetNSWatcherDetectsCreation(t *testing.T) {
+	oldDir := netnsDir
+	netnsDir = filepath.Join(t.TempDir(), "netns")
+	defer func() { netnsDir = oldDir }()
+	require.NoError(t, os.Mkdir(netnsDir, 0o755))
 
 	w, err := newNetNSWatcher()
 	require.NoError(t, err)
@@ -47,20 +57,17 @@ func TestNetNSWatcherDetectsDirCreation(t *testing.T) {
 	ch, cancel := w.subscribe("testns")
 	defer cancel()
 
-	// Initial state: directory doesn't exist, namespace is absent.
+	// Initial state: namespace file doesn't exist yet.
 	require.Equal(t, NetNSAbsent, <-ch)
 
-	// Create the directory and a namespace file in it, like the first
-	// "ip netns add" after boot does.
-	require.NoError(t, os.Mkdir(netnsDir, 0o755))
+	// Create the namespace file like "ip netns add" does.
 	require.NoError(t, os.WriteFile(filepath.Join(netnsDir, "testns"), nil, 0o000))
 
-	// Present must be delivered well within the old 5s polling interval.
 	select {
 	case state := <-ch:
 		require.Equal(t, NetNSPresent, state)
 	case <-time.After(2 * time.Second):
-		t.Fatal("namespace creation not detected after netns directory appeared")
+		t.Fatal("namespace creation not detected")
 	}
 }
 
@@ -75,7 +82,7 @@ func TestNetNSWatcherDeduplicatesState(t *testing.T) {
 	// Drain the initial Absent.
 	require.Equal(t, NetNSAbsent, <-ch)
 
-	// A duplicate Absent (e.g. ensureWatch's re-sync) must be deduplicated.
+	// A duplicate Absent (e.g. a repeated event) must be deduplicated.
 	w.dispatch(testNonexistentNS, NetNSAbsent)
 	select {
 	case <-ch:
