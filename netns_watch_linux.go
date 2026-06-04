@@ -19,6 +19,15 @@ import (
 // so tests can point it at a temporary directory.
 var netnsDir = "/var/run/netns"
 
+// netnsPath resolves a namespace reference to a filesystem path: an absolute
+// path is used as-is, anything else is looked up under netnsDir.
+func netnsPath(name string) string {
+	if filepath.IsAbs(name) {
+		return name
+	}
+	return filepath.Join(netnsDir, name)
+}
+
 // NetNSState represents whether a Linux network namespace is currently
 // present in the filesystem.
 type NetNSState int
@@ -38,7 +47,6 @@ type netnsSubscriber struct {
 type netnsWatcher struct {
 	mu   sync.Mutex
 	fd   int
-	dir  string // directory holding the namespace files, netnsDir
 	subs []*netnsSubscriber
 }
 
@@ -80,7 +88,7 @@ func newNetNSWatcher() (*netnsWatcher, error) {
 		}
 		return nil, fmt.Errorf("failed to watch %s: %w", netnsDir, err)
 	}
-	w := &netnsWatcher{fd: fd, dir: netnsDir}
+	w := &netnsWatcher{fd: fd}
 	go w.read()
 	return w, nil
 }
@@ -141,7 +149,7 @@ func (w *netnsWatcher) dispatch(name string, state NetNSState) {
 
 func (w *netnsWatcher) subscribe(name string) (<-chan NetNSState, func()) {
 	s := &netnsSubscriber{name: name, ch: make(chan NetNSState, 16)}
-	state := w.currentState(name)
+	state := currentNetNSState(name)
 
 	w.mu.Lock()
 	w.subs = append(w.subs, s)
@@ -186,10 +194,7 @@ const netnsReadyRecheckInterval = 10 * time.Millisecond
 // from setns otherwise). So this waits by checking whether the path is an
 // nsfs mount (statfs) every netnsReadyRecheckInterval.
 func WaitNetNSReady(name string, timeout time.Duration) error {
-	path := name
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(netnsDir, name)
-	}
+	path := netnsPath(name)
 
 	deadline := time.Now().Add(timeout)
 	for {
@@ -210,13 +215,9 @@ func WaitNetNSReady(name string, timeout time.Duration) error {
 	}
 }
 
-// currentState reports whether the named namespace file currently exists.
-func (w *netnsWatcher) currentState(name string) NetNSState {
-	dir := w.dir
-	if dir == "" {
-		dir = netnsDir
-	}
-	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+// currentNetNSState reports whether the named namespace file currently exists.
+func currentNetNSState(name string) NetNSState {
+	if _, err := os.Stat(netnsPath(name)); err == nil {
 		return NetNSPresent
 	}
 	return NetNSAbsent
