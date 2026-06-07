@@ -86,11 +86,20 @@ func TestValidateNoRRSIG(t *testing.T) {
 }
 
 func TestValidateEmptyAnswer(t *testing.T) {
-	v := NewValidator()
+	// An empty answer (NXDOMAIN/NODATA) must no longer be accepted
+	// unconditionally; without an authenticated NSEC/NSEC3 proof of denial it
+	// cannot be validated and must be reported as an error.
+	v := NewValidator(
+		WithResolver(func(q *dns.Msg) (*dns.Msg, error) {
+			a := new(dns.Msg)
+			a.SetReply(q)
+			return a, nil
+		}),
+	)
 	answer := new(dns.Msg)
 	answer.SetQuestion("example.com.", dns.TypeA)
 	err := v.Validate(answer)
-	require.NoError(t, err)
+	require.Error(t, err)
 }
 
 func TestKeystoreCaching(t *testing.T) {

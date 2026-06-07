@@ -20,6 +20,7 @@ var (
 	ErrNoTrustAnchor        = errors.New("dnssec: no trust anchor")
 	ErrInsecureDelegation   = errors.New("dnssec: insecure delegation")
 	ErrSignerOutOfBailiwick = errors.New("dnssec: RRSIG signer name out of bailiwick")
+	ErrDenialOfExistence    = errors.New("dnssec: denial of existence not proven")
 )
 
 type Validator struct {
@@ -85,7 +86,7 @@ func (v *Validator) SetAnchor(owner string, tag uint16, alg, digestType uint8, d
 // and validates each signed RRset against a chain of trust.
 func (v *Validator) Validate(answer *dns.Msg) error {
 	if len(answer.Answer) == 0 {
-		return nil
+		return v.validateDenial(answer)
 	}
 
 	rrsets, sigs := groupRRsByTypeAndName(answer.Answer)
