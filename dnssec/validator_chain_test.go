@@ -447,6 +447,66 @@ func TestValidateAcceptsAncestorSignerName(t *testing.T) {
 	require.NoError(t, v.Validate(answer))
 }
 
+// TestValidateRejectsExpiredRRSIG reproduces the signature-replay scenario
+// where an on-path attacker (or malicious upstream) serves a previously
+// legitimate answer whose covering RRSIG has since expired. The cryptographic
+// signature still verifies, but its validity period has elapsed, so it MUST be
+// rejected. The chain of trust (DNSKEY self-signature, DS) remains current so
+// the test isolates the answer RRSIG's expiry.
+func TestValidateRejectsExpiredRRSIG(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, rootZSKpriv := genKey(t, ".", 256)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK})
+
+	childKSK, childKSKpriv := genKey(t, "child.", 257)
+	childZSK, childZSKpriv := genKey(t, "child.", 256)
+	childDNSKEYSig := signRRset(t, childKSK, childKSKpriv, now, []dns.RR{childZSK, childKSK})
+
+	childDS := childKSK.ToDS(dns.SHA256)
+	require.NotNil(t, childDS)
+	childDSSig := signRRset(t, rootZSK, rootZSKpriv, now, []dns.RR{childDS})
+
+	// The answer is signed with a validity window two hours in the past
+	// ([-3h, -1h] relative to now), so it is cryptographically valid but
+	// expired from the validator's perspective.
+	childA, _ := dns.NewRR("child. 300 IN A 1.2.3.4")
+	childASig := signRRset(t, childZSK, childZSKpriv, now.Add(-2*time.Hour), []dns.RR{childA})
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		name := dns.CanonicalName(q.Question[0].Name)
+		switch q.Question[0].Qtype {
+		case dns.TypeDNSKEY:
+			switch name {
+			case ".":
+				a.Answer = []dns.RR{rootZSK, rootKSK, rootDNSKEYSig}
+			case "child.":
+				a.Answer = []dns.RR{childZSK, childKSK, childDNSKEYSig}
+			}
+		case dns.TypeDS:
+			if name == "child." {
+				a.Answer = []dns.RR{childDS, childDSSig}
+			}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	answer := new(dns.Msg)
+	answer.SetQuestion("child.", dns.TypeA)
+	answer.Answer = []dns.RR{childA, childASig}
+
+	err := v.Validate(answer)
+	require.ErrorIs(t, err, ErrSignatureExpired,
+		"an RRSIG outside its validity period must be rejected; got %v", err)
+}
+
 // genKey creates an ECDSAP256SHA256 DNSKEY for the given owner and flags
 // (256 = ZSK, 257 = KSK) and returns the public DNSKEY plus its private signer.
 func genKey(t *testing.T, owner string, flags uint16) (*dns.DNSKEY, crypto.Signer) {
