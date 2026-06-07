@@ -34,7 +34,7 @@ func TestDoQListenerStartStop(t *testing.T) {
 	case err := <-stopped:
 		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("Start did not return after Stop; listener is spinning on Accept")
+		require.FailNow(t, "Start did not return after Stop; listener is spinning on Accept")
 	}
 }
 
@@ -67,7 +67,7 @@ func TestDoQListenerStopRaceDuringStart(t *testing.T) {
 			return
 		case <-time.After(20 * time.Millisecond):
 		case <-deadline:
-			t.Fatal("Start did not return while Stop was retried")
+			require.FailNow(t, "Start did not return while Stop was retried")
 		}
 	}
 }

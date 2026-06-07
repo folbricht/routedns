@@ -25,7 +25,7 @@ func waitForGoroutines(t *testing.T, target int, timeout time.Duration) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("probe goroutines did not terminate: have %d, want <= %d", runtime.NumGoroutine(), target)
+	require.LessOrEqual(t, runtime.NumGoroutine(), target, "probe goroutines did not terminate")
 }
 
 // TestFastestTCPNoGoroutineLeak verifies that probe goroutines always
