@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchTrustAnchorsXML(t *testing.T) {
@@ -37,31 +39,17 @@ func TestFetchTrustAnchorsXML(t *testing.T) {
 	defer srv.Close()
 
 	anchors, err := FetchTrustAnchorsFromURL(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Should have 2 anchors: KSK-2017 (no validUntil) and KSK-2024 (validUntil in 2099).
 	// KSK-2010 should be filtered out (validUntil 2019).
-	if len(anchors) != 2 {
-		t.Fatalf("expected 2 anchors, got %d", len(anchors))
-	}
+	require.Len(t, anchors, 2)
 
-	if anchors[0].KeyTag != 20326 {
-		t.Errorf("expected first anchor key-tag 20326, got %d", anchors[0].KeyTag)
-	}
-	if anchors[0].Owner != "." {
-		t.Errorf("expected owner '.', got %q", anchors[0].Owner)
-	}
-	if anchors[1].KeyTag != 38696 {
-		t.Errorf("expected second anchor key-tag 38696, got %d", anchors[1].KeyTag)
-	}
-	if anchors[1].Algorithm != 8 {
-		t.Errorf("expected algorithm 8, got %d", anchors[1].Algorithm)
-	}
-	if anchors[1].DigestType != 2 {
-		t.Errorf("expected digest-type 2, got %d", anchors[1].DigestType)
-	}
+	require.Equal(t, uint16(20326), anchors[0].KeyTag)
+	require.Equal(t, ".", anchors[0].Owner)
+	require.Equal(t, uint16(38696), anchors[1].KeyTag)
+	require.Equal(t, uint8(8), anchors[1].Algorithm)
+	require.Equal(t, uint8(2), anchors[1].DigestType)
 }
 
 func TestIsIANAAnchorValid(t *testing.T) {
@@ -80,9 +68,7 @@ func TestIsIANAAnchorValid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			kd := ianaKeyDigest{ValidUntil: tt.validUntil}
-			if got := isIANAAnchorValid(kd, now); got != tt.want {
-				t.Errorf("isIANAAnchorValid() = %v, want %v", got, tt.want)
-			}
+			require.Equal(t, tt.want, isIANAAnchorValid(kd, now))
 		})
 	}
 }
@@ -94,7 +80,5 @@ func TestFetchTrustAnchorsHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	_, err := FetchTrustAnchorsFromURL(srv.URL)
-	if err == nil {
-		t.Fatal("expected error for HTTP 500, got nil")
-	}
+	require.Error(t, err, "expected error for HTTP 500")
 }
