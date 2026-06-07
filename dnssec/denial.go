@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -17,7 +18,7 @@ var ErrBogusDenial = errors.New("dnssec: unauthenticated denial of DS")
 // verifyDSDenial checks that resp's authority section carries NSEC or NSEC3
 // records, signed by one of the supplied parent-zone keys, that prove no DS
 // RRset exists at name. RFC 4035 §5.2 / RFC 5155 §8.
-func verifyDSDenial(resp *dns.Msg, name string, parentKeys []*dns.DNSKEY) error {
+func verifyDSDenial(resp *dns.Msg, name string, parentKeys []*dns.DNSKEY, now time.Time) error {
 	name = dns.CanonicalName(name)
 	rrsets, sigs := groupRRsByTypeAndName(resp.Ns)
 
@@ -29,7 +30,7 @@ func verifyDSDenial(resp *dns.Msg, name string, parentKeys []*dns.DNSKEY) error 
 		if !ok {
 			continue
 		}
-		if err := verifyRRSIG(sig, parentKeys, rrset); err != nil {
+		if err := verifyRRSIG(sig, parentKeys, rrset, now); err != nil {
 			continue
 		}
 		for _, rr := range rrset {

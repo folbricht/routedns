@@ -15,6 +15,7 @@ var (
 	ErrNoSignature        = errors.New("dnssec: no RRSIG for RRset")
 	ErrNoKey              = errors.New("dnssec: no matching DNSKEY")
 	ErrSignatureInvalid   = errors.New("dnssec: signature verification failed")
+	ErrSignatureExpired   = errors.New("dnssec: RRSIG outside its validity period")
 	ErrDSMismatch         = errors.New("dnssec: DNSKEY doesn't match DS")
 	ErrNoTrustAnchor        = errors.New("dnssec: no trust anchor")
 	ErrInsecureDelegation   = errors.New("dnssec: insecure delegation")
@@ -150,7 +151,7 @@ func (v *Validator) proveNoDS(zone string) (bool, error) {
 		}
 		return false, err
 	}
-	if err := verifyDSDenial(resp, zone, parentZSK); err != nil {
+	if err := verifyDSDenial(resp, zone, parentZSK, v.now()); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -174,7 +175,7 @@ func (v *Validator) validateRRset(rrset []dns.RR, sig *dns.RRSIG) error {
 	if err != nil {
 		return err
 	}
-	return verifyRRSIG(sig, zsk, rrset)
+	return verifyRRSIG(sig, zsk, rrset, v.now())
 }
 
 // buildChainOfTrust recursively builds a DNSSEC chain of trust from
@@ -230,7 +231,7 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		}
 
 		if len(dsRecords) == 0 {
-			if err := verifyDSDenial(dsResp, zone, parentZSK); err != nil {
+			if err := verifyDSDenial(dsResp, zone, parentZSK, v.now()); err != nil {
 				return nil, nil, err
 			}
 			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
@@ -245,7 +246,7 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		}
 		var verified bool
 		for _, dsSig := range dsSigs {
-			if err := verifyRRSIG(dsSig, parentZSK, dsRRset); err == nil {
+			if err := verifyRRSIG(dsSig, parentZSK, dsRRset, v.now()); err == nil {
 				verified = true
 				break
 			}
@@ -269,7 +270,7 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 			continue
 		}
 		sigSeen = true
-		if err := verifyRRSIG(sig, trustedKSK, allKeys); err == nil {
+		if err := verifyRRSIG(sig, trustedKSK, allKeys, v.now()); err == nil {
 			sigVerified = true
 			break
 		}
@@ -376,7 +377,16 @@ func findKeysByTag(keys []*dns.DNSKEY, tag uint16, alg uint8) []*dns.DNSKEY {
 
 // verifyRRSIG attempts to verify an RRSIG against a set of keys and an RRset.
 // It returns nil on the first successful verification.
-func verifyRRSIG(sig *dns.RRSIG, keys []*dns.DNSKEY, rrset []dns.RR) error {
+//
+// miekg/dns RRSIG.Verify() performs only the cryptographic check and
+// deliberately ignores the signature's validity period (RFC 4035 §5.3.1
+// step 3 is the caller's responsibility), so the Inception/Expiration window
+// is enforced separately here against now. Without this, an attacker could
+// replay a previously legitimate but expired signature.
+func verifyRRSIG(sig *dns.RRSIG, keys []*dns.DNSKEY, rrset []dns.RR, now time.Time) error {
+	if !sig.ValidityPeriod(now) {
+		return fmt.Errorf("%w: inception=%d expiration=%d", ErrSignatureExpired, sig.Inception, sig.Expiration)
+	}
 	matching := findKeysByTag(keys, sig.KeyTag, sig.Algorithm)
 	if len(matching) == 0 {
 		return fmt.Errorf("%w: tag=%d alg=%d", ErrNoKey, sig.KeyTag, sig.Algorithm)
