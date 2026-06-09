@@ -10,7 +10,7 @@ RouteDNS is a composable DNS stub resolver, proxy and router written in Go. It b
 
 ```bash
 # Build
-go build -o cmd/desync/ ./cmd/routedns
+go build -o cmd/routedns/ ./cmd/routedns
 
 # Run all tests
 go test ./...
@@ -28,7 +28,7 @@ go test -race ./...
 routedns config.toml
 ```
 
-There is no Makefile or linter configuration. CI uses GitHub Actions with CodeQL analysis only.
+There is no Makefile or linter configuration. CI uses GitHub Actions: a build workflow runs `go build` and `go test -race ./...` on every PR and push to master, plus CodeQL analysis. Pushes to master trigger an automatic version bump and release.
 
 ## Architecture
 
@@ -61,12 +61,12 @@ Resolvers/Clients (forward to upstream DNS servers)
 
 - **Listeners** (`Listener` interface in `listener.go`): Entry points that accept DNS queries. Each protocol has its own file (e.g., `dohlistener.go`, `dotlistener.go`, `doqlistener.go`).
 - **Clients/Resolvers**: Forward queries upstream. Each protocol is in its own file (`dnsclient.go` for UDP/TCP, `dotclient.go`, `dohclient.go`, `doqclient.go`, `dtlsclient.go`, `odohclient.go`).
-- **Groups/Modifiers** (~30 types): Wrap one or more resolvers to add behavior — caching (`cache.go`), blocklists (`blocklist-v2.go`), load-balancing (`round-robin.go`, `failrotate.go`, `fastest.go`), rate limiting (`rate-limiter.go`), query/response modification, etc.
+- **Groups/Modifiers** (~30 types): Wrap one or more resolvers to add behavior — caching (`cache.go`), blocklists (`blocklist.go`, config type `blocklist-v2`), load-balancing (`roundrobin.go`, `loadbalance.go`, `failrotate.go`, `fastest.go`), rate limiting (`rate-limiter.go`), Lua scripting (`lua*.go`), query/response modification, etc.
 - **Routers** (`router.go`): Conditional routing based on query properties (name regex, type, source IP, time of day, etc.). Routes evaluated in order; first match wins.
 
 ### Configuration System
 
-TOML-based configuration defined in `cmd/routedns/config.go`. Four top-level sections: `[listeners]`, `[resolvers]`, `[groups]`, `[routers]`. Component instantiation in `cmd/routedns/resolver.go` uses a DAG (`github.com/heimdalr/dag`) to resolve dependencies bottom-up, preventing circular references.
+TOML-based configuration defined in `cmd/routedns/config.go`. Four top-level sections: `[listeners]`, `[resolvers]`, `[groups]`, `[routers]`. Component instantiation in `cmd/routedns/main.go` uses a DAG (`github.com/heimdalr/dag`) to resolve dependencies bottom-up, preventing circular references.
 
 Multiple config files can be provided as arguments and are merged.
 
