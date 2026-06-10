@@ -140,3 +140,15 @@ func TestFastestTCPProbeCap(t *testing.T) {
 
 	waitForGoroutines(t, before, 2*time.Second)
 }
+
+// A dropped query (nil response, nil error) must be passed through
+// without dereferencing the response.
+func TestFastestTCPDroppedQuery(t *testing.T) {
+	r := NewFastestTCP("test-ftcp", NewDropResolver("test-drop"), FastestTCPOptions{})
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	a, err := r.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.Nil(t, a)
+}
