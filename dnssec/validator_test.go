@@ -39,8 +39,8 @@ func TestGroupRRsByTypeAndName(t *testing.T) {
 
 	require.Len(t, rrsets[aKey], 2)
 	require.Len(t, rrsets[aaaaKey], 1)
-	require.NotNil(t, sigs[aKey])
-	require.Nil(t, sigs[aaaaKey])
+	require.Len(t, sigs[aKey], 1)
+	require.Empty(t, sigs[aaaaKey])
 }
 
 func TestFilterKeysByDS(t *testing.T) {
