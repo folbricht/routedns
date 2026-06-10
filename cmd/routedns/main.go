@@ -668,6 +668,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		}
 		resolvers[id] = rdns.NewSyslog(id, gr[0], opt)
 	case "cache":
+		if len(gr) != 1 {
+			return fmt.Errorf("type cache only supports one resolver in '%s'", id)
+		}
 		var shuffleFunc rdns.AnswerShuffleFunc
 		switch g.CacheAnswerShuffle {
 		case "": // default
