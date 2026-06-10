@@ -1,6 +1,7 @@
 package dnssec
 
 import (
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -170,6 +171,39 @@ func TestKeystoreDSExpiry(t *testing.T) {
 	// Should be expired
 	result = ks.getDS("example.com.")
 	require.Nil(t, result)
+}
+
+// TestKeystoreDSMerge verifies that adding multiple DS records for the same
+// owner accumulates them rather than replacing, so that multiple trust anchors
+// (e.g. the root KSK-2017 and KSK-2024) all remain usable.
+func TestKeystoreDSMerge(t *testing.T) {
+	now := time.Now()
+	currentTime := now
+	ks := newKeystore(func() time.Time { return currentTime })
+
+	newDS := func(tag uint16, ttl uint32) *dns.DS {
+		return &dns.DS{
+			Hdr:        dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET, Ttl: ttl},
+			KeyTag:     tag,
+			Algorithm:  dns.RSASHA256,
+			DigestType: dns.SHA256,
+			Digest:     "ABCD",
+		}
+	}
+
+	ks.addDS(".", newDS(20326, math.MaxUint32))
+	ks.addDS(".", newDS(38696, 3600))
+
+	result := ks.getDS(".")
+	require.Len(t, result, 2)
+
+	tags := []uint16{result[0].KeyTag, result[1].KeyTag}
+	require.Contains(t, tags, uint16(20326))
+	require.Contains(t, tags, uint16(38696))
+
+	// Expiry must reflect the lowest TTL across the merged set (3600s).
+	currentTime = now.Add(3601 * time.Second)
+	require.Nil(t, ks.getDS("."))
 }
 
 func TestBuildChainOfTrustCaching(t *testing.T) {
