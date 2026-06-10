@@ -140,9 +140,18 @@ func (s *keystore) getItem(name string) *keystoreEntry {
 	if ok {
 		return item
 	}
-	item = new(keystoreEntry)
+
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Re-check under the write lock: another goroutine may have created the
+	// entry between releasing the read lock above and acquiring the write lock.
+	// Without this, two callers could each insert a fresh entry, the second
+	// overwriting the first, and any DS/DNSKEY written to the orphaned entry
+	// would be silently lost.
+	if item, ok := s.store[mk]; ok {
+		return item
+	}
+	item = new(keystoreEntry)
 	s.store[mk] = item
-	s.mu.Unlock()
 	return item
 }
