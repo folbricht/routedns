@@ -2,6 +2,7 @@ package dnssec
 
 import (
 	"math"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -204,6 +205,33 @@ func TestKeystoreDSMerge(t *testing.T) {
 	// Expiry must reflect the lowest TTL across the merged set (3600s).
 	currentTime = now.Add(3601 * time.Second)
 	require.Nil(t, ks.getDS("."))
+}
+
+// TestGetItemConcurrent verifies that concurrent getItem calls for the same
+// name all return the same entry. Before the double-checked lock, two callers
+// could each insert a fresh entry and the second would overwrite the first,
+// leaving one caller with an orphaned entry whose writes are lost.
+func TestGetItemConcurrent(t *testing.T) {
+	ks := newKeystore(time.Now)
+
+	const n = 64
+	items := make([]*keystoreEntry, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			items[i] = ks.getItem("example.com.")
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i := 1; i < n; i++ {
+		require.Same(t, items[0], items[i], "all callers must share one entry")
+	}
 }
 
 func TestBuildChainOfTrustCaching(t *testing.T) {
