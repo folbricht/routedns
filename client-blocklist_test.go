@@ -2,7 +2,9 @@ package rdns
 
 import (
 	"net"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
@@ -62,4 +64,37 @@ func TestClientBlocklistMatch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, a)
 	require.Equal(t, 1, r.HitCount())
+}
+
+// Concurrent queries while the refresh loop swaps and closes the
+// database. Run with -race to verify the matching is synchronized
+// with the swap.
+func TestClientBlocklistConcurrentRefresh(t *testing.T) {
+	loader := NewStaticLoader([]string{"192.168.0.0/16"})
+	db, err := NewCidrDB("testlist", loader)
+	require.NoError(t, err)
+
+	b, err := NewClientBlocklist("test-cb", &TestResolver{}, ClientBlocklistOptions{
+		BlocklistDB:      db,
+		BlocklistRefresh: time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				_, err := b.Resolve(q, ClientInfo{SourceIP: net.ParseIP("192.168.1.1")})
+				require.NoError(t, err)
+				_, err = b.Resolve(q, ClientInfo{SourceIP: net.ParseIP("10.0.0.1")})
+				require.NoError(t, err)
+			}
+		}()
+	}
+	wg.Wait()
 }

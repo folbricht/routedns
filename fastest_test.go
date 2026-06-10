@@ -135,3 +135,29 @@ func TestFastestFailAll(t *testing.T) {
 		require.Equal(t, dns.RcodeServerFailure, a.Rcode)
 	})
 }
+
+// Each resolver branch must receive its own copy of the query. Modifiers
+// in the branches change the message in place, which races between the
+// concurrent branches if the message is shared. Run with -race.
+func TestFastestQueryNotShared(t *testing.T) {
+	mutator := func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		// Mutate the query like ecs-modifier or edns0-modifier would
+		q.SetEdns0(4096, false)
+		a := new(dns.Msg)
+		a.SetReply(q)
+		return a, nil
+	}
+	r1 := &TestResolver{ResolveFunc: mutator}
+	r2 := &TestResolver{ResolveFunc: mutator}
+
+	g := NewFastest("fastest", r1, r2)
+	for range 100 {
+		q := new(dns.Msg)
+		q.SetQuestion("test.com.", dns.TypeA)
+		a, err := g.Resolve(q, ClientInfo{})
+		require.NoError(t, err)
+		require.NotNil(t, a)
+		// The caller's query must not have been modified by the branches
+		require.Nil(t, q.IsEdns0())
+	}
+}

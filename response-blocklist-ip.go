@@ -82,6 +82,15 @@ func (r *ResponseBlocklistIP) String() string {
 	return r.id
 }
 
+// Match the IP against the blocklist while holding the lock. The refresh
+// loop closes the old database after swapping in a new one, so the match
+// must complete under the lock to never use a closed database.
+func (r *ResponseBlocklistIP) match(ip net.IP) (*BlocklistMatch, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.BlocklistDB.Match(ip)
+}
+
 func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
@@ -93,10 +102,14 @@ func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
 				"error", err)
 			continue
 		}
+		// Swap the database before closing the old one. Queries match
+		// under a read-lock, so no query can still be using the old
+		// database once the write-lock was acquired here.
 		r.mu.Lock()
-		r.BlocklistDB.Close()
+		old := r.BlocklistDB
 		r.BlocklistDB = db
 		r.mu.Unlock()
+		old.Close()
 	}
 }
 
@@ -112,7 +125,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 			default:
 				continue
 			}
-			if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
+			if match, ok := r.match(ip); ok != r.Inverted {
 				log := logger(r.id, query, ci).With(
 					slog.String("list", match.GetList()),
 					slog.String("rule", match.GetRule()),
@@ -164,7 +177,7 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 			newRRs = append(newRRs, rr)
 			continue
 		}
-		if match, ok := r.BlocklistDB.Match(ip); ok != r.Inverted {
+		if match, ok := r.match(ip); ok != r.Inverted {
 			log := logger(r.id, query, ci).With(
 				slog.String("list", match.GetList()),
 				slog.String("rule", match.GetRule()),

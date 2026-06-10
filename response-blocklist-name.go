@@ -61,6 +61,15 @@ func (r *ResponseBlocklistName) String() string {
 	return r.id
 }
 
+// Match the name against the blocklist while holding the lock to
+// synchronize with the refresh loop swapping the database.
+func (r *ResponseBlocklistName) match(msg *dns.Msg) (*BlocklistMatch, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, _, match, ok := r.BlocklistDB.Match(msg)
+	return match, ok
+}
+
 func (r *ResponseBlocklistName) refreshLoopBlocklist(refresh time.Duration) {
 	for {
 		time.Sleep(refresh)
@@ -105,7 +114,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 			}
 			msg := new(dns.Msg)
 			msg.SetQuestion(name, 0)
-			if _, _, rule, ok := r.BlocklistDB.Match(msg); ok != r.Inverted {
+			if rule, ok := r.match(msg); ok != r.Inverted {
 				log := logger(r.id, query, ci).With("rule", rule.GetRule())
 				if r.BlocklistResolver != nil {
 					log.Debug("blocklist match, forwarding to blocklist-resolver", "resolver", r.BlocklistResolver)

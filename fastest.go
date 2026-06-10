@@ -35,10 +35,12 @@ func (r *Fastest) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	responseCh := make(chan response, len(r.resolvers))
 
-	// Send the query to all resolvers. The responses are collected in a buffered channel
+	// Send the query to all resolvers. The responses are collected in a buffered channel.
+	// Give each resolver its own copy of the query since modifiers down the chain
+	// modify the message in place, which would race between the branches.
 	for _, resolver := range r.resolvers {
 		go func() {
-			a, err := resolver.Resolve(q, ci)
+			a, err := resolver.Resolve(q.Copy(), ci)
 			responseCh <- response{resolver, a, err}
 		}()
 	}
