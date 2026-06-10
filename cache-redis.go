@@ -210,6 +210,13 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		}
 	}
 
+	// A record that decoded without error but holds no message (such as a
+	// literal "null" JSON value) is treated as a cache-miss.
+	if a == nil || a.Msg == nil {
+		Log.Error("empty cache record from redis")
+		return nil, false, false
+	}
+
 	answer := a.Msg
 	prefetchEligible := a.PrefetchEligible
 	answer.Id = q.Id

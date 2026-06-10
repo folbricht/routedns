@@ -82,6 +82,11 @@ func (c *packetConn) Write(p []byte) (n int, err error) {
 	if err != nil {
 		return len(p), err
 	}
+	// A nil response means "drop". Fail the lookup rather than queueing
+	// a nil message that would panic the reader when packing it.
+	if a == nil {
+		return len(p), errors.New("query dropped by resolver")
+	}
 	c.ch <- a
 	return len(p), nil
 }
