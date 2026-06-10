@@ -67,9 +67,10 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 			ci := ClientInfo{Listener: "prefetch"}
 			logger(r.id, q, ci).Debug("prefetching")
 
-			// Send the query again, the response should be cached by the resolver
+			// Send the query again, the response should be cached by the resolver.
+			// A nil response with no error means the query was dropped.
 			answer, err := r.resolver.Resolve(q, ci)
-			if err != nil {
+			if err != nil || answer == nil {
 				return
 			}
 
@@ -92,8 +93,8 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 
 func (r *Prefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer, err := r.resolver.Resolve(q, ci)
-	if err != nil {
-		return nil, err
+	if err != nil || answer == nil { // a nil response with no error means the query was dropped
+		return answer, err
 	}
 
 	// Check the response can be used for prefetch, return if not

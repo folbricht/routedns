@@ -65,7 +65,7 @@ func NewFastestTCP(id string, resolver Resolver, opt FastestTCPOptions) *Fastest
 func (r *FastestTCP) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(r.id, q, ci)
 	a, err := r.resolver.Resolve(q, ci)
-	if err != nil {
+	if err != nil || a == nil { // a nil response with no error means the query was dropped
 		return a, err
 	}
 	question := q.Question[0]
