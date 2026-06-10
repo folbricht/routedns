@@ -155,6 +155,7 @@ func TTLSelectFirst(r *TTLModifier, a *dns.Msg) bool {
 			return
 		}
 		first = h.Ttl
+		gotFirst = true
 	})
 	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
 		if h.Ttl != first {
