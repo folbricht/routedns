@@ -11,7 +11,7 @@ type Fastest struct {
 	resolvers []Resolver
 }
 
-var _ Resolver = &FailRotate{}
+var _ Resolver = &Fastest{}
 
 // NewFastest returns a new instance of a resolver group that returns the fastest
 // response from all its resolvers.

@@ -77,8 +77,12 @@ func (r *Replace) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, err
 	}
 
-	// Set the question back to the original name
-	a.Question[0].Name = oldName
+	// Set the question back to the original name. A response from a
+	// misbehaving upstream may have an empty question section, do not
+	// trust it blindly.
+	if len(a.Question) > 0 {
+		a.Question[0].Name = oldName
+	}
 
 	// Now put the original name in all answer records that have the
 	// new name

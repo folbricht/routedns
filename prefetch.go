@@ -20,7 +20,7 @@ type Prefetch struct {
 	queryCache *expirationcache.ExpirationLRUCache[dns.Msg]
 }
 
-var _ Resolver = &RoundRobin{}
+var _ Resolver = &Prefetch{}
 
 type PrefetchOptions struct {
 	PrefetchWindow    time.Duration
