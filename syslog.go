@@ -57,6 +57,11 @@ func NewSyslog(id string, resolver Resolver, opt SyslogOptions) *Syslog {
 
 // Resolve passes a DNS query through unmodified. Query details are sent via syslog.
 func (r *Syslog) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// The writer is nil if the syslog connection failed at startup. Pass
+	// queries through rather than crash on the first logged query.
+	if r.writer == nil {
+		return r.resolver.Resolve(q, ci)
+	}
 	var msg string
 	if r.opt.LogRequest {
 		msg = fmt.Sprintf("id=%s qid=%d type=query client=%s qtype=%s qname=%s", r.id, q.Id, ci.SourceIP.String(), qType(q), qName(q))

@@ -188,7 +188,11 @@ func TTLSelectLast(r *TTLModifier, a *dns.Msg) bool {
 // TTLSelectRandom is a function for the TTL Modifier that sets the TTL
 // to a random value between ttl-min and ttl-max.
 func TTLSelectRandom(r *TTLModifier, a *dns.Msg) bool {
-	value := r.MinTTL + uint32(rand.Intn(int(r.MaxTTL-r.MinTTL)))
+	// Guard against ttl-max <= ttl-min, rand.Intn panics on values < 1
+	value := r.MinTTL
+	if r.MaxTTL > r.MinTTL {
+		value = r.MinTTL + uint32(rand.Intn(int(r.MaxTTL-r.MinTTL)))
+	}
 	iterateOverAnswerRRHeader(a, func(h *dns.RR_Header) {
 		h.Ttl = value
 	})
