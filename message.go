@@ -89,7 +89,7 @@ func setUDPSize(q *dns.Msg, size uint16) *dns.Msg {
 	if edns0 != nil {
 		edns0.SetUDPSize(size)
 	} else {
-		q.SetEdns0(size, false)
+		copy.SetEdns0(size, false)
 	}
 	return copy
 }
