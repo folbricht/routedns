@@ -20,12 +20,6 @@ type keystoreEntry struct {
 	mu   sync.RWMutex
 }
 
-func (item *keystoreEntry) setDS(ds *dsSet) {
-	item.mu.Lock()
-	defer item.mu.Unlock()
-	item.ds = ds
-}
-
 func (item *keystoreEntry) setDNSKEY(keys *dnskeySet) {
 	item.mu.Lock()
 	defer item.mu.Unlock()
@@ -51,18 +45,31 @@ func newKeystore(now func() time.Time) *keystore {
 }
 
 func (s *keystore) addDS(name string, dss ...*dns.DS) {
+	item := s.getItem(name)
+	item.mu.Lock()
+	defer item.mu.Unlock()
+
+	// Merge with any existing DS records rather than replacing them, so that
+	// multiple trust anchors for the same owner (e.g. the root KSK-2017 and
+	// KSK-2024) all remain usable. Replacing would leave only the last anchor,
+	// and validation would fail whenever a zone's DNSKEY RRset is signed by a
+	// key matching one of the dropped anchors.
+	records := make([]*dns.DS, 0, len(dss))
+	if item.ds != nil {
+		records = append(records, item.ds.records...)
+	}
+	records = append(records, dss...)
+
 	var ttl uint32 = math.MaxUint32
-	for _, ds := range dss {
+	for _, ds := range records {
 		if ds.Hdr.Ttl < ttl {
 			ttl = ds.Hdr.Ttl
 		}
 	}
-	set := &dsSet{
+	item.ds = &dsSet{
 		expiresAt: s.now().Add(time.Duration(ttl) * time.Second),
-		records:   dss,
+		records:   records,
 	}
-	item := s.getItem(name)
-	item.setDS(set)
 }
 
 func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
