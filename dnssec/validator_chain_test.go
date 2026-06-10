@@ -122,6 +122,65 @@ func TestBuildChainOfTrustAcceptsSignedDS(t *testing.T) {
 	require.NoError(t, v.Validate(answer))
 }
 
+// TestValidateAcceptsRRsetDuringZSKRollover covers a ZSK rollover where the
+// answer RRset carries two RRSIGs: one from a retired ZSK that is no longer in
+// the published DNSKEY set, and one from the current ZSK. The retired
+// signature appears first. The validator must try every RRSIG and accept the
+// RRset on the current one, rather than failing on the first.
+func TestValidateAcceptsRRsetDuringZSKRollover(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, rootZSKpriv := genKey(t, ".", 256)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK})
+
+	childKSK, childKSKpriv := genKey(t, "child.", 257)
+	childZSK, childZSKpriv := genKey(t, "child.", 256)
+	// Retired ZSK: still signs the answer, but is no longer published in the
+	// child's DNSKEY RRset, so its RRSIG cannot be verified.
+	retiredZSK, retiredZSKpriv := genKey(t, "child.", 256)
+	childDNSKEYSig := signRRset(t, childKSK, childKSKpriv, now, []dns.RR{childZSK, childKSK})
+
+	childDS := childKSK.ToDS(dns.SHA256)
+	require.NotNil(t, childDS)
+	childDSSig := signRRset(t, rootZSK, rootZSKpriv, now, []dns.RR{childDS})
+
+	childA, _ := dns.NewRR("child. 300 IN A 1.2.3.4")
+	retiredASig := signRRset(t, retiredZSK, retiredZSKpriv, now, []dns.RR{childA})
+	currentASig := signRRset(t, childZSK, childZSKpriv, now, []dns.RR{childA})
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		name := dns.CanonicalName(q.Question[0].Name)
+		switch q.Question[0].Qtype {
+		case dns.TypeDNSKEY:
+			switch name {
+			case ".":
+				a.Answer = []dns.RR{rootZSK, rootKSK, rootDNSKEYSig}
+			case "child.":
+				a.Answer = []dns.RR{childZSK, childKSK, childDNSKEYSig}
+			}
+		case dns.TypeDS:
+			if name == "child." {
+				a.Answer = []dns.RR{childDS, childDSSig}
+			}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	answer := new(dns.Msg)
+	answer.SetQuestion("child.", dns.TypeA)
+	// Retired signature first to ensure the first-RRSIG-only path would fail.
+	answer.Answer = []dns.RR{childA, retiredASig, currentASig}
+
+	require.NoError(t, v.Validate(answer))
+}
+
 // TestValidateRejectsStrippedRRSIGWithEmptyDS reproduces the downgrade attack
 // where an on-path attacker strips the RRSIG from a signed zone's answer and
 // then replies NODATA to the validator's follow-up DS query. Without an

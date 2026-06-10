@@ -26,11 +26,7 @@ func verifyDSDenial(resp *dns.Msg, name string, parentKeys []*dns.DNSKEY, now ti
 		if key.rrtype != dns.TypeNSEC && key.rrtype != dns.TypeNSEC3 {
 			continue
 		}
-		sig, ok := sigs[key]
-		if !ok {
-			continue
-		}
-		if err := verifyRRSIG(sig, parentKeys, rrset, now); err != nil {
+		if !verifyAnyRRSIG(sigs[key], parentKeys, rrset, now) {
 			continue
 		}
 		for _, rr := range rrset {

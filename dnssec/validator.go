@@ -92,8 +92,8 @@ func (v *Validator) Validate(answer *dns.Msg) error {
 	rrsets, sigs := groupRRsByTypeAndName(answer.Answer)
 
 	for key, rrset := range rrsets {
-		sig, ok := sigs[key]
-		if !ok {
+		rrsigs := sigs[key]
+		if len(rrsigs) == 0 {
 			// Check if this is an insecure delegation by looking for DS in parent
 			zone := rrset[0].Header().Name
 			if err := v.checkInsecureDelegation(zone); err != nil {
@@ -101,7 +101,7 @@ func (v *Validator) Validate(answer *dns.Msg) error {
 			}
 			return fmt.Errorf("%w: %s/%s", ErrNoSignature, key.name, dns.TypeToString[key.rrtype])
 		}
-		if err := v.validateRRset(rrset, sig); err != nil {
+		if err := v.validateRRset(rrset, rrsigs); err != nil {
 			return err
 		}
 	}
@@ -158,25 +158,38 @@ func (v *Validator) proveNoDS(zone string) (bool, error) {
 	return true, nil
 }
 
-// validateRRset validates a set of RRs against the provided RRSIG by
-// building a chain of trust to the signer's DNSKEY.
-func (v *Validator) validateRRset(rrset []dns.RR, sig *dns.RRSIG) error {
-	// RFC 4035 §5.3.1: the RRSIG Signer's Name MUST be the zone that
-	// contains the RRset, i.e. equal to or an ancestor of the owner name.
-	// miekg/dns Verify() only does a textual strings.HasSuffix check, so a
-	// signer "tim." would be accepted for owner "victim." — enforce a
-	// label-aware comparison here before fetching keys for the signer.
+// validateRRset validates a set of RRs against the provided RRSIGs by building
+// a chain of trust to each signer's DNSKEY. An RRset is accepted as soon as one
+// of its RRSIGs verifies; this tolerates ZSK rollovers, where the set carries
+// signatures from both the outgoing and incoming keys and only one is valid
+// against the currently-published DNSKEY RRset.
+func (v *Validator) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG) error {
 	owner := dns.CanonicalName(rrset[0].Header().Name)
-	signer := dns.CanonicalName(sig.SignerName)
-	// dns.IsSubDomain(parent, child): true when child is at or below parent.
-	if !dns.IsSubDomain(signer, owner) {
-		return fmt.Errorf("%w: %s cannot sign %s", ErrSignerOutOfBailiwick, signer, owner)
+	var lastErr error
+	for _, sig := range sigs {
+		// RFC 4035 §5.3.1: the RRSIG Signer's Name MUST be the zone that
+		// contains the RRset, i.e. equal to or an ancestor of the owner name.
+		// miekg/dns Verify() only does a textual strings.HasSuffix check, so a
+		// signer "tim." would be accepted for owner "victim." — enforce a
+		// label-aware comparison here before fetching keys for the signer.
+		signer := dns.CanonicalName(sig.SignerName)
+		// dns.IsSubDomain(parent, child): true when child is at or below parent.
+		if !dns.IsSubDomain(signer, owner) {
+			lastErr = fmt.Errorf("%w: %s cannot sign %s", ErrSignerOutOfBailiwick, signer, owner)
+			continue
+		}
+		zsk, _, err := v.buildChainOfTrust(signer)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := verifyRRSIG(sig, zsk, rrset, v.now()); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
 	}
-	zsk, _, err := v.buildChainOfTrust(signer)
-	if err != nil {
-		return err
-	}
-	return verifyRRSIG(sig, zsk, rrset, v.now())
+	return lastErr
 }
 
 // buildChainOfTrust recursively builds a DNSSEC chain of trust from
@@ -403,6 +416,19 @@ func verifyRRSIG(sig *dns.RRSIG, keys []*dns.DNSKEY, rrset []dns.RR, now time.Ti
 	return fmt.Errorf("%w: %v", ErrSignatureInvalid, lastErr)
 }
 
+// verifyAnyRRSIG reports whether any of the given RRSIGs verifies against the
+// supplied keys and RRset. It is used where the signer's keys are already known
+// (e.g. NSEC/NSEC3 denial), so the RRset is authenticated as soon as one
+// signature checks out, tolerating multiple RRSIGs from a key rollover.
+func verifyAnyRRSIG(sigs []*dns.RRSIG, keys []*dns.DNSKEY, rrset []dns.RR, now time.Time) bool {
+	for _, sig := range sigs {
+		if verifyRRSIG(sig, keys, rrset, now) == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // filterKeysByDS returns the subset of keys whose computed DS digest matches
 // one of the provided DS records.
 func filterKeysByDS(keys []*dns.DNSKEY, ds []*dns.DS) []*dns.DNSKEY {
@@ -429,10 +455,13 @@ type rrsetKey struct {
 }
 
 // groupRRsByTypeAndName groups the RRs in a section into RRsets keyed by
-// (canonical name, type) and extracts covering RRSIGs.
-func groupRRsByTypeAndName(section []dns.RR) (map[rrsetKey][]dns.RR, map[rrsetKey]*dns.RRSIG) {
+// (canonical name, type) and extracts all covering RRSIGs. An RRset can carry
+// more than one RRSIG (e.g. during a ZSK rollover, where it is signed by both
+// the outgoing and incoming key); all are kept so callers can accept the RRset
+// if any signature verifies.
+func groupRRsByTypeAndName(section []dns.RR) (map[rrsetKey][]dns.RR, map[rrsetKey][]*dns.RRSIG) {
 	rrsets := make(map[rrsetKey][]dns.RR)
-	sigs := make(map[rrsetKey]*dns.RRSIG)
+	sigs := make(map[rrsetKey][]*dns.RRSIG)
 
 	for _, rr := range section {
 		if sig, ok := rr.(*dns.RRSIG); ok {
@@ -440,10 +469,7 @@ func groupRRsByTypeAndName(section []dns.RR) (map[rrsetKey][]dns.RR, map[rrsetKe
 				name:   dns.CanonicalName(sig.Hdr.Name),
 				rrtype: sig.TypeCovered,
 			}
-			// Keep the first RRSIG for each RRset (could be enhanced to try multiple)
-			if _, exists := sigs[key]; !exists {
-				sigs[key] = sig
-			}
+			sigs[key] = append(sigs[key], sig)
 			continue
 		}
 		hdr := rr.Header()

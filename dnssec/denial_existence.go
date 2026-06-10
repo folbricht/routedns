@@ -56,21 +56,7 @@ func (v *Validator) collectVerifiedDenialRecords(ns []dns.RR, qname string) (nse
 		if key.rrtype != dns.TypeNSEC && key.rrtype != dns.TypeNSEC3 {
 			continue
 		}
-		sig, ok := sigs[key]
-		if !ok {
-			continue
-		}
-		// The signer zone must be at or above the queried name; an NSEC/NSEC3
-		// from an unrelated zone proves nothing about qname.
-		signer := dns.CanonicalName(sig.SignerName)
-		if !dns.IsSubDomain(signer, qname) {
-			continue
-		}
-		zsk, _, err := v.buildChainOfTrust(signer)
-		if err != nil {
-			continue
-		}
-		if verifyRRSIG(sig, zsk, rrset, v.now()) != nil {
+		if !v.rrsetSignedFromAncestor(rrset, sigs[key], qname) {
 			continue
 		}
 		for _, rr := range rrset {
@@ -83,6 +69,28 @@ func (v *Validator) collectVerifiedDenialRecords(ns []dns.RR, qname string) (nse
 		}
 	}
 	return nsecs, nsec3s
+}
+
+// rrsetSignedFromAncestor reports whether any of the supplied RRSIGs
+// authenticates rrset under a signer at or above qname that chains to the trust
+// anchor. An NSEC/NSEC3 from an unrelated zone proves nothing about qname, so
+// the signer-bailiwick check is applied per signature; trying every RRSIG
+// tolerates a key rollover where the set carries more than one.
+func (v *Validator) rrsetSignedFromAncestor(rrset []dns.RR, sigs []*dns.RRSIG, qname string) bool {
+	for _, sig := range sigs {
+		signer := dns.CanonicalName(sig.SignerName)
+		if !dns.IsSubDomain(signer, qname) {
+			continue
+		}
+		zsk, _, err := v.buildChainOfTrust(signer)
+		if err != nil {
+			continue
+		}
+		if verifyRRSIG(sig, zsk, rrset, v.now()) == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // nsecProvesDenial reports whether the authenticated NSEC records prove the
