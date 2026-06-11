@@ -225,9 +225,9 @@ func start(opt options, args []string) error {
 			return errors.New("ip-version must be 4 or 6")
 		}
 
-		var netns *rdns.NetNS
-		if l.NetNS != "" {
-			netns = &rdns.NetNS{Name: l.NetNS}
+		netns, err := buildNetNS(l.NetNS, l.XSocket)
+		if err != nil {
+			return fmt.Errorf("listener '%s': %w", id, err)
 		}
 
 		opt := rdns.ListenOptions{
@@ -1267,6 +1267,19 @@ func stopNetNSListener(id string, ln rdns.Listener, startErr <-chan error) {
 			}
 		}
 	}
+}
+
+// buildNetNS constructs the namespace target for a listener or resolver from the
+// netns and xsocket options. The two are mutually exclusive; nil is returned
+// when neither is configured.
+func buildNetNS(name, xsocket string) (*rdns.NetNS, error) {
+	if name != "" && xsocket != "" {
+		return nil, errors.New("'netns' and 'xsocket' are mutually exclusive")
+	}
+	if name == "" && xsocket == "" {
+		return nil, nil
+	}
+	return &rdns.NetNS{Name: name, XSocket: xsocket}, nil
 }
 
 func printVersion() {

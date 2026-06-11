@@ -134,6 +134,7 @@ Common options for all listeners:
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 - `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `xsocket` - Path to an `xsocket-server` Unix socket. The listening socket is created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. Not supported for `dtls` listeners (use `netns` instead). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 - `fwmark` - Linux firewall mark (`SO_MARK`) to set on the listening socket. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 - `bind-if` - Bind the listening socket to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or restricting a listener to one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
 
@@ -1971,6 +1972,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
+- `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. For SOCKS5-proxied resolvers it is the connection to the proxy that is made in the target namespace. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 
 Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
 
@@ -2274,6 +2276,39 @@ netns = "container"
 
 Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
 
+#### Without elevated privileges: xsocket
+
+The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold `CAP_SYS_ADMIN`. The `xsocket` option is an alternative that avoids this. It relies on [xsocket](https://github.com/koro666/xsocket): a small `xsocket-server` runs inside the target namespace and listens on a Unix socket. RouteDNS connects to that socket, asks the server to create a socket in its namespace, and receives the file descriptor back over the Unix socket (`SCM_RIGHTS`). RouteDNS then binds or connects that descriptor itself - so RouteDNS itself needs no elevated privileges at all, while still listening in and connecting to any number of namespaces.
+
+Placing `xsocket-server` inside the target namespace usually requires privilege to set up (e.g. `ip netns exec`, which needs root), but the server process itself can drop to an unprivileged user once there: creating sockets and passing file descriptors needs no capabilities. It only needs to retain privileges - e.g. `CAP_NET_ADMIN`/`CAP_NET_RAW`, possibly via an `LD_PRELOAD` shim - if it must apply privileged socket options such as firewall marks (`fwmark`) itself.
+
+The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`.
+
+```toml
+[resolvers.res]
+address = "9.9.9.9:53"
+protocol = "udp"
+xsocket = "/var/tmp/xsocket/ns1"
+
+[listeners.local-udp]
+address = "[::]:1053"
+protocol = "udp"
+resolver = "res"
+xsocket = "/var/tmp/xsocket/ns2"
+```
+
+Notes and limitations:
+
+- `xsocket` and `netns` are mutually exclusive on the same component.
+- Security boundary: anyone who can connect to the `xsocket-server`'s Unix socket can obtain sockets in its namespace. Access is controlled entirely by filesystem ownership, permissions and ACLs on the socket (and its parent directory) - set these up restrictively. Abstract sockets (`@name`) have no filesystem entry and so cannot be permission-controlled; they are reachable by any process in the server's network namespace. Prefer a pathname socket with restrictive permissions when access control matters.
+- Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
+- `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
+- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `admin` and `odoh`, on both listeners and resolvers. For `dtls` it is supported on resolvers only: the DTLS library opens the listening socket internally, leaving no descriptor to inject, so a DTLS listener with `xsocket` fails to start (use `netns` instead). The same limitation applies to `fwmark`/`bind-if` on DTLS listeners.
+- For SOCKS5-proxied resolvers, `xsocket` controls the connection to the proxy: RouteDNS asks the `xsocket-server` for the socket used to reach the proxy, so the proxy is contacted from inside the target namespace. The proxy's own outbound connections to the upstream resolver are made by the proxy and unaffected. Alternatively, run the SOCKS5 proxy inside the target namespace and reach it from RouteDNS's own namespace without `xsocket`.
+- Linux only.
+
+Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml)
+
 ### Firewall Mark and Interface Binding
 
 On Linux, listeners and resolvers support two socket-level options for advanced routing:
@@ -2281,7 +2316,7 @@ On Linux, listeners and resolvers support two socket-level options for advanced 
 - `fwmark` - Sets the `SO_MARK` socket option. The firewall mark is attached to all packets sent from the socket, allowing Linux netfilter (`iptables`/`nftables`) and policy routing (`ip rule`) to match and route them. The value is an integer and supports TOML hex notation (e.g. `0xb`).
 - `bind-if` - Sets the `SO_BINDTODEVICE` socket option. Binds the socket to a specific network interface so that traffic can only flow through that interface. This is useful with [VRFs](https://docs.kernel.org/networking/vrf.html) or as a safeguard against route leaks. On kernels >= 5.7, `SO_BINDTODEVICE` does not require root privileges.
 
-Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged).
+Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged). On a resolver with `socks5-address`, the options are applied to the sockets reaching the SOCKS5 proxy.
 
 **Resolver with fwmark and interface binding:**
 

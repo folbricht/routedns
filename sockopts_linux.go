@@ -42,27 +42,3 @@ func (s SocketOptions) dialerControl() func(string, string, syscall.RawConn) err
 		return sockErr
 	}
 }
-
-// applyToConn applies socket options to an existing connection or listener.
-// The argument must implement syscall.Conn (e.g. *net.UDPConn, *net.TCPListener).
-func (s SocketOptions) applyToConn(conn any) error {
-	if !s.active() {
-		return nil
-	}
-	sc, ok := conn.(syscall.Conn)
-	if !ok {
-		return fmt.Errorf("cannot apply socket options: %T does not implement syscall.Conn", conn)
-	}
-	rawConn, err := sc.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("failed to get raw connection: %w", err)
-	}
-	var sockErr error
-	err = rawConn.Control(func(fd uintptr) {
-		sockErr = s.applyToFd(fd)
-	})
-	if err != nil {
-		return err
-	}
-	return sockErr
-}

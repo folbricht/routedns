@@ -307,7 +307,7 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	}
 
 	// Use a custom dialer if a bootstrap address, local address, proxy, netns, or socket options were provided
-	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || (opt.NetNS != nil && opt.NetNS.Name != "") || opt.SocketOptions.active() {
+	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || opt.NetNS.isSet() || opt.SocketOptions.active() {
 		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if opt.BootstrapAddr != "" {
 				_, port, err := net.SplitHostPort(addr)
@@ -317,23 +317,29 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 				addr = net.JoinHostPort(opt.BootstrapAddr, port)
 			}
 			if opt.Dialer != nil {
+				// The dialer (e.g. SOCKS5) creates the sockets reaching the
+				// proxy itself and applies socket options to them, whether via
+				// xsocket or not.
 				var conn net.Conn
-				err := RunInNetNS(opt.NetNS, func() error {
-					var e error
-					conn, e = opt.Dialer.Dial(network, addr)
-					return e
-				})
-				if err != nil {
-					return nil, err
+				var err error
+				if opt.NetNS.usesXSocket() {
+					// The proxy is reached through the xsocket-server, so use
+					// the dialer directly without entering a namespace.
+					conn, err = opt.Dialer.Dial(network, addr)
+				} else {
+					err = RunInNetNS(opt.NetNS, func() error {
+						var e error
+						conn, e = opt.Dialer.Dial(network, addr)
+						return e
+					})
 				}
-				if err := opt.SocketOptions.applyToConn(conn); err != nil {
-					conn.Close()
-					return nil, err
-				}
-				return conn, nil
+				return conn, err
 			}
 			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
+			if opt.NetNS.usesXSocket() {
+				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, 0)
+			}
 			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {

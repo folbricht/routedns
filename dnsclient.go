@@ -118,12 +118,13 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 	network = strings.TrimSuffix(network, "-tls")
 
 	dialer := d.Dialer
+	var localAddr net.IP
 	if dialer == nil {
 		// Resolve hostname to IP so selectLocalAddr can determine the address
 		// family. Use the resolved address for the dial to avoid double resolution.
 		address = resolveEndpointAddr(address)
 		nd := &net.Dialer{Timeout: d.Timeout, Control: d.SocketOptions.dialerControl()}
-		localAddr := selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
+		localAddr = selectLocalAddr(address, d.LocalAddr, d.LocalAddrV4, d.LocalAddrV6)
 		if localAddr != nil {
 			switch network {
 			case "tcp":
@@ -142,15 +143,27 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		err error
 	)
 	// Open a raw connection, optionally in a network namespace
-	if d.NetNS != nil && d.NetNS.Name != "" {
-		if netDialer, ok := dialer.(*net.Dialer); ok {
-			conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
-		} else {
-			err = RunInNetNS(d.NetNS, func() error {
-				var e error
-				conn.Conn, e = dialer.Dial(network, address)
-				return e
-			})
+	if d.NetNS.isSet() {
+		switch {
+		case d.NetNS.usesXSocket():
+			if d.Dialer != nil {
+				// A custom dialer (e.g. SOCKS5) reaches the proxy through the
+				// xsocket-server itself, applying socket options to that
+				// socket, so just use it directly.
+				conn.Conn, err = d.Dialer.Dial(network, address)
+			} else {
+				conn.Conn, err = dialXSocket(d.NetNS.XSocket, network, address, d.SocketOptions, localAddr, d.Timeout)
+			}
+		default:
+			if netDialer, ok := dialer.(*net.Dialer); ok {
+				conn.Conn, err = DialInNetNS(d.NetNS, network, address, netDialer)
+			} else {
+				err = RunInNetNS(d.NetNS, func() error {
+					var e error
+					conn.Conn, e = dialer.Dial(network, address)
+					return e
+				})
+			}
 		}
 	} else {
 		conn.Conn, err = dialer.Dial(network, address)
@@ -159,18 +172,10 @@ func (d GenericDNSClient) Dial(address string) (*dns.Conn, error) {
 		return nil, err
 	}
 
-	// Apply socket options to connections made by custom dialers.
-	// For net.Dialer, options were already applied via Control.
-	// Custom dialers (e.g. SOCKS5) don't expose a Control callback,
-	// so we apply post-connect. SO_MARK still affects future packets
-	// on the socket; SO_BINDTODEVICE has no routing effect after
-	// connect but is applied for consistency.
-	if d.Dialer != nil {
-		if err := d.SocketOptions.applyToConn(conn.Conn); err != nil {
-			conn.Conn.Close()
-			return nil, err
-		}
-	}
+	// For net.Dialer, socket options were applied via Control. Custom dialers
+	// (e.g. SOCKS5) apply them when creating their own sockets; the returned
+	// conn doesn't expose the underlying descriptor, so they can't be applied
+	// here post-connect (nor would SO_BINDTODEVICE affect routing by then).
 
 	// Trick dns.Conn.ReadMsg() into thinking this is a packet connection (udp) so it
 	// correctly handles any length-prefixes

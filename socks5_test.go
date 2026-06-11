@@ -148,3 +148,64 @@ func TestSocks5DialerLocalAddr(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ping", string(buf))
 }
+
+// TestSocks5SockOptsDialHooks verifies that socket options on a Socks5Dialer
+// install per-client dial hooks (applied at socket creation; the proxy conn
+// doesn't expose its descriptor for post-connect application), and that no
+// hooks are installed without them.
+func TestSocks5SockOptsDialHooks(t *testing.T) {
+	d := NewSocks5Dialer("127.0.0.1:1080", Socks5DialerOptions{})
+	assert.Nil(t, d.Client.DialTCP)
+	assert.Nil(t, d.Client.DialUDP)
+
+	d = NewSocks5Dialer("127.0.0.1:1080", Socks5DialerOptions{
+		SocketOptions: SocketOptions{FWMark: 1},
+	})
+	assert.NotNil(t, d.Client.DialTCP)
+	assert.NotNil(t, d.Client.DialUDP)
+}
+
+// TestSocks5SockOptsDialer exercises the dial hook itself, including local
+// address binding. Socket options requiring privileges (fwmark, bind-if) can't
+// be set in an unprivileged test, so this covers the dial/bind mechanics.
+func TestSocks5SockOptsDialer(t *testing.T) {
+	echo := startEchoTCPServer(t)
+	dial := socks5SockOptsDialer(SocketOptions{}, 2*time.Second)
+
+	for _, laddr := range []string{"", "127.0.0.1:0"} {
+		conn, err := dial("tcp", laddr, echo.Addr().String())
+		require.NoError(t, err, "laddr %q", laddr)
+		_, err = conn.Write([]byte("ping"))
+		require.NoError(t, err)
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		buf := make([]byte, 4)
+		_, err = io.ReadFull(conn, buf)
+		require.NoError(t, err)
+		assert.Equal(t, "ping", string(buf))
+		conn.Close()
+	}
+}
+
+func TestSocks5LocalIP(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string // "" means nil
+	}{
+		{"", ""},
+		{"1.2.3.4", "1.2.3.4"},
+		{"1.2.3.4:0", "1.2.3.4"},
+		{"1.2.3.4:5353", "1.2.3.4"},
+		{"[::1]:53", "::1"},
+		{"::1", "::1"},
+		{"bogus", ""},
+	}
+	for _, tc := range tests {
+		got := socks5LocalIP(tc.in)
+		if tc.want == "" {
+			assert.Nil(t, got, "socks5LocalIP(%q)", tc.in)
+			continue
+		}
+		require.NotNil(t, got, "socks5LocalIP(%q)", tc.in)
+		assert.True(t, got.Equal(net.ParseIP(tc.want)), "socks5LocalIP(%q) = %v, want %s", tc.in, got, tc.want)
+	}
+}

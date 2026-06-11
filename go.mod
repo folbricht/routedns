@@ -18,7 +18,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e
+	github.com/txthinking/socks5 v0.0.0-20260601051520-339b044ab0eb
 	github.com/yuin/gopher-lua v1.1.2-0.20241109074121-ccacf662c9d2
 	golang.org/x/net v0.48.0
 	golang.org/x/sys v0.39.0

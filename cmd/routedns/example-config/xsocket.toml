@@ -1,0 +1,48 @@
+# Example demonstrating xsocket support. xsocket is an alternative to the
+# "netns" option that lets RouteDNS create listening and outbound sockets inside
+# a Linux network namespace WITHOUT requiring CAP_SYS_ADMIN. A small
+# "xsocket-server" (https://github.com/koro666/xsocket) runs inside the target
+# namespace, listening on a Unix socket; it hands RouteDNS sockets created in
+# that namespace via SCM_RIGHTS, and RouteDNS binds/connects them itself.
+# RouteDNS needs no elevated privileges; the xsocket-server can also run as an
+# unprivileged user once it's placed in the namespace (it only needs privilege
+# to apply socket options like fwmark itself).
+#
+# Setup:
+#   sudo ip netns add ns1
+#   sudo ip netns add ns2
+#   # Run an xsocket-server in each namespace, listening on a Unix socket.
+#   sudo ip netns exec ns1 xsocket-server /var/tmp/xsocket/ns1 &
+#   sudo ip netns exec ns2 xsocket-server /var/tmp/xsocket/ns2 &
+#
+# Notes:
+#   - "xsocket" and "netns" are mutually exclusive on a component.
+#   - Security: access to the xsocket-server's Unix socket grants sockets in its
+#     namespace, so restrict it with filesystem permissions/ownership/ACLs.
+#     Abstract sockets ('@name') can't be permission-controlled (any process in
+#     the namespace can reach them) - prefer a pathname socket when that matters.
+#   - Upstream hostnames are resolved in RouteDNS's own namespace, so prefer
+#     giving resolver addresses as IPs.
+#   - "fwmark"/"bind-if" still require CAP_NET_ADMIN/CAP_NET_RAW in the RouteDNS
+#     process even with xsocket.
+#   - For SOCKS5-proxied resolvers, xsocket controls the connection to the
+#     proxy (the proxy is reached from inside the target namespace).
+#   - Linux only.
+
+[resolvers.res]
+address = "9.9.9.9:53"
+protocol = "udp"
+query-timeout = 10
+xsocket = "/var/tmp/xsocket/ns1"
+
+[listeners.local-udp]
+address = "[::]:1053"
+protocol = "udp"
+resolver = "res"
+xsocket = "/var/tmp/xsocket/ns2"
+
+[listeners.local-tcp]
+address = "[::]:1053"
+protocol = "tcp"
+resolver = "res"
+xsocket = "/var/tmp/xsocket/ns2"

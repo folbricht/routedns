@@ -3,6 +3,7 @@ package rdns
 import (
 	"context"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,17 @@ type Socks5DialerOptions struct {
 	// name will be resolved either on the local system, or via the bootstrap-resolver
 	// if one is setup.
 	ResolveLocal bool
+
+	// Linux network namespace for the connection to the SOCKS5 proxy. Only the
+	// xsocket mechanism is handled here; setns-based namespaces are entered by
+	// the caller (which wraps Dial in RunInNetNS). A nil or empty value reaches
+	// the proxy from the current namespace.
+	NetNS *NetNS
+
+	// Linux socket options (fwmark, interface binding) applied to the socket
+	// used to reach the proxy. Only honoured when dialing the proxy via xsocket;
+	// other paths apply them around Dial.
+	SocketOptions SocketOptions
 }
 
 var _ Dialer = (*Socks5Dialer)(nil)
@@ -43,7 +55,51 @@ func NewSocks5Dialer(addr string, opt Socks5DialerOptions) *Socks5Dialer {
 		int(opt.TCPTimeout.Seconds()),
 		int(opt.UDPTimeout.Seconds()),
 	)
+	switch {
+	case opt.NetNS.usesXSocket():
+		// Reach the proxy through an xsocket-server (a network namespace we
+		// can't enter with setns) by overriding the client's socket creation.
+		// These per-client hooks avoid the process-wide effect of the
+		// package-level socks5.DialTCP/DialUDP variables. Socket options are
+		// applied to the proxy socket inside dialXSocket.
+		path := opt.NetNS.XSocket
+		sockOpts := opt.SocketOptions
+		client.DialTCP = func(network, laddr, raddr string) (net.Conn, error) {
+			return dialXSocket(path, network, raddr, sockOpts, socks5LocalIP(laddr), opt.TCPTimeout)
+		}
+		client.DialUDP = func(network, laddr, raddr string) (net.Conn, error) {
+			return dialXSocket(path, network, raddr, sockOpts, socks5LocalIP(laddr), opt.UDPTimeout)
+		}
+	case opt.SocketOptions.active():
+		// Apply socket options (fwmark, bind-if) when creating the sockets
+		// reaching the proxy. They must be set before connect for
+		// SO_BINDTODEVICE to affect routing, and post-connect application
+		// isn't possible anyway: the socks5 client conn doesn't expose the
+		// underlying descriptor.
+		client.DialTCP = socks5SockOptsDialer(opt.SocketOptions, opt.TCPTimeout)
+		client.DialUDP = socks5SockOptsDialer(opt.SocketOptions, opt.UDPTimeout)
+	}
 	return &Socks5Dialer{Client: client, opt: opt}
+}
+
+// socks5SockOptsDialer returns a dial hook mirroring the socks5 package's
+// default dialers, but applying the socket options at socket creation.
+func socks5SockOptsDialer(sockOpts SocketOptions, timeout time.Duration) func(network, laddr, raddr string) (net.Conn, error) {
+	return func(network, laddr, raddr string) (net.Conn, error) {
+		nd := net.Dialer{Timeout: timeout, Control: sockOpts.dialerControl()}
+		if laddr != "" {
+			var err error
+			if strings.HasPrefix(network, "udp") {
+				nd.LocalAddr, err = net.ResolveUDPAddr(network, laddr)
+			} else {
+				nd.LocalAddr, err = net.ResolveTCPAddr(network, laddr)
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		return nd.Dial(network, raddr)
+	}
 }
 
 func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
@@ -97,4 +153,17 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 		return d.Client.DialWithLocalAddr(network, src, d.addr, nil)
 	}
 	return d.Client.Dial(network, d.addr)
+}
+
+// socks5LocalIP extracts a local bind IP from the address string the socks5
+// package passes to its dial hooks. It accepts "ip:port", a bare "ip", or an
+// empty string (no binding).
+func socks5LocalIP(laddr string) net.IP {
+	if laddr == "" {
+		return nil
+	}
+	if host, _, err := net.SplitHostPort(laddr); err == nil {
+		laddr = host
+	}
+	return net.ParseIP(laddr)
 }
