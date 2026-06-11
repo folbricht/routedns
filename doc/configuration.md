@@ -2282,7 +2282,13 @@ The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold 
 
 Placing `xsocket-server` inside the target namespace usually requires privilege to set up (e.g. `ip netns exec`, which needs root), but the server process itself can drop to an unprivileged user once there: creating sockets and passing file descriptors needs no capabilities. It only needs to retain privileges - e.g. `CAP_NET_ADMIN`/`CAP_NET_RAW`, possibly via an `LD_PRELOAD` shim - if it must apply privileged socket options such as firewall marks (`fwmark`) itself.
 
-The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`.
+RouteDNS ships with a compatible server built in: `routedns fd-server <socket-path>` runs an fd-server that can be used in place of `xsocket-server`, so no separate binary needs to be deployed. By default it only hands out IPv4/IPv6 TCP and UDP sockets - everything RouteDNS itself requests - and refuses anything else with `EPERM`; the `--unrestricted` flag lifts this limit for other xsocket clients. The `--mode` flag sets the permissions on the Unix socket (octal, e.g. `--mode 0660`).
+
+```text
+ip netns exec ns1 sudo -u routedns -- routedns fd-server --mode 0660 /var/tmp/xsocket/ns1
+```
+
+The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`. The same applies to the `fd-server` sub-command.
 
 ```toml
 [resolvers.res]
