@@ -51,12 +51,12 @@ func (s DoTListener) Start() error {
 		"id", s.id,
 		"protocol", "dot",
 		"addr", s.Addr)
-	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() {
+	if (s.opt.NetNS != nil && s.opt.NetNS.Name != "") || s.opt.SocketOptions.active() || s.opt.ProxyProtocol {
 		ln, err := ListenInNetNS(context.Background(), s.opt.NetNS, "tcp", s.Addr, s.opt.SocketOptions)
 		if err != nil {
 			return err
 		}
-		s.Server.Listener = tls.NewListener(ln, s.Server.TLSConfig)
+		s.Server.Listener = tls.NewListener(proxyProtocolListener(ln, s.opt.ProxyProtocol), s.Server.TLSConfig)
 		return s.ActivateAndServe()
 	}
 	return s.ListenAndServe()

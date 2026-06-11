@@ -142,6 +142,7 @@ func (s *DoHListener) startTCP() error {
 	if err != nil {
 		return err
 	}
+	ln = proxyProtocolListener(ln, s.opt.ProxyProtocol)
 	defer ln.Close()
 	if s.opt.NoTLS {
 		return httpServer.Serve(ln)
