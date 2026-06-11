@@ -20,8 +20,6 @@ type XSocketServer struct {
 	path string
 }
 
-var _ Listener = &XSocketServer{}
-
 func NewXSocketServer(path string, opt XSocketServerOptions) *XSocketServer {
 	return &XSocketServer{path: path}
 }

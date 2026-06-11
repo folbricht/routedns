@@ -115,8 +115,8 @@ func runFDServer(opt fdServerOptions, path string) error {
 	var mode fs.FileMode
 	if opt.mode != "" {
 		m, err := strconv.ParseUint(opt.mode, 8, 32)
-		if err != nil {
-			return fmt.Errorf("invalid mode %q: %w", opt.mode, err)
+		if err != nil || m > 0777 {
+			return fmt.Errorf("invalid mode %q: must be octal permission bits up to 0777", opt.mode)
 		}
 		mode = fs.FileMode(m)
 	}

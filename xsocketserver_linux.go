@@ -44,8 +44,6 @@ type XSocketServer struct {
 	closed bool
 }
 
-var _ Listener = &XSocketServer{}
-
 func NewXSocketServer(path string, opt XSocketServerOptions) *XSocketServer {
 	return &XSocketServer{path: path, opt: opt}
 }
