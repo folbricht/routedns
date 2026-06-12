@@ -127,6 +127,23 @@ func TestXSocketServerMalformed(t *testing.T) {
 	require.Equal(t, 0, n)
 }
 
+func TestXSocketServerPeerCred(t *testing.T) {
+	path := startXSocketServer(t, XSocketServerOptions{})
+
+	// The server logs SO_PEERCRED of the requesting process with each
+	// request; verify the lookup against a live connection, where the peer
+	// is this process.
+	conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: path, Net: "unixpacket"})
+	require.NoError(t, err)
+	defer conn.Close()
+
+	cred := peerCred(conn)
+	require.NotNil(t, cred)
+	require.Equal(t, int32(os.Getpid()), cred.Pid)
+	require.Equal(t, uint32(os.Getuid()), cred.Uid)
+	require.Equal(t, uint32(os.Getgid()), cred.Gid)
+}
+
 func TestXSocketServerSocketMode(t *testing.T) {
 	path := startXSocketServer(t, XSocketServerOptions{SocketMode: 0660})
 

@@ -125,6 +125,10 @@ func (s *XSocketServer) listen() (*net.UnixListener, error) {
 // request.
 func (s *XSocketServer) handle(conn *net.UnixConn) {
 	defer conn.Close()
+	log := Log
+	if cred := peerCred(conn); cred != nil {
+		log = Log.With("pid", cred.Pid, "uid", cred.Uid, "gid", cred.Gid)
+	}
 	req := make([]byte, 16)
 	for {
 		n, err := conn.Read(req)
@@ -132,17 +136,18 @@ func (s *XSocketServer) handle(conn *net.UnixConn) {
 			return
 		}
 		if n < len(req) || binary.BigEndian.Uint32(req[0:]) != xsProtocolRequest {
-			Log.Debug("malformed xsocket request, closing connection")
+			log.Debug("malformed xsocket request, closing connection")
 			return
 		}
 		domain := int(binary.BigEndian.Uint32(req[4:]))
 		typ := int(binary.BigEndian.Uint32(req[8:]))
 		proto := int(binary.BigEndian.Uint32(req[12:]))
+		log.Info("socket request", "domain", domain, "type", typ, "proto", proto)
 
 		fd := -1
 		var errno unix.Errno
 		if !s.opt.Unrestricted && !allowedSocket(domain, typ, proto) {
-			Log.Warn("rejecting xsocket request", "domain", domain, "type", typ, "proto", proto)
+			log.Warn("rejecting xsocket request", "domain", domain, "type", typ, "proto", proto)
 			errno = unix.EPERM
 		} else if fd, err = unix.Socket(domain, typ|unix.SOCK_CLOEXEC, proto); err != nil {
 			fd = -1
@@ -166,6 +171,23 @@ func (s *XSocketServer) handle(conn *net.UnixConn) {
 			return
 		}
 	}
+}
+
+// peerCred returns the SO_PEERCRED credentials (pid/uid/gid) of the process
+// on the other end of the Unix socket, or nil if they cannot be determined.
+func peerCred(conn *net.UnixConn) *unix.Ucred {
+	raw, err := conn.SyscallConn()
+	if err != nil {
+		return nil
+	}
+	var cred *unix.Ucred
+	if err := raw.Control(func(fd uintptr) {
+		cred, _ = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
+	}); err != nil || cred == nil {
+		Log.Debug("unable to determine xsocket peer credentials")
+		return nil
+	}
+	return cred
 }
 
 // allowedSocket is the default allow-list: the IPv4/IPv6 TCP and UDP sockets

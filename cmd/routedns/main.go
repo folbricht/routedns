@@ -90,7 +90,9 @@ CAP_SYS_ADMIN. A leading '@' in the socket path denotes an abstract socket.
 
 By default only IPv4/IPv6 TCP and UDP sockets are handed out; --unrestricted
 removes that limit. Access control relies entirely on the permissions of the
-socket and its parent directory; --mode sets the socket permissions.
+socket and its parent directory; --mode sets the socket permissions. Each
+request is logged together with the pid/uid/gid of the requesting process
+(SO_PEERCRED).
 `,
 		Example: `  ip netns exec ns1 routedns fd-server --mode 0660 /var/tmp/xsocket/ns1`,
 		Args:    cobra.ExactArgs(1),
