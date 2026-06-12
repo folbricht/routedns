@@ -3,6 +3,7 @@ package rdns
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +31,14 @@ type PrefetchOptions struct {
 }
 
 func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
+	return newPrefetchWithShards(id, resolver, opt, 0)
+}
+
+// newPrefetchWithShards builds a Prefetch, allowing the cache shard count to be
+// overridden. A shards value of 0 selects the default (GOMAXPROCS-based) sizing
+// via expirationCacheShards; a non-zero value forces that count, which is used
+// by benchmarks to compare sharded against unsharded caches.
+func newPrefetchWithShards(id string, resolver Resolver, opt PrefetchOptions, shards uint) *Prefetch {
 	if opt.PrefetchWindow == 0 {
 		opt.PrefetchWindow = time.Hour
 	}
@@ -40,6 +49,13 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 		opt.PrefetchCacheSize = opt.PrefetchMaxItems * 3
 	}
 
+	nameShards := shards
+	queryShards := shards
+	if shards == 0 {
+		nameShards = expirationCacheShards(opt.PrefetchCacheSize)
+		queryShards = expirationCacheShards(opt.PrefetchMaxItems)
+	}
+
 	r := &Prefetch{
 		id:       id,
 		resolver: resolver,
@@ -47,9 +63,11 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 	}
 	r.nameCache = expirationcache.NewCache[atomic.Uint64](context.Background(), expirationcache.Options{
 		MaxSize: uint(opt.PrefetchCacheSize),
+		Shards:  nameShards,
 	})
 	r.queryCache = expirationcache.NewCacheWithOnExpired(context.Background(), expirationcache.Options{
 		MaxSize: uint(opt.PrefetchMaxItems),
+		Shards:  queryShards,
 	},
 		func(ctx context.Context, key string) (val *dns.Msg, ttl time.Duration) {
 			// Check if the query is still eligible for prefetch by looking it up in the nameCache
@@ -89,6 +107,14 @@ func NewPrefetch(id string, resolver Resolver, opt PrefetchOptions) *Prefetch {
 	)
 
 	return r
+}
+
+func expirationCacheShards(maxSize int) uint {
+	gomaxprocs := runtime.GOMAXPROCS(0)
+	if gomaxprocs <= 1 || maxSize == 1 {
+		return 0
+	}
+	return uint(gomaxprocs)
 }
 
 func (r *Prefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
