@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -27,4 +28,18 @@ func TestPrefetchPassthrough(t *testing.T) {
 	a, err := r.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
 	require.NotNil(t, a)
+}
+
+func TestExpirationCacheShards(t *testing.T) {
+	old := runtime.GOMAXPROCS(4)
+	t.Cleanup(func() {
+		runtime.GOMAXPROCS(old)
+	})
+
+	require.Equal(t, uint(4), expirationCacheShards(0))
+	require.Equal(t, uint(4), expirationCacheShards(100))
+	require.Equal(t, uint(0), expirationCacheShards(1))
+
+	runtime.GOMAXPROCS(1)
+	require.Equal(t, uint(0), expirationCacheShards(100))
 }

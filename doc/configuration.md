@@ -454,6 +454,8 @@ Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [
 
 While [Cache](#cache) has built-in prefetch capabilities, the dedicated `prefetch` group may be more appropriate for some use cases. It tracks the number of queries made within a time window and actively prefetches frequently requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
 
+On multi-core systems the internal tracking caches are automatically sharded (based on `GOMAXPROCS`) to reduce lock contention under concurrent query load. This is an internal optimization only; it does not change behavior or measurably affect end-to-end query latency.
+
 #### Configuration
 
 Prefetch groups are instantiated with `type = "prefetch"` in the groups section of the configuration.
