@@ -3,7 +3,7 @@ module github.com/folbricht/routedns
 go 1.25.0
 
 require (
-	github.com/0xERR0R/expiration-cache v0.1.0
+	github.com/0xERR0R/expiration-cache v0.2.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/cisco/go-hpke v0.0.0-20230407100446-246075f83609
@@ -32,7 +32,7 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/golang-lru v1.0.2 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
