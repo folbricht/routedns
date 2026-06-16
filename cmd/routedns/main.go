@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math"
 	"net"
@@ -58,10 +59,102 @@ arguments.
 	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 1=None,2=Error,3=Warn,4=Info,5=Debug,6=Trace")
 	cmd.Flags().BoolVarP(&opt.version, "version", "v", false, "Prints code version string")
 
+	cmd.AddCommand(fdServerCommand())
+
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 
+}
+
+type fdServerOptions struct {
+	logLevel     uint32
+	mode         string
+	unrestricted bool
+}
+
+// fdServerCommand returns the "fd-server" sub-command which runs a server
+// compatible with xsocket-server (https://github.com/koro666/xsocket) that
+// can be used with the 'xsocket' listener and resolver option.
+func fdServerCommand() *cobra.Command {
+	var opt fdServerOptions
+	cmd := &cobra.Command{
+		Use:   "fd-server <socket-path>",
+		Short: "Run an xsocket-compatible fd-server",
+		Long: `Runs a server compatible with xsocket-server
+(https://github.com/koro666/xsocket). It listens on a Unix socket and hands
+out socket file descriptors created in its own network namespace. Run it
+inside a network namespace to let an unprivileged RouteDNS instance (using
+the 'xsocket' option) listen and resolve in that namespace without holding
+CAP_SYS_ADMIN. A leading '@' in the socket path denotes an abstract socket.
+
+By default only IPv4/IPv6 TCP and UDP sockets are handed out; --unrestricted
+removes that limit. Access control relies entirely on the permissions of the
+socket and its parent directory; --mode sets the socket permissions. Each
+request is logged together with the pid/uid/gid of the requesting process
+(SO_PEERCRED).
+`,
+		Example: `  ip netns exec ns1 routedns fd-server --mode 0660 /var/tmp/xsocket/ns1`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFDServer(opt, args[0])
+		},
+		SilenceUsage: true,
+	}
+	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 1=None,2=Error,3=Warn,4=Info,5=Debug,6=Trace")
+	cmd.Flags().StringVar(&opt.mode, "mode", "", "permissions (octal) to set on the socket, e.g. 0660")
+	cmd.Flags().BoolVar(&opt.unrestricted, "unrestricted", false, "hand out any requested socket type, not just IPv4/IPv6 TCP and UDP")
+	return cmd
+}
+
+func runFDServer(opt fdServerOptions, path string) error {
+	level, err := slogLevel(opt.logLevel)
+	if err != nil {
+		return err
+	}
+	rdns.Log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
+	var mode fs.FileMode
+	if opt.mode != "" {
+		m, err := strconv.ParseUint(opt.mode, 8, 32)
+		if err != nil || m > 0777 {
+			return fmt.Errorf("invalid mode %q: must be octal permission bits up to 0777", opt.mode)
+		}
+		mode = fs.FileMode(m)
+	}
+	srv := rdns.NewXSocketServer(path, rdns.XSocketServerOptions{
+		Unrestricted: opt.unrestricted,
+		SocketMode:   mode,
+	})
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		rdns.Log.Info("stopping")
+		srv.Stop()
+	}()
+	rdns.Log.Info("starting xsocket fd-server", "socket", path)
+	return srv.Start()
+}
+
+// slogLevel converts the numeric log level from the command line to a slog
+// level.
+func slogLevel(logLevel uint32) (slog.Level, error) {
+	switch logLevel {
+	case 0, 1:
+		return math.MaxInt, nil // Basically disables logging
+	case 2:
+		return slog.LevelError, nil
+	case 3:
+		return slog.LevelWarn, nil
+	case 4:
+		return slog.LevelInfo, nil
+	case 5, 6:
+		return slog.LevelDebug, nil
+	default:
+		return 0, fmt.Errorf("invalid log level: %d", logLevel)
+	}
 }
 
 type Node struct {
@@ -80,25 +173,9 @@ var onClose []func()
 
 func start(opt options, args []string) error {
 	// Set the log level in the library package
-	if opt.logLevel > 6 {
-		return fmt.Errorf("invalid log level: %d", opt.logLevel)
-	}
-
-	// Convert logrus levels to slog levels
-	var level slog.Level
-	switch opt.logLevel {
-	case 0, 1:
-		level = math.MaxInt // Basically disables logging
-	case 2:
-		level = slog.LevelError
-	case 3:
-		level = slog.LevelWarn
-	case 4:
-		level = slog.LevelInfo
-	case 5, 6:
-		level = slog.LevelDebug
-	default:
-		level = slog.LevelInfo
+	level, err := slogLevel(opt.logLevel)
+	if err != nil {
+		return err
 	}
 	if opt.version {
 		printVersion()

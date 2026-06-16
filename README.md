@@ -66,7 +66,7 @@ Listeners receive queries over any supported protocol. Routers, groups and modif
 - Bootstrap addresses to avoid initial service name lookups
 
 **Deployment**
-- Linux network namespace support — listen in one netns, resolve in another, via `setns` or [xsocket](https://github.com/koro666/xsocket) (no `CAP_SYS_ADMIN` required)
+- Linux network namespace support — listen in one netns, resolve in another, via `setns` or [xsocket](https://github.com/koro666/xsocket) (no `CAP_SYS_ADMIN` required); a compatible fd-server is built in (`routedns fd-server`)
 - Firewall mark (fwmark) and interface binding (SO_BINDTODEVICE) for policy routing and VRF
 - Admin listener with expvar metrics (Prometheus-compatible)
 - Query/response logging, syslog integration
