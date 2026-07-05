@@ -37,6 +37,11 @@ func TestRedisKeyFromQuery(t *testing.T) {
 		return q
 	}
 	require.NotEqual(t, b.keyFromQuery(queryECS(24)), b.keyFromQuery(queryECS(16)), "ECS queries with different source-prefix lengths produced the same Redis cache key")
+
+	// The key format must remain stable so existing cache entries stay
+	// valid across upgrades.
+	require.Equal(t, "prefix:example.com.:IN:A::", (&redisBackend{opt: RedisBackendOptions{KeyPrefix: "prefix:"}}).keyFromQuery(queryCD(false)))
+	require.Equal(t, "example.com.:IN:A::false:192.0.2.0/24", b.keyFromQuery(queryECS(24)))
 }
 
 func TestEncodeDecode(t *testing.T) {
@@ -60,7 +65,7 @@ func TestEncodeDecode(t *testing.T) {
 	}
 
 	// Encode
-	encoded, err := encodeCacheAnswer(original)
+	encoded, err := encodeCacheAnswer(nil, original)
 	require.NoError(t, err)
 
 	// Verify format
@@ -101,7 +106,7 @@ func TestEncodeDecodeNoPrefetch(t *testing.T) {
 	}
 
 	// Encode
-	encoded, err := encodeCacheAnswer(original)
+	encoded, err := encodeCacheAnswer(nil, original)
 	require.NoError(t, err)
 
 	// Check flags byte (should be 0)
@@ -132,8 +137,44 @@ func TestDecodeInvalidData(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodePooling(t *testing.T) {
-	// Test that pooling works correctly across multiple encode operations
+func TestEncodeAliasesBuffer(t *testing.T) {
+	msg := new(dns.Msg)
+	msg.SetQuestion("alias.test.", dns.TypeA)
+	msg.Response = true
+
+	item := &cacheAnswer{
+		Timestamp:        time.Unix(1234567890, 0),
+		PrefetchEligible: true,
+		Msg:              msg,
+	}
+
+	// A buffer with enough capacity is used for the result
+	buf := make([]byte, 0, 2048)
+	encoded, err := encodeCacheAnswer(buf, item)
+	require.NoError(t, err)
+	require.Same(t, &buf[:1][0], &encoded[0], "expected result to alias the provided buffer")
+
+	// A buffer that's too small for the message is not used; the result
+	// must still be complete and decode correctly
+	small := make([]byte, 0, headerSize+4)
+	encodedSmall, err := encodeCacheAnswer(small, item)
+	require.NoError(t, err)
+	require.NotSame(t, &small[:1][0], &encodedSmall[0], "expected result not to alias the undersized buffer")
+	require.Equal(t, encoded, encodedSmall)
+
+	decoded, err := decodeCacheAnswer(encodedSmall)
+	require.NoError(t, err)
+	require.Equal(t, "alias.test.", decoded.Msg.Question[0].Name)
+
+	// A nil buffer works too
+	encodedNil, err := encodeCacheAnswer(nil, item)
+	require.NoError(t, err)
+	require.Equal(t, encoded, encodedNil)
+}
+
+func TestEncodeBufferReuse(t *testing.T) {
+	// Encode repeatedly into the same buffer, the way Store does with
+	// pooled buffers, and verify each result round-trips
 	msg := new(dns.Msg)
 	msg.SetQuestion("pool.test.", dns.TypeA)
 	msg.Response = true
@@ -144,9 +185,9 @@ func TestEncodeDecodePooling(t *testing.T) {
 		Msg:              msg,
 	}
 
-	// Encode multiple times to test pool reuse
+	buf := make([]byte, 0, 2048)
 	for i := range 100 {
-		encoded, err := encodeCacheAnswer(item)
+		encoded, err := encodeCacheAnswer(buf, item)
 		require.NoError(t, err, "iteration %d", i)
 
 		// Verify first byte is always version
@@ -160,51 +201,8 @@ func TestEncodeDecodePooling(t *testing.T) {
 	}
 }
 
-func TestEncodeReturnsIndependentSlice(t *testing.T) {
-	// Verify that encoded bytes are independent of the pool and mutations don't affect subsequent encodes
-	msg := new(dns.Msg)
-	msg.SetQuestion("independent.test.", dns.TypeA)
-	msg.Response = true
-
-	item := &cacheAnswer{
-		Timestamp:        time.Unix(1234567890, 0),
-		PrefetchEligible: true,
-		Msg:              msg,
-	}
-
-	// First encode
-	encoded1, err := encodeCacheAnswer(item)
-	require.NoError(t, err)
-
-	// Save a copy of the original encoded data
-	original := make([]byte, len(encoded1))
-	copy(original, encoded1)
-
-	// Mutate the returned slice to verify it's independent of the pool
-	for i := range encoded1 {
-		encoded1[i] = 0xFF
-	}
-
-	// Verify the mutated buffer is now garbage and fails to decode
-	_, err = decodeCacheAnswer(encoded1)
-	require.Error(t, err, "expected decode of mutated buffer to fail")
-
-	// Second encode - should succeed and produce the same result as the first
-	encoded2, err := encodeCacheAnswer(item)
-	require.NoError(t, err)
-
-	// Verify second encode matches the original (not corrupted by mutation)
-	require.Equal(t, original, encoded2, "mutation leaked into pool")
-
-	// Verify we can still decode the second result
-	decoded, err := decodeCacheAnswer(encoded2)
-	require.NoError(t, err)
-
-	require.Equal(t, "independent.test.", decoded.Msg.Question[0].Name)
-}
-
 func TestEncodeConcurrent(t *testing.T) {
-	// Test concurrent encoding to catch pool-related race conditions
+	// Test concurrent encoding, each goroutine reusing its own buffer.
 	// Each goroutine gets its own dns.Msg to avoid racing on shared message internals
 	const numGoroutines = 50
 	const numIterations = 100
@@ -233,8 +231,9 @@ func TestEncodeConcurrent(t *testing.T) {
 				Msg:              msg,
 			}
 
+			buf := make([]byte, 0, 2048)
 			for i := range numIterations {
-				encoded, err := encodeCacheAnswer(item)
+				encoded, err := encodeCacheAnswer(buf, item)
 				if err != nil {
 					errs <- err
 					return
@@ -261,5 +260,42 @@ func TestEncodeConcurrent(t *testing.T) {
 
 	for err := range errs {
 		require.NoError(t, err, "concurrent encode/decode failed")
+	}
+}
+
+func BenchmarkEncodeCacheAnswer(b *testing.B) {
+	msg := new(dns.Msg)
+	msg.SetQuestion("bench.example.com.", dns.TypeA)
+	msg.Response = true
+	for i := range 4 {
+		rr, err := dns.NewRR(fmt.Sprintf("bench.example.com. 300 IN A 192.0.2.%d", i+1))
+		require.NoError(b, err)
+		msg.Answer = append(msg.Answer, rr)
+	}
+
+	item := &cacheAnswer{
+		Timestamp:        time.Now(),
+		PrefetchEligible: true,
+		Msg:              msg,
+	}
+
+	buf := make([]byte, 0, 2048)
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := encodeCacheAnswer(buf, item); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkKeyFromQuery(b *testing.B) {
+	backend := &redisBackend{opt: RedisBackendOptions{KeyPrefix: "routedns:"}}
+	q := new(dns.Msg)
+	q.SetQuestion("bench.example.com.", dns.TypeA)
+	q.SetEdns0(4096, true)
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = backend.keyFromQuery(q)
 	}
 }
