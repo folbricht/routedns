@@ -113,6 +113,31 @@ func TestLoadBalanceFirstFailureRecovery(t *testing.T) {
 		"a success after an inflated first-failure seed should re-seed to the measured RTT")
 }
 
+// TestLoadBalanceSlowFirstFailureRecovery verifies that when a resolver's
+// first-ever event is a slow failure — e.g. a timeout above the baseline, so
+// the EMA is seeded to the timeout value itself — the next success re-seeds to
+// the measured RTT instead of slowly blending down from the failure-derived
+// seed.
+func TestLoadBalanceSlowFirstFailureRecovery(t *testing.T) {
+	r := &namedTestResolver{name: "slowfirstfail"}
+	g := NewLoadBalance("test-lb-slow-first-fail", LoadBalanceOptions{}, r) // no penalty
+
+	// First-ever event: a slow failure (e.g. a 2s timeout). The seed is the
+	// timeout value, which says nothing about the resolver's real speed.
+	timeout := 2 * time.Second
+	g.updateOnFailure(0, timeout)
+	require.Equal(t, float64(timeout.Microseconds()), g.stats[0].rttEMA,
+		"a slow first failure should seed the EMA to the measured elapsed time")
+	require.True(t, g.stats[0].emaInflated,
+		"a failure-derived first seed should be marked inflated")
+
+	// A genuine fast success must re-seed to the measured RTT, not blend down
+	// from the timeout (which would take ~20+ successes to decay).
+	g.updateOnSuccess(0, 3*time.Millisecond)
+	require.Equal(t, float64((3 * time.Millisecond).Microseconds()), g.stats[0].rttEMA,
+		"a success after a slow first failure should re-seed to the measured RTT")
+}
+
 // TestLoadBalanceNoReseedWithoutInflation verifies that a failure streak alone
 // (with no failure penalty configured, so updateOnFailure never inflated the
 // EMA) does not wipe an established average on the next success — it blends
