@@ -36,6 +36,9 @@ type cacheAnswer struct {
 	Msg              *dns.Msg
 }
 
+// The custom JSON marshaling is used by the memory backend to persist the
+// cache to a file (MemoryBackendOptions.Filename), packing the message to
+// wire format.
 func (c cacheAnswer) MarshalJSON() ([]byte, error) {
 	msg, err := c.Msg.Pack()
 	if err != nil {

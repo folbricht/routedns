@@ -3,10 +3,10 @@ package rdns
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,12 +35,17 @@ type RedisBackendOptions struct {
 
 var _ CacheBackend = (*redisBackend)(nil)
 
-// Buffer pool for dns.Msg.PackBuffer to minimize allocations.
+// Buffer pool for encoding cache records to minimize allocations.
 var packBufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 0, 2048)
 		return &b
 	},
+}
+
+func putPackBuf(bufPtr *[]byte) {
+	*bufPtr = (*bufPtr)[:0]
+	packBufPool.Put(bufPtr)
 }
 
 const (
@@ -54,31 +59,32 @@ const (
 // - byte 1: flags (bit0: prefetchEligible)
 // - bytes 2..9: timestamp (uint64 seconds from Unix epoch, big endian)
 // - bytes 10..N: dns.Msg wire bytes
-func encodeCacheAnswer(item *cacheAnswer) ([]byte, error) {
-	bufPtr := packBufPool.Get().(*[]byte)
-	buf := *bufPtr
-
-	defer func() {
-		*bufPtr = buf[:0]
-		packBufPool.Put(bufPtr)
-	}()
-
-	if cap(buf) == 0 {
-		buf = make([]byte, 0, 2048)
+//
+// The message is packed into buf when it fits, so the returned slice
+// typically aliases buf. The caller owns buf and must not reuse it while
+// the result is in use.
+func encodeCacheAnswer(buf []byte, item *cacheAnswer) ([]byte, error) {
+	if cap(buf) < headerSize {
+		buf = make([]byte, headerSize+2048)
 	}
-
-	// Pack DNS message first into the scratch buffer
 	buf = buf[:cap(buf)]
-	dnsWire, err := item.Msg.PackBuffer(buf)
+
+	// Pack the DNS message directly after the header. PackBuffer packs
+	// in place and only allocates a new buffer if the message doesn't fit.
+	dnsWire, err := item.Msg.PackBuffer(buf[headerSize:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
 	}
 
-	// Keep the (potentially grown) buffer for cleanup
-	buf = dnsWire
-
-	// Allocate result with header + DNS wire bytes
-	result := make([]byte, headerSize+len(dnsWire))
+	var result []byte
+	if &dnsWire[0] == &buf[headerSize] {
+		// Packed in place, header and wire bytes are contiguous in buf
+		result = buf[:headerSize+len(dnsWire)]
+	} else {
+		// The message didn't fit and PackBuffer allocated a new buffer
+		result = make([]byte, headerSize+len(dnsWire))
+		copy(result[headerSize:], dnsWire)
+	}
 
 	// Write header
 	result[0] = binaryFormatVersion
@@ -89,11 +95,7 @@ func encodeCacheAnswer(item *cacheAnswer) ([]byte, error) {
 	}
 	result[1] = flags
 
-	timestamp := uint64(item.Timestamp.Unix())
-	binary.BigEndian.PutUint64(result[2:10], timestamp)
-
-	// Copy DNS wire bytes after header
-	copy(result[headerSize:], dnsWire)
+	binary.BigEndian.PutUint64(result[2:10], uint64(item.Timestamp.Unix()))
 
 	return result, nil
 }
@@ -148,39 +150,53 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 		return
 	}
 
-	if b.opt.SyncSet {
-		b.storeSync(query, item, ttl)
-	} else {
-		b.storeAsync(query, item, ttl)
-	}
-}
-
-func (b *redisBackend) storeSync(query *dns.Msg, item *cacheAnswer, ttl time.Duration) {
+	// Build the key and encode synchronously. The query and the message
+	// belong to the caller and may be mutated once Store returns, so
+	// they can't be touched from a background goroutine.
 	key := b.keyFromQuery(query)
-	value, err := encodeCacheAnswer(item)
+
+	bufPtr := packBufPool.Get().(*[]byte)
+	value, err := encodeCacheAnswer(*bufPtr, item)
 	if err != nil {
+		putPackBuf(bufPtr)
 		Log.Error("failed to encode cache record", "error", err)
 		return
 	}
+	// If encoding outgrew the pooled buffer, keep the larger one so the
+	// pool adapts to the workload
+	if cap(value) > cap(*bufPtr) {
+		*bufPtr = value
+	}
 
+	if b.opt.SyncSet {
+		b.set(key, value, ttl)
+		putPackBuf(bufPtr)
+		return
+	}
+
+	// Non-blocking semaphore acquire. The value buffer is handed to the
+	// goroutine and returned to the pool once the write completes.
+	select {
+	case b.asyncWriteSem <- struct{}{}:
+		go func() {
+			defer func() {
+				putPackBuf(bufPtr)
+				<-b.asyncWriteSem
+			}()
+			b.set(key, value, ttl)
+		}()
+	default:
+		// Semaphore full, skip async store (best-effort caching)
+		putPackBuf(bufPtr)
+		b.asyncSkipped.Add(1)
+	}
+}
+
+func (b *redisBackend) set(key string, value []byte, ttl time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if err := b.client.Set(ctx, key, value, ttl).Err(); err != nil {
 		Log.Error("failed to write to redis", "error", err)
-	}
-}
-
-func (b *redisBackend) storeAsync(query *dns.Msg, item *cacheAnswer, ttl time.Duration) {
-	// Non-blocking semaphore acquire
-	select {
-	case b.asyncWriteSem <- struct{}{}:
-		go func() {
-			defer func() { <-b.asyncWriteSem }()
-			b.storeSync(query, item, ttl)
-		}()
-	default:
-		// Semaphore full, skip async store (best-effort caching)
-		b.asyncSkipped.Add(1)
 	}
 }
 
@@ -199,21 +215,9 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		return nil, false, false
 	}
 
-	// Try binary decode first, with JSON fallback for backward compatibility
-	var a *cacheAnswer
-	a, err = decodeCacheAnswer(valueBytes)
+	a, err := decodeCacheAnswer(valueBytes)
 	if err != nil {
-		// Fallback to JSON for backward compatibility with existing cached entries
-		if jsonErr := json.Unmarshal(valueBytes, &a); jsonErr != nil {
-			Log.Error("failed to decode cache record from redis", "binary_error", err, "json_error", jsonErr)
-			return nil, false, false
-		}
-	}
-
-	// A record that decoded without error but holds no message (such as a
-	// literal "null" JSON value) is treated as a cache-miss.
-	if a == nil || a.Msg == nil {
-		Log.Error("empty cache record from redis")
+		Log.Error("failed to decode cache record from redis", "error", err)
 		return nil, false, false
 	}
 
@@ -246,16 +250,35 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 }
 
 func (b *redisBackend) Flush() {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := b.client.Del(ctx, b.opt.KeyPrefix+"*").Result(); err != nil {
-		Log.Error("failed to delete keys in redis", "error", err)
+	// DEL takes literal key names, not glob patterns, so iterate with
+	// SCAN and delete the matches in batches.
+	var cursor uint64
+	for {
+		keys, next, err := b.client.Scan(ctx, cursor, b.opt.KeyPrefix+"*", 1000).Result()
+		if err != nil {
+			Log.Error("failed to scan keys in redis", "error", err)
+			return
+		}
+		if len(keys) > 0 {
+			if err := b.client.Del(ctx, keys...).Err(); err != nil {
+				Log.Error("failed to delete keys in redis", "error", err)
+				return
+			}
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
 	}
 }
 
 func (b *redisBackend) Size() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
+	// Note: DBSIZE counts all keys in the database, not just those
+	// matching KeyPrefix.
 	size, err := b.client.DBSize(ctx).Result()
 	if err != nil {
 		Log.Error("failed to run dbsize command on redis", "error", err)
@@ -269,13 +292,16 @@ func (b *redisBackend) Close() error {
 
 // Build a key string to be used in redis.
 func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
+	question := q.Question[0]
+
 	var key strings.Builder
+	key.Grow(len(b.opt.KeyPrefix) + len(question.Name) + 32)
 	key.WriteString(b.opt.KeyPrefix)
-	key.WriteString(strings.ToLower(q.Question[0].Name))
+	key.WriteString(strings.ToLower(question.Name))
 	key.WriteByte(':')
-	key.WriteString(dns.Class(q.Question[0].Qclass).String())
+	key.WriteString(dns.Class(question.Qclass).String())
 	key.WriteByte(':')
-	key.WriteString(dns.Type(q.Question[0].Qtype).String())
+	key.WriteString(dns.Type(question.Qtype).String())
 	key.WriteByte(':')
 	// CD=1 responses are unvalidated (RFC 4035 §4.7 / RFC 6840 §5.9) and
 	// must be keyed separately from CD=0 ones.
@@ -286,14 +312,18 @@ func (b *redisBackend) keyFromQuery(q *dns.Msg) string {
 
 	edns0 := q.IsEdns0()
 	if edns0 != nil {
-		key.WriteString(fmt.Sprintf("%t", edns0.Do()))
+		if edns0.Do() {
+			key.WriteString("true")
+		} else {
+			key.WriteString("false")
+		}
 		key.WriteByte(':')
 		// See if we have a subnet option
 		for _, opt := range edns0.Option {
 			if subnet, ok := opt.(*dns.EDNS0_SUBNET); ok {
 				key.WriteString(subnet.Address.String())
 				key.WriteByte('/')
-				key.WriteString(fmt.Sprintf("%d", subnet.SourceNetmask))
+				key.WriteString(strconv.FormatUint(uint64(subnet.SourceNetmask), 10))
 			}
 		}
 	}
