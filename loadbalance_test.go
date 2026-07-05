@@ -90,6 +90,29 @@ func TestLoadBalanceFastRecovery(t *testing.T) {
 		"a success after a penalty streak should re-seed the EMA to the measured RTT")
 }
 
+// TestLoadBalanceFirstFailureRecovery verifies that when a resolver's first-ever
+// event is a fast failure — which seeds the EMA up to the baseline rather than
+// the (faster) measured time — the next success re-seeds to the measured RTT
+// instead of slowly blending down from the inflated baseline.
+func TestLoadBalanceFirstFailureRecovery(t *testing.T) {
+	r := &namedTestResolver{name: "firstfail"}
+	g := NewLoadBalance("test-lb-first-fail", LoadBalanceOptions{}, r) // no penalty
+
+	// First-ever event: a fast failure (e.g. connection refused in ~1ms). The
+	// seed is floored to the baseline, which is inflated above the real 1ms.
+	g.updateOnFailure(0, time.Millisecond)
+	require.Equal(t, float64(defaultLoadBalanceInitialRTT.Microseconds()), g.stats[0].rttEMA,
+		"a fast first failure should seed the EMA to the baseline")
+	require.True(t, g.stats[0].emaInflated,
+		"a baseline-floored first-failure seed should be marked inflated")
+
+	// A genuine fast success must re-seed to the measured RTT, not blend down
+	// from the baseline (which would leave the resolver artificially slow).
+	g.updateOnSuccess(0, 3*time.Millisecond)
+	require.Equal(t, float64((3 * time.Millisecond).Microseconds()), g.stats[0].rttEMA,
+		"a success after an inflated first-failure seed should re-seed to the measured RTT")
+}
+
 // TestLoadBalanceNoReseedWithoutInflation verifies that a failure streak alone
 // (with no failure penalty configured, so updateOnFailure never inflated the
 // EMA) does not wipe an established average on the next success — it blends

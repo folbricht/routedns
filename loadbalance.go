@@ -219,18 +219,15 @@ func (r *LoadBalance) updateOnSuccess(idx int, d time.Duration) {
 	r.stats[idx].consecFails.Store(0)
 	r.mu.Lock()
 	s := &r.stats[idx]
-	switch {
-	case s.count == 0:
+	// Re-seed directly to the measured RTT on the first sample, or when prior
+	// failures inflated the EMA (the penalty or an upward timeout sample). In
+	// the inflated case, blending with alpha would take ~20+ successes to decay
+	// back, during which the resolver gets little traffic. Gating on the
+	// recorded inflation (rather than the failure-streak length) avoids wiping
+	// an established average when nothing actually raised the EMA.
+	if s.count == 0 || s.emaInflated {
 		s.rttEMA = us
-	case s.emaInflated:
-		// The EMA was inflated by prior failures (the failure penalty or an
-		// upward timeout sample); blending with alpha would take ~20+ successes
-		// to decay back, during which the resolver gets little traffic. Re-seed
-		// directly to the measured RTT so recovery is immediate. Gating on the
-		// recorded inflation (rather than the failure-streak length) avoids
-		// wiping an established average when nothing actually raised the EMA.
-		s.rttEMA = us
-	default:
+	} else {
 		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 	}
 	s.emaInflated = false
@@ -262,7 +259,14 @@ func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	if s.count == 0 {
 		// Seed with at least the baseline RTT so a fast first failure doesn't
 		// give this resolver a large weight advantage over unprobed resolvers.
-		s.rttEMA = max(us, float64(defaultLoadBalanceInitialRTT.Microseconds()))
+		baseline := float64(defaultLoadBalanceInitialRTT.Microseconds())
+		s.rttEMA = max(us, baseline)
+		// If the baseline floored the seed above the measured sample, the EMA is
+		// inflated relative to the resolver's real speed. Mark it so the next
+		// success re-seeds instead of slowly blending down from the baseline.
+		if us < baseline {
+			s.emaInflated = true
+		}
 	} else {
 		newEMA := defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 		if penalize || newEMA > s.rttEMA {
