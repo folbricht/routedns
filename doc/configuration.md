@@ -633,7 +633,9 @@ This group distributes queries across all configured resolvers using weighted ra
 
 Compared to [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), load is spread across all resolvers at all times rather than concentrating on one until it fails. Compared to [Random](#random-group), selection is weighted by measured response time so faster resolvers naturally receive more traffic; resolvers are never removed from the pool — on failure their EMA is only allowed to move upward (preventing fast-failing resolvers from appearing artificially fast), and the optional `failure-penalty` accelerates suppression after persistent failures. Compared to [Fastest](#fastest-group), each query goes to a single resolver rather than all of them simultaneously.
 
-On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates.
+On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates. To keep the pool healthy, weighting is bounded and self-correcting: a small share of queries (~5%) is sent to a uniformly-chosen resolver regardless of weight, so even penalized or slow resolvers keep being re-measured and can recover rather than being starved; the response time used for weighting is floored at 1ms, so an exceptionally fast resolver cannot completely crowd out slower ones; and once a previously-penalized resolver succeeds again its average is re-seeded to the freshly measured time instead of slowly decaying, allowing it to regain traffic quickly.
+
+The current per-resolver response-time average (in microseconds) is exported via expvar as `routedns.router.<id>.rtt`, keyed by resolver, alongside the usual `route`, `failure`, `available`, and `failover` metrics.
 
 #### Configuration
 

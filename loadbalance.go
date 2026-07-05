@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"errors"
+	"expvar"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,17 @@ const (
 	// Two transient failures in a row are unlikely to be coincidental; apply the
 	// penalty only then to avoid suppressing a resolver that had a single slow response.
 	loadBalancePenaltyThreshold = 2
+	// Fraction of picks made uniformly at random instead of by weight. Exploration
+	// keeps every resolver's stats fresh, guarantees a minimum traffic share so that
+	// penalized or slow resolvers can recover (and be re-measured) rather than being
+	// starved indefinitely, and avoids cold-start lock-in onto whichever resolver
+	// happened to be probed first.
+	defaultLoadBalanceExploration = 0.05
+	// Floor for the EMA used when computing weights. Without it a resolver that
+	// responds in microseconds would get a weight thousands of times the neutral
+	// weight, starving slower or unprobed resolvers. Clamping to 1ms caps the
+	// maximum weight at 100 (vs. the neutral 1.0).
+	defaultLoadBalanceMinimumWeightRTT = time.Millisecond
 )
 
 // LoadBalance is a resolver group that prefers resolvers with lower average
@@ -30,13 +42,23 @@ type LoadBalance struct {
 	stats     []loadBalanceStats
 	opt       LoadBalanceOptions
 	metrics   *FailRouterMetrics
+	// Per-resolver current rttEMA in microseconds, published under
+	// routedns.router.<id>.rtt keyed by resolver String().
+	rttVars   []*expvar.Float
 	randFloat func() float64
 }
 
 type loadBalanceStats struct {
-	rttEMA      float64      // exponential moving average in microseconds
+	rttEMA      float64 // exponential moving average in microseconds
 	count       int
 	consecFails atomic.Int32 // reset to 0 on success; never read under mu
+	// emaInflated is set by updateOnFailure whenever it raised the EMA (via the
+	// failure penalty or an upward timeout sample) and cleared on success. It
+	// tells updateOnSuccess whether the current EMA is an artefact of failures
+	// that should be re-seeded immediately, rather than inferring that from the
+	// failure-streak length (which also fires when nothing inflated the EMA).
+	// Guarded by mu.
+	emaInflated bool
 }
 
 // LoadBalanceOptions contain settings for the load-balancing resolver group.
@@ -60,12 +82,19 @@ var _ Resolver = &LoadBalance{}
 
 // NewLoadBalance returns a new instance of a load-balancing resolver group.
 func NewLoadBalance(id string, opt LoadBalanceOptions, resolvers ...Resolver) *LoadBalance {
+	rtt := getVarMap("router", id, "rtt")
+	rttVars := make([]*expvar.Float, len(resolvers))
+	for i, resolver := range resolvers {
+		rttVars[i] = new(expvar.Float)
+		rtt.Set(resolver.String(), rttVars[i])
+	}
 	return &LoadBalance{
 		id:        id,
 		resolvers: resolvers,
 		stats:     make([]loadBalanceStats, len(resolvers)),
 		opt:       opt,
 		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+		rttVars:   rttVars,
 		randFloat: rand.Float64,
 	}
 }
@@ -109,6 +138,10 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.With("resolver", resolver.String()).Debug("resolver returned failure",
 			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
+		// Count every failure as a failover to stay consistent with FailRotate
+		// (which increments on every failure, including the last/only resolver).
+		// This keeps routedns.router.<id>.failover comparable across groups and
+		// preserves the signal for a completely broken single-resolver group.
 		r.metrics.failover.Add(1)
 		penalized := r.updateOnFailure(idx, elapsed)
 		if penalized {
@@ -133,8 +166,16 @@ func (r *LoadBalance) String() string {
 }
 
 // pick selects an index into remaining using weights derived from the inverse
-// EMA response time. Resolvers without history use a neutral weight.
+// EMA response time. Resolvers without history use a neutral weight. With
+// probability defaultLoadBalanceExploration a uniform random resolver is picked
+// instead, ensuring every resolver keeps receiving some traffic.
 func (r *LoadBalance) pick(remaining []int) int {
+	// ε-greedy exploration: occasionally pick uniformly at random regardless of
+	// weight so penalized/slow resolvers get re-measured and can recover.
+	if r.randFloat() < defaultLoadBalanceExploration {
+		return int(r.randFloat() * float64(len(remaining)))
+	}
+
 	var buf [8]float64
 	var weights []float64
 	if len(remaining) <= len(buf) {
@@ -143,13 +184,16 @@ func (r *LoadBalance) pick(remaining []int) int {
 		weights = make([]float64, len(remaining))
 	}
 
+	minWeightRTT := float64(defaultLoadBalanceMinimumWeightRTT.Microseconds())
 	r.mu.RLock()
 	var total float64
 	for i, idx := range remaining {
 		weight := 1.0
 		s := &r.stats[idx]
 		if s.count > 0 && s.rttEMA > 0 {
-			weight = float64(defaultLoadBalanceInitialRTT.Microseconds()) / s.rttEMA
+			// Floor the effective RTT at weighting time only; rttEMA itself is
+			// left unchanged so recovery and metrics still see the true value.
+			weight = float64(defaultLoadBalanceInitialRTT.Microseconds()) / max(s.rttEMA, minWeightRTT)
 		}
 		weights[i] = weight
 		total += weight
@@ -172,16 +216,25 @@ func (r *LoadBalance) updateOnSuccess(idx int, d time.Duration) {
 		d = defaultLoadBalanceMinimumRTTSample
 	}
 	us := float64(d.Microseconds())
+	r.stats[idx].consecFails.Store(0)
 	r.mu.Lock()
 	s := &r.stats[idx]
-	if s.count == 0 {
+	// Re-seed directly to the measured RTT on the first sample, or when prior
+	// failures inflated the EMA (the penalty or an upward timeout sample). In
+	// the inflated case, blending with alpha would take ~20+ successes to decay
+	// back, during which the resolver gets little traffic. Gating on the
+	// recorded inflation (rather than the failure-streak length) avoids wiping
+	// an established average when nothing actually raised the EMA.
+	if s.count == 0 || s.emaInflated {
 		s.rttEMA = us
 	} else {
 		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 	}
+	s.emaInflated = false
+	ema := s.rttEMA
 	s.count++
 	r.mu.Unlock()
-	r.stats[idx].consecFails.Store(0)
+	r.rttVars[idx].Set(ema)
 }
 
 // updateOnFailure records a failed response time and returns true if the
@@ -206,15 +259,28 @@ func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	if s.count == 0 {
 		// Seed with at least the baseline RTT so a fast first failure doesn't
 		// give this resolver a large weight advantage over unprobed resolvers.
-		s.rttEMA = max(us, float64(defaultLoadBalanceInitialRTT.Microseconds()))
+		baseline := float64(defaultLoadBalanceInitialRTT.Microseconds())
+		s.rttEMA = max(us, baseline)
+		// If the baseline floored the seed above the measured sample, the EMA is
+		// inflated relative to the resolver's real speed. Mark it so the next
+		// success re-seeds instead of slowly blending down from the baseline.
+		if us < baseline {
+			s.emaInflated = true
+		}
 	} else {
 		newEMA := defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 		if penalize || newEMA > s.rttEMA {
+			// Record that this update raised the EMA above the level established
+			// by successes, so the next success re-seeds instead of slowly
+			// decaying an inflated value.
 			s.rttEMA = newEMA
+			s.emaInflated = true
 		}
 	}
+	ema := s.rttEMA
 	s.count++
 	r.mu.Unlock()
+	r.rttVars[idx].Set(ema)
 	return penalize
 }
 
