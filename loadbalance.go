@@ -259,14 +259,10 @@ func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	if s.count == 0 {
 		// Seed with at least the baseline RTT so a fast first failure doesn't
 		// give this resolver a large weight advantage over unprobed resolvers.
-		baseline := float64(defaultLoadBalanceInitialRTT.Microseconds())
-		s.rttEMA = max(us, baseline)
-		// If the baseline floored the seed above the measured sample, the EMA is
-		// inflated relative to the resolver's real speed. Mark it so the next
-		// success re-seeds instead of slowly blending down from the baseline.
-		if us < baseline {
-			s.emaInflated = true
-		}
+		s.rttEMA = max(us, float64(defaultLoadBalanceInitialRTT.Microseconds()))
+		// The seed is derived from a failure, not a real measurement; mark it
+		// inflated so the first success re-seeds to the measured RTT.
+		s.emaInflated = true
 	} else {
 		newEMA := defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 		if penalize || newEMA > s.rttEMA {
