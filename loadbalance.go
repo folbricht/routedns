@@ -52,6 +52,13 @@ type loadBalanceStats struct {
 	rttEMA      float64 // exponential moving average in microseconds
 	count       int
 	consecFails atomic.Int32 // reset to 0 on success; never read under mu
+	// emaInflated is set by updateOnFailure whenever it raised the EMA (via the
+	// failure penalty or an upward timeout sample) and cleared on success. It
+	// tells updateOnSuccess whether the current EMA is an artefact of failures
+	// that should be re-seeded immediately, rather than inferring that from the
+	// failure-streak length (which also fires when nothing inflated the EMA).
+	// Guarded by mu.
+	emaInflated bool
 }
 
 // LoadBalanceOptions contain settings for the load-balancing resolver group.
@@ -131,11 +138,11 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		log.With("resolver", resolver.String()).Debug("resolver returned failure",
 			"error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
-		// Only count a failover when there is another resolver to fall back to;
-		// the last resolver failing is the end of the request, not a failover.
-		if len(remaining) > 1 {
-			r.metrics.failover.Add(1)
-		}
+		// Count every failure as a failover to stay consistent with FailRotate
+		// (which increments on every failure, including the last/only resolver).
+		// This keeps routedns.router.<id>.failover comparable across groups and
+		// preserves the signal for a completely broken single-resolver group.
+		r.metrics.failover.Add(1)
 		penalized := r.updateOnFailure(idx, elapsed)
 		if penalized {
 			Log.Debug("penalizing resolver", slog.Group("details",
@@ -209,21 +216,24 @@ func (r *LoadBalance) updateOnSuccess(idx int, d time.Duration) {
 		d = defaultLoadBalanceMinimumRTTSample
 	}
 	us := float64(d.Microseconds())
-	// Swap so the read-and-reset of the failure streak is a single atomic op.
-	wasPenalized := r.stats[idx].consecFails.Swap(0) >= loadBalancePenaltyThreshold
+	r.stats[idx].consecFails.Store(0)
 	r.mu.Lock()
 	s := &r.stats[idx]
 	switch {
 	case s.count == 0:
 		s.rttEMA = us
-	case wasPenalized:
-		// The EMA was inflated by the failure penalty; blending with alpha would
-		// take ~20+ successes to decay back, during which the resolver gets little
-		// traffic. Re-seed directly to the measured RTT so recovery is immediate.
+	case s.emaInflated:
+		// The EMA was inflated by prior failures (the failure penalty or an
+		// upward timeout sample); blending with alpha would take ~20+ successes
+		// to decay back, during which the resolver gets little traffic. Re-seed
+		// directly to the measured RTT so recovery is immediate. Gating on the
+		// recorded inflation (rather than the failure-streak length) avoids
+		// wiping an established average when nothing actually raised the EMA.
 		s.rttEMA = us
 	default:
 		s.rttEMA = defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 	}
+	s.emaInflated = false
 	ema := s.rttEMA
 	s.count++
 	r.mu.Unlock()
@@ -256,7 +266,11 @@ func (r *LoadBalance) updateOnFailure(idx int, elapsed time.Duration) bool {
 	} else {
 		newEMA := defaultLoadBalanceEMAAlpha*us + (1-defaultLoadBalanceEMAAlpha)*s.rttEMA
 		if penalize || newEMA > s.rttEMA {
+			// Record that this update raised the EMA above the level established
+			// by successes, so the next success re-seeds instead of slowly
+			// decaying an inflated value.
 			s.rttEMA = newEMA
+			s.emaInflated = true
 		}
 	}
 	ema := s.rttEMA

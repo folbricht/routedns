@@ -67,23 +67,55 @@ func TestLoadBalanceExplorationFloor(t *testing.T) {
 		"penalized resolver should still receive a minimum traffic share")
 }
 
-// TestLoadBalanceFastRecovery verifies that after a penalty streak inflates the
-// EMA, a single subsequent success re-seeds the EMA to the measured RTT rather
-// than slowly decaying via the alpha blend.
+// TestLoadBalanceFastRecovery verifies that after failures inflate the EMA (via
+// the failure penalty), a single subsequent success re-seeds the EMA to the
+// measured RTT rather than slowly decaying via the alpha blend.
 func TestLoadBalanceFastRecovery(t *testing.T) {
 	r := &namedTestResolver{name: "recovering"}
-	g := NewLoadBalance("test-lb-recovery", LoadBalanceOptions{}, r)
+	penalty := 5 * time.Second
+	g := NewLoadBalance("test-lb-recovery", LoadBalanceOptions{FailurePenalty: penalty}, r)
 
-	// Drive consecFails to/above the penalty threshold and inflate the EMA.
-	g.stats[0].rttEMA = float64((5 * time.Second).Microseconds())
-	g.stats[0].count = 5
-	g.stats[0].consecFails.Store(loadBalancePenaltyThreshold)
+	// Establish an honest average, then drive consecutive failures so the penalty
+	// inflates the EMA and sets the inflation flag.
+	g.updateOnSuccess(0, 3*time.Millisecond)
+	g.updateOnFailure(0, time.Millisecond)                  // fail 1 — below threshold
+	require.True(t, g.updateOnFailure(0, time.Millisecond)) // fail 2 — penalty applied
+	require.Greater(t, g.stats[0].rttEMA, float64((100 * time.Millisecond).Microseconds()),
+		"penalty should have inflated the EMA")
 
 	g.updateOnSuccess(0, 3*time.Millisecond)
 
 	require.Equal(t, int32(0), g.stats[0].consecFails.Load())
 	require.Equal(t, float64((3 * time.Millisecond).Microseconds()), g.stats[0].rttEMA,
 		"a success after a penalty streak should re-seed the EMA to the measured RTT")
+}
+
+// TestLoadBalanceNoReseedWithoutInflation verifies that a failure streak alone
+// (with no failure penalty configured, so updateOnFailure never inflated the
+// EMA) does not wipe an established average on the next success — it blends
+// normally instead of re-seeding.
+func TestLoadBalanceNoReseedWithoutInflation(t *testing.T) {
+	r := &namedTestResolver{name: "steady"}
+	g := NewLoadBalance("test-lb-no-reseed", LoadBalanceOptions{}, r) // no FailurePenalty
+
+	// Establish an honest 400ms average.
+	honest := 400 * time.Millisecond
+	g.updateOnSuccess(0, honest)
+
+	// Two fast transient failures: with the upward-only update and no penalty,
+	// these leave the EMA unchanged but push consecFails past the threshold.
+	g.updateOnFailure(0, time.Millisecond)
+	g.updateOnFailure(0, time.Millisecond)
+	require.GreaterOrEqual(t, g.stats[0].consecFails.Load(), int32(loadBalancePenaltyThreshold))
+	require.Equal(t, float64(honest.Microseconds()), g.stats[0].rttEMA,
+		"fast failures with no penalty should not have inflated the EMA")
+
+	// A fast success must blend toward the measured RTT, not hard-reset to it.
+	g.updateOnSuccess(0, time.Millisecond)
+	expected := defaultLoadBalanceEMAAlpha*float64(time.Millisecond.Microseconds()) +
+		(1-defaultLoadBalanceEMAAlpha)*float64(honest.Microseconds())
+	require.Equal(t, expected, g.stats[0].rttEMA,
+		"a success after a non-inflated streak should blend, not re-seed")
 }
 
 // TestLoadBalanceWeightClamp verifies that the per-resolver weight is bounded so
@@ -110,9 +142,9 @@ func TestLoadBalanceWeightClamp(t *testing.T) {
 		"weight clamp should keep the slower resolver from being fully starved")
 }
 
-// TestLoadBalanceFailoverMetric verifies the failover metric is only incremented
-// when there is another resolver to fail over to, while the failure metric
-// increments on every failure.
+// TestLoadBalanceFailoverMetric verifies the failover metric increments on every
+// failure, consistent with FailRotate, so the counter stays comparable across
+// groups (including a completely broken single-resolver group).
 func TestLoadBalanceFailoverMetric(t *testing.T) {
 	var ci ClientInfo
 	r1 := &namedTestResolver{name: "fail1"}
@@ -132,10 +164,32 @@ func TestLoadBalanceFailoverMetric(t *testing.T) {
 	_, err := g.Resolve(q, ci) //nolint:errcheck
 	require.Error(t, err)
 
-	// Two resolvers, both fail: the first failure is a real failover, the second
-	// (last remaining) is not. So failover == 1 but two failures were recorded.
+	// Two resolvers, both fail: every failure counts as a failover, matching
+	// FailRotate's semantics.
+	require.Equal(t, int64(2), g.metrics.failover.Value(),
+		"every failure should count as a failover, consistent with fail-rotate")
+}
+
+// TestLoadBalanceSingleResolverFailoverMetric verifies that a completely broken
+// single-resolver group still reports a failover, so alerts keyed on the
+// failover counter are not silenced.
+func TestLoadBalanceSingleResolverFailoverMetric(t *testing.T) {
+	var ci ClientInfo
+	dead := &namedTestResolver{name: "dead"}
+	dead.ResolveFunc = func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		return nil, errors.New("dead")
+	}
+
+	g := NewLoadBalance("test-lb-single-failover", LoadBalanceOptions{}, dead)
+	g.randFloat = func() float64 { return 0 }
+
+	q := new(dns.Msg)
+	q.SetQuestion("test.com.", dns.TypeA)
+	_, err := g.Resolve(q, ci) //nolint:errcheck
+	require.Error(t, err)
+
 	require.Equal(t, int64(1), g.metrics.failover.Value(),
-		"only the non-final failure should count as a failover")
+		"a broken single-resolver group should still report a failover")
 }
 
 func TestLoadBalanceRetriesOnError(t *testing.T) {
