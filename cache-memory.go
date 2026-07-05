@@ -61,6 +61,8 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var expiry time.Time
 	b.mu.Lock()
 	if a := b.lru.get(q); a != nil {
+		// Copy the message so later elements can modify the response
+		// without affecting the cached original.
 		answer = a.Msg.Copy()
 		timestamp = a.Timestamp
 		prefetchEligible = a.PrefetchEligible
@@ -79,9 +81,6 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		return nil, false, false
 	}
 
-	// Make a copy of the response before returning it. Some later
-	// elements might make changes.
-	answer = answer.Copy()
 	answer.Id = q.Id
 	answer.Question = q.Question // restore the case used in the question
 

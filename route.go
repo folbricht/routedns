@@ -247,7 +247,7 @@ loop:
 				continue loop
 			}
 		}
-		return nil, fmt.Errorf("unknown type '%s'", s)
+		return nil, fmt.Errorf("unknown type '%s'", typ)
 	}
 	return types, nil
 }
@@ -330,11 +330,17 @@ func parseTimeOfDay(t string) (*TimeOfDay, error) {
 	if err != nil {
 		return nil, err
 	}
+	if hour < 0 || hour > 23 {
+		return nil, fmt.Errorf("invalid time of day %q: hour must be between 0 and 23", t)
+	}
 	var min int
 	if len(f) > 1 {
 		min, err = strconv.Atoi(f[1])
 		if err != nil {
 			return nil, err
+		}
+		if min < 0 || min > 59 {
+			return nil, fmt.Errorf("invalid time of day %q: minute must be between 0 and 59", t)
 		}
 	}
 	return &TimeOfDay{
@@ -352,5 +358,5 @@ func (t *TimeOfDay) isAfter(hour, minute int) bool {
 }
 
 func (t *TimeOfDay) String() string {
-	return fmt.Sprintf("%2d:%2d", t.hour, t.minute)
+	return fmt.Sprintf("%02d:%02d", t.hour, t.minute)
 }
