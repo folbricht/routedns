@@ -133,10 +133,14 @@ func (r *FailBack) errorFrom(i int) {
 		r.failCh = r.startResetTimer()
 	}
 	r.active = (r.active + 1) % len(r.resolvers)
+	// Resolvers before the active one failed recently, the rest are presumed
+	// healthy. On wrap-around the group starts over with the full list, so
+	// derive the gauge from the active index rather than decrementing it,
+	// which would drift below zero over repeated rotations.
+	r.metrics.available.Set(int64(len(r.resolvers) - r.active))
 	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
 	r.mu.Unlock()
 	r.metrics.failover.Add(1)
-	r.metrics.available.Add(-1)
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
 }
 
@@ -155,9 +159,11 @@ func (r *FailBack) startResetTimer() chan struct{} {
 			case <-timer.C:
 				r.mu.Lock()
 				r.active = 0
+				// All resolvers are considered available again, regardless of
+				// how far the group had failed over.
+				r.metrics.available.Set(int64(len(r.resolvers)))
 				Log.Debug("failing back to resolver", slog.Group("details", slog.String("resolver", r.resolvers[r.active].String())))
 				r.mu.Unlock()
-				r.metrics.available.Add(1)
 				// we just reset to the first resolver, let's wait for another failure before running again
 				<-failCh
 			}
