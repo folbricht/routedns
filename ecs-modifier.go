@@ -26,8 +26,12 @@ func NewECSModifier(id string, resolver Resolver, f ECSModifierFunc) (*ECSModifi
 
 // Resolve modifies the OPT EDNS0 record and passes it to the next resolver.
 func (r *ECSModifier) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	// Modify the query
+	// Modify a copy of the query. The original belongs to the caller; the
+	// listener reads it after Resolve returns to decide UDP truncation and
+	// DoT padding, so adding or removing EDNS0 in place would corrupt those
+	// decisions for the client.
 	if r.modifier != nil {
+		q = q.Copy()
 		r.modifier(r.id, q, ci)
 	}
 
