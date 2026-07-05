@@ -112,9 +112,15 @@ func (c *Pipeline) start() {
 					log.With("qname", qName(query)).Debug("sending query")
 					c.metrics.query.Add(1)
 					if err := conn.WriteMsg(query); err != nil {
-						req.markDone(nil, err) // fail the request
-						c.inFlight.get(query)  // clean up the in-flight queue so it doesn't keep growing
-						conn.Close()           // throw away this connection, should wake up the reader as well
+						// Take the request back out of the in-flight queue before
+						// completing it. The reader matches responses by ID and
+						// completes whatever request it finds there; completing a
+						// request twice would panic on the double close of its
+						// done channel. Whoever removes it from the queue owns it.
+						if c.inFlight.get(query) != nil {
+							req.markDone(nil, err) // fail the request
+						}
+						conn.Close() // throw away this connection, should wake up the reader as well
 						wg.Done()
 						c.metrics.err.Add("send_query", 1)
 						log.With("qname", qName(query)).Debug("failed sending query",
