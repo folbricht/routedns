@@ -183,6 +183,11 @@ func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Cli
 	defer stream.Close()
 	s.metrics.stream.Add(1)
 
+	// The deadline covers the whole query read, including the length prefix.
+	// Without it a client that opens a stream and sends nothing would pin
+	// this goroutine for as long as it keeps the connection alive.
+	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
+
 	// DoQ requires a length prefix, like TCP
 	var length uint16
 	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
@@ -193,7 +198,6 @@ func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Cli
 
 	// Read the raw query
 	b := make([]byte, length)
-	_ = stream.SetReadDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
 	if _, err := io.ReadFull(stream, b); err != nil {
 		s.metrics.err.Add("read", 1)
 		log.Warn("failed to read query", "error", err)
