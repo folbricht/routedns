@@ -4,5 +4,7 @@
 **/.gitignore
 **/*.md
 Dockerfile
+dist
+cmd/routedns/routedns
 doc
 testdata

@@ -101,10 +101,16 @@ sudo systemctl enable --now routedns
 
 ### Docker
 
-A container is available on [Docker Hub](https://hub.docker.com/r/folbricht/routedns):
+Multi-arch images (amd64, arm64, armv7) are published on every release to [Docker Hub](https://hub.docker.com/r/folbricht/routedns) and [GitHub Container Registry](https://github.com/folbricht/routedns/pkgs/container/routedns), tagged `latest` and with the release version:
 
 ```text
 docker run -d --rm --network host folbricht/routedns
+```
+
+or from GHCR:
+
+```text
+docker run -d --rm --network host ghcr.io/folbricht/routedns
 ```
 
 With a custom config:
