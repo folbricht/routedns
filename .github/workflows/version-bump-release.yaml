@@ -92,5 +92,9 @@ jobs:
     uses: ./.github/workflows/release.yaml
     with:
       tag: ${{ needs.build.outputs.tag }}
+    # Repository secrets (DOCKERHUB_*) are not visible to reusable
+    # workflows unless explicitly inherited.
+    secrets: inherit
     permissions:
       contents: write
+      packages: write
