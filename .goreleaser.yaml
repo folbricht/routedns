@@ -100,6 +100,33 @@ nfpms:
         dst: /etc/routedns/config.toml
         type: config|noreplace
 
+# Publishes a cask to the folbricht/homebrew-tap repo on each release:
+#   brew install folbricht/tap/routedns
+# Casks are macOS-only; Linux users have the native packages above.
+homebrew_casks:
+  - name: routedns
+    repository:
+      owner: folbricht
+      name: homebrew-tap
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
+    homepage: https://github.com/folbricht/routedns
+    description: DNS stub resolver, proxy and router with support for DoT, DoH, DoQ and more
+    license: BSD-3-Clause
+    binaries:
+      - routedns
+    # The release binaries are not signed/notarized, so clear the
+    # quarantine attribute Homebrew sets on download or Gatekeeper
+    # refuses to run them. The staged file keeps its download name
+    # (routedns-darwin-arm64, ...), hence the glob.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            Dir.glob("#{staged_path}/routedns*").each do |f|
+              system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", f], must_succeed: false
+            end
+          end
+
 checksum:
   name_template: 'checksums.txt'
 

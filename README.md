@@ -99,6 +99,12 @@ sudo rpm -i routedns_<version>_linux_amd64.rpm    # Fedora/RHEL
 sudo systemctl enable --now routedns
 ```
 
+### Homebrew (macOS)
+
+```text
+brew install folbricht/tap/routedns
+```
+
 ### Docker
 
 Multi-arch images (amd64, arm64, armv7) are published on every release to [Docker Hub](https://hub.docker.com/r/folbricht/routedns) and [GitHub Container Registry](https://github.com/folbricht/routedns/pkgs/container/routedns), tagged `latest` and with the release version:
