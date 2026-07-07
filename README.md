@@ -87,7 +87,17 @@ git clone https://github.com/folbricht/routedns.git
 cd routedns/cmd/routedns && go install
 ```
 
-Pre-built binaries for Linux (amd64, arm64, armv7), macOS (amd64, arm64), FreeBSD, and Windows are available on the [GitHub Releases](https://github.com/folbricht/routedns/releases) page.
+Pre-built binaries for Linux (amd64, arm64, armv6/armv7 for Raspberry Pi, mips/mipsle softfloat for OpenWrt routers), macOS (amd64, arm64), FreeBSD, and Windows are available on the [GitHub Releases](https://github.com/folbricht/routedns/releases) page.
+
+### Linux packages
+
+Releases include deb, rpm, apk, and Arch Linux packages for amd64, arm64, and armv7. They install the binary to `/usr/bin/routedns`, a default configuration to `/etc/routedns/config.toml`, and a systemd service:
+
+```text
+sudo dpkg -i routedns_<version>_linux_amd64.deb   # Debian/Ubuntu/Raspberry Pi OS
+sudo rpm -i routedns_<version>_linux_amd64.rpm    # Fedora/RHEL
+sudo systemctl enable --now routedns
+```
 
 ### Docker
 
