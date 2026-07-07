@@ -1,72 +1,112 @@
 # goreleaser config for routedns
-# mostly uses defaults
+# Run by .github/workflows/release.yaml on every release tag. Validate
+# changes locally with:
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+#
 # Make sure to check the documentation at https://goreleaser.com
 
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
-version: 1
+version: 2
 
 project_name: routedns
+
 builds:
-  - binary: routedns
+  # Targets that are also packaged as deb/rpm/apk/archlinux below.
+  - id: packaged
+    binary: routedns
     main: ./cmd/routedns/
     env:
       - CGO_ENABLED=0
-
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
     goos:
-      - windows
-      - darwin
       - linux
-
+      - darwin
+      - windows
+      - freebsd
     goarch:
       - amd64
-      - 386
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+
+  # Binary-only targets for small/embedded devices: armv6 covers older
+  # Raspberry Pis (1/Zero), mips/mipsle cover common OpenWrt routers.
+  # Softfloat since most router SoCs have no FPU. These are excluded
+  # from the nfpm packages, whose distro arch names don't map cleanly.
+  - id: embedded
+    binary: routedns
+    main: ./cmd/routedns/
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+    goarch:
+      - arm
+      - mips
+      - mipsle
+    goarm:
+      - "6"
+    gomips:
+      - softfloat
+
+# Upload plain binaries named like the previous handcrafted releases
+# (routedns-linux-amd64, routedns-linux-armv7, ...) so existing download
+# links keep working.
+archives:
+  - formats: [binary]
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}'
 
 nfpms:
   - package_name: routedns
-    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    ids:
+      - packaged
+    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}'
     vendor: Frank Olbricht
     homepage: https://github.com/folbricht/routedns
     maintainer: Frank Olbricht <frank.olbricht@gmail.com>
-    description: RouteDNS acts as a stub resolver and proxy that offers flexible configuration options
-    license: BSD-3-Clause license
+    description: DNS stub resolver, proxy and router with support for DoT, DoH, DoQ and more
+    license: BSD-3-Clause
     formats:
       - deb
       - rpm
-    bindir: /usr/sbin
+      - apk
+      - archlinux
+    bindir: /usr/bin
+    contents:
+      - src: packaging/routedns.service
+        dst: /usr/lib/systemd/system/routedns.service
+      - src: cmd/routedns/example-config/simple-dot-proxy.toml
+        dst: /etc/routedns/config.toml
+        type: config|noreplace
 
 checksum:
   name_template: 'checksums.txt'
+
+changelog:
+  use: github-native
 
 release:
   github:
     owner: folbricht
     name: routedns
-
-  # If set to true, will not auto-publish the release.
-  # Default is false.
-  draft: true
-
-  # If set to true, will mark the release as not ready for production.
-  # Default is false.
-  prerelease: true
-
-  # You can change the name of the GitHub release.
-  # This is parsed with the Go template engine and the following variables
-  # are available:
-  # - ProjectName
-  # - Tag
-  # - Version (Git tag without `v` prefix)
-  # Default is ``
-  name_template: "{{ .ProjectName }}-{{ .Tag }}"
-
-snapshot:
-  name_template: "{{ .Version }}~dev1"
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
