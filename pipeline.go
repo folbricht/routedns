@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"net"
@@ -216,19 +215,9 @@ func newRequest(q *dns.Msg) *request {
 func (r *request) waitFor() (*dns.Msg, error) {
 	<-r.done
 
-	if r.err == nil && len(r.q.Question) > 0 {
-		// As per https://tools.ietf.org/html/rfc7858#section-3.3 and RFC 5452
-		// section 9.1, the response to a query that carried a Question must echo
-		// it back. A response with an empty Question section (QDCOUNT=0) must be
-		// rejected rather than accepted - skipping the check would leave only the
-		// 16-bit transaction ID and source port as anti-spoofing protection.
-		q := r.q.Question[0]
-		if len(r.a.Question) == 0 {
-			return nil, fmt.Errorf("expected answer for %s, got response with empty question section", q.String())
-		}
-		a := r.a.Question[0]
-		if a.Name != q.Name || a.Qclass != q.Qclass || a.Qtype != q.Qtype {
-			return nil, fmt.Errorf("expected answer for %s, got %s", q.String(), a.String())
+	if r.err == nil {
+		if err := validateResponseQuestion(r.q, r.a); err != nil {
+			return nil, err
 		}
 	}
 

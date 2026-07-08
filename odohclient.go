@@ -92,7 +92,7 @@ func (d *ODoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer resp.Body.Close()
 
 	// Decode and decrypt the response
-	return d.decodeProxyResponse(resp, queryContext)
+	return d.decodeProxyResponse(q, resp, queryContext)
 }
 
 func (d *ODoHClient) String() string {
@@ -100,7 +100,7 @@ func (d *ODoHClient) String() string {
 }
 
 // Check the HTTP response status code, parse out the response DNS message and decrypt it.
-func (d *ODoHClient) decodeProxyResponse(resp *http.Response, queryContext odoh.QueryContext) (*dns.Msg, error) {
+func (d *ODoHClient) decodeProxyResponse(q *dns.Msg, resp *http.Response, queryContext odoh.QueryContext) (*dns.Msg, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		d.proxy.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
@@ -128,13 +128,16 @@ func (d *ODoHClient) decodeProxyResponse(resp *http.Response, queryContext odoh.
 		return nil, err
 	}
 	a := new(dns.Msg)
-	err = a.Unpack(decryptedResponse)
-	if err != nil {
+	if err := a.Unpack(decryptedResponse); err != nil {
 		d.proxy.metrics.err.Add("unpack", 1)
-	} else {
-		d.proxy.metrics.response.Add(rCode(a), 1)
+		return nil, err
 	}
-	return a, err
+	if err := validateResponseQuestion(q, a); err != nil {
+		d.proxy.metrics.err.Add("question", 1)
+		return nil, err
+	}
+	d.proxy.metrics.response.Add(rCode(a), 1)
+	return a, nil
 }
 
 // Modify a DoH request for proxy-use. The URL and headers need to be updated.

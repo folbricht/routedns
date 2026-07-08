@@ -1,10 +1,40 @@
 package rdns
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/miekg/dns"
 )
+
+// Confirms that a response from an upstream answers the question that was
+// asked. As per https://tools.ietf.org/html/rfc7858#section-3.3 and RFC 5452
+// section 9.1, the response to a query that carried a Question must echo it
+// back. A response with an empty Question section (QDCOUNT=0) is rejected
+// rather than accepted - on datagram transports, skipping the check would
+// leave only the 16-bit transaction ID and source port as anti-spoofing
+// protection. On authenticated transports it guards against a misbehaving
+// upstream, and stops a mismatched answer from being stored in a cache under
+// the key of the question that was actually asked.
+//
+// Queries without a Question section are not validated. The name comparison is
+// case-insensitive; RouteDNS does not use DNS-0x20, so case carries no
+// information that needs preserving here.
+func validateResponseQuestion(q, a *dns.Msg) error {
+	if len(q.Question) == 0 {
+		return nil
+	}
+	question := q.Question[0]
+	if len(a.Question) == 0 {
+		return fmt.Errorf("expected answer for %s, got response with empty question section", question.String())
+	}
+	answer := a.Question[0]
+	if !strings.EqualFold(answer.Name, question.Name) || answer.Qclass != question.Qclass || answer.Qtype != question.Qtype {
+		return fmt.Errorf("expected answer for %s, got %s", question.String(), answer.String())
+	}
+	return nil
+}
 
 // Return the query name from a DNS query.
 func qName(q *dns.Msg) string {
