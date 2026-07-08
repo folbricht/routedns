@@ -191,7 +191,7 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer resp.Body.Close()
 
 	// Extract the DNS response from the HTTP response
-	return d.responseFromHTTP(resp)
+	return d.responseFromHTTP(q, resp)
 }
 
 func (d *DoHClient) buildRequest(ctx context.Context, msg []byte) (*http.Request, error) {
@@ -262,7 +262,7 @@ func (d *DoHClient) String() string {
 }
 
 // Check the HTTP response status code and parse out the response DNS message.
-func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
+func (d *DoHClient) responseFromHTTP(q *dns.Msg, resp *http.Response) (*dns.Msg, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		d.metrics.err.Add(fmt.Sprintf("http%d", resp.StatusCode), 1)
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
@@ -277,13 +277,16 @@ func (d *DoHClient) responseFromHTTP(resp *http.Response) (*dns.Msg, error) {
 		return nil, err
 	}
 	a := new(dns.Msg)
-	err = a.Unpack(rb)
-	if err != nil {
+	if err := a.Unpack(rb); err != nil {
 		d.metrics.err.Add("unpack", 1)
-	} else {
-		d.metrics.response.Add(rCode(a), 1)
+		return nil, err
 	}
-	return a, err
+	if err := validateResponseQuestion(q, a); err != nil {
+		d.metrics.err.Add("question", 1)
+		return nil, err
+	}
+	d.metrics.response.Add(rCode(a), 1)
+	return a, nil
 }
 
 func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {

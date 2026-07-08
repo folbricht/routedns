@@ -234,8 +234,18 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	// Decode the response and restore the ID
 	a := new(dns.Msg)
-	err = a.Unpack(b)
+	if err := a.Unpack(b); err != nil {
+		d.metrics.err.Add("unpack", 1)
+		return nil, err
+	}
 	a.Id = q.Id
+
+	// The QUIC stream proves which stream carried the response, not that the DNS
+	// message in it answers the question that was asked.
+	if err := validateResponseQuestion(q, a); err != nil {
+		d.metrics.err.Add("question", 1)
+		return nil, err
+	}
 
 	// Receiving a edns-tcp-keepalive EDNS(0) option is a fatal error according to the RFC
 	edns0 = a.IsEdns0()
@@ -250,7 +260,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	d.metrics.response.Add(rCode(a), 1)
 
-	return a, err
+	return a, nil
 }
 
 func (d *DoQClient) String() string {
