@@ -2190,7 +2190,7 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 ### DNS-over-QUIC Resolver
 
 Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#DNS-over-HTTPS-Resolver) for how to configure this.
-The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured.
+The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
 
 Examples:
 

@@ -199,7 +199,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			conn = d.connectionV6
 		}
 	}
-	stream, err := conn.getStream(d.endpoint, d.log)
+	stream, err := conn.getStream(d.endpoint, isReplayableOpcode(qc.Opcode), d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
@@ -306,7 +306,13 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 	}, nil
 }
 
-func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (*quic.Stream, error) {
+// getStream opens a new stream, dialling or restarting the connection if
+// needed. Callers about to write something that must not be replayed pass
+// replaySafe=false, and the stream is then not handed out until the
+// connection's handshake has completed. That wait holds the lock, so it also
+// stalls other queries on the same connection, but only for as long as the
+// handshake takes, and those queries have nowhere else to go in the meantime.
+func (s *quicConnection) getStream(endpoint string, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
 	rAddr, err := net.ResolveUDPAddr("udp", endpoint)
 	if err != nil {
 		return nil, err
@@ -327,6 +333,7 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (*quic.Str
 			return nil, err
 		}
 	}
+	s.awaitReplaySafe(replaySafe)
 
 	// If we can't get a stream then restart the connection and try again once
 	stream, err := s.Conn.OpenStream()
@@ -338,6 +345,7 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (*quic.Str
 			log.Warn("failed to open connection", "hostname", endpoint, "error", err)
 			return nil, err
 		}
+		s.awaitReplaySafe(replaySafe)
 		stream, err = s.Conn.OpenStream()
 		if err != nil {
 			log.Warn("failed to open stream",
@@ -346,6 +354,23 @@ func (s *quicConnection) getStream(endpoint string, log *slog.Logger) (*quic.Str
 		}
 	}
 	return stream, err
+}
+
+// awaitReplaySafe blocks until nothing written to the connection can go out as
+// replayable 0-RTT data, either because the handshake completed or because the
+// connection is gone. A dead connection is left for the caller's OpenStream to
+// discover and restart; failing here instead would break the retry. It returns
+// at once when the caller's data is replay-safe anyway, and for connections
+// dialled without 0-RTT, which are only handed out post-handshake. Call with
+// the mutex held.
+func (s *quicConnection) awaitReplaySafe(replaySafe bool) {
+	if replaySafe {
+		return
+	}
+	select {
+	case <-s.HandshakeComplete():
+	case <-s.Context().Done():
+	}
 }
 
 // Try to open a new connection. This function should be called with the mutex
