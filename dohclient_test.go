@@ -69,6 +69,86 @@ func TestDoHClientIdleTimeoutNegative(t *testing.T) {
 	require.Contains(t, err.Error(), "idle-timeout must not be negative")
 }
 
+// TestDoHClient0RTTOptions covers the combinations of enable-0rtt, transport,
+// method and address. Only a QUIC transport with a GET-capable URL template can
+// actually use 0-RTT; everything else used to be accepted and then silently not
+// use it, so those are now config errors.
+func TestDoHClient0RTTOptions(t *testing.T) {
+	const (
+		templated = "https://example.com/dns-query{?dns}"
+		plain     = "https://example.com/dns-query"
+	)
+	tests := []struct {
+		name       string
+		endpoint   string
+		opt        DoHClientOptions
+		wantMethod string // when set, construction must succeed with this method
+		wantErr    string // when set, the error must contain this
+	}{
+		{
+			name:       "0rtt defaults the method to GET",
+			endpoint:   templated,
+			opt:        DoHClientOptions{Use0RTT: true, Transport: "quic"},
+			wantMethod: "GET",
+		},
+		{
+			name:       "0rtt with an explicit GET",
+			endpoint:   templated,
+			opt:        DoHClientOptions{Use0RTT: true, Transport: "quic", Method: "GET"},
+			wantMethod: "GET",
+		},
+		{
+			name:     "0rtt with an explicit POST is contradictory",
+			endpoint: templated,
+			opt:      DoHClientOptions{Use0RTT: true, Transport: "quic", Method: "POST"},
+			wantErr:  "enable-0rtt requires method 'GET'",
+		},
+		{
+			name:     "0rtt needs a URL template to build a GET from",
+			endpoint: plain,
+			opt:      DoHClientOptions{Use0RTT: true, Transport: "quic"},
+			wantErr:  "'{?dns}'",
+		},
+		{
+			name:     "0rtt does not exist on the tcp transport",
+			endpoint: templated,
+			opt:      DoHClientOptions{Use0RTT: true, Transport: "tcp"},
+			wantErr:  "enable-0rtt requires transport 'quic', have 'tcp'",
+		},
+		{
+			name:     "0rtt does not exist on the default transport",
+			endpoint: templated,
+			opt:      DoHClientOptions{Use0RTT: true},
+			wantErr:  "enable-0rtt requires transport 'quic', have 'tcp'",
+		},
+		{
+			name:       "without 0rtt the method still defaults to POST",
+			endpoint:   plain,
+			opt:        DoHClientOptions{},
+			wantMethod: "POST",
+		},
+		{
+			name:       "without 0rtt a plain address and GET are still allowed",
+			endpoint:   plain,
+			opt:        DoHClientOptions{Method: "GET"},
+			wantMethod: "GET",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := NewDoHClient("test-doh", tc.endpoint, tc.opt)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantMethod, d.opt.Method)
+		})
+	}
+}
+
 func TestReadBoundedBody(t *testing.T) {
 	t.Run("under limit", func(t *testing.T) {
 		b, err := readBoundedBody(strings.NewReader("hello"), 10)
