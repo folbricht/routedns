@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -121,12 +122,8 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 	// had it. Reject those instead, and pick the one method that works when none
 	// was configured.
 	if opt.Use0RTT {
-		transport := opt.Transport
-		if transport == "" {
-			transport = "tcp"
-		}
-		if transport != "quic" {
-			return nil, fmt.Errorf("enable-0rtt requires transport 'quic', have '%s'", transport)
+		if opt.Transport != "quic" {
+			return nil, fmt.Errorf("enable-0rtt requires transport 'quic', have '%s'", cmp.Or(opt.Transport, "tcp"))
 		}
 		if !slices.Contains(template.Names(), "dns") {
 			return nil, fmt.Errorf("enable-0rtt requires a GET request, so the address must be a URL template containing the '{?dns}' parameter")
