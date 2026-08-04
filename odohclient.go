@@ -76,7 +76,7 @@ func (d *ODoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer cancel()
 
 	// Build a regular DoH request. It needs to be modified for a proxy.
-	req, err := d.proxy.buildRequest(ctx, msg.Marshal())
+	req, err := d.proxy.buildRequest(ctx, msg.Marshal(), q.Opcode)
 	if err != nil {
 		return nil, err
 	}
