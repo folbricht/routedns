@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -111,6 +112,32 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 	template, err := uritemplates.Parse(endpoint)
 	if err != nil {
 		return nil, err
+	}
+
+	// 0-RTT only exists on QUIC, and of the two methods only GET can be sent as
+	// early data; quic-go holds anything else back until the handshake
+	// completes. A config that asks for 0-RTT but can't have it used to be
+	// accepted and then quietly ignored, which left the operator believing they
+	// had it. Reject those instead, and pick the one method that works when none
+	// was configured.
+	if opt.Use0RTT {
+		transport := opt.Transport
+		if transport == "" {
+			transport = "tcp"
+		}
+		if transport != "quic" {
+			return nil, fmt.Errorf("enable-0rtt requires transport 'quic', have '%s'", transport)
+		}
+		if !slices.Contains(template.Names(), "dns") {
+			return nil, fmt.Errorf("enable-0rtt requires a GET request, so the address must be a URL template containing the '{?dns}' parameter")
+		}
+		switch opt.Method {
+		case "":
+			opt.Method = "GET"
+		case "GET":
+		default:
+			return nil, fmt.Errorf("enable-0rtt requires method 'GET', have '%s'", opt.Method)
+		}
 	}
 
 	// Configure the HTTP Client and Transport based on connection options
