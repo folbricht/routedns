@@ -171,23 +171,14 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 			break
 		}
 		log.With("stream", stream.StreamID()).Debug("opening stream")
-		// A stream accepted before the handshake completes can only be carrying
-		// 0-RTT data, which is replayable. RFC 9250 4.5 restricts what may be
-		// acted on in that state; handleStream applies the opcode rules.
-		var early bool
-		select {
-		case <-connection.HandshakeComplete():
-		default:
-			early = true
-		}
 		go func() {
-			s.handleStream(stream, connection, early, log, ci)
+			s.handleStream(stream, connection, log, ci)
 			log.With("stream", stream.StreamID()).Debug("closing stream")
 		}()
 	}
 }
 
-func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, early bool, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, log *slog.Logger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)
@@ -248,12 +239,14 @@ func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, e
 	// data is replayable and everything else is state-changing. Hold the
 	// transaction until the handshake completes rather than refusing it; that
 	// keeps legitimate clients working while a replayed first flight, which can
-	// never complete a handshake, never reaches the resolver at all.
-	if early && !isReplayableOpcode(q.Opcode) {
-		log.Debug("holding non-replayable opcode until handshake completes", "opcode", dns.OpcodeToString[q.Opcode])
+	// never complete a handshake, never reaches the resolver at all. Once the
+	// handshake is done the channel is closed, so this is a no-op for every
+	// stream that did not arrive as early data.
+	if !isReplayableOpcode(q.Opcode) {
 		select {
 		case <-connection.HandshakeComplete():
 		case <-connection.Context().Done():
+			s.metrics.err.Add("tooearly", 1)
 			log.Warn("dropping non-replayable opcode, handshake did not complete", "opcode", dns.OpcodeToString[q.Opcode])
 			return
 		}

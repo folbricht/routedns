@@ -347,10 +347,10 @@ func TestDoHListenerStopBeforeStart(t *testing.T) {
 
 // TestDoHListener0RTTNonReplayableOpcode covers the HTTP/3 equivalent of the
 // DoQ problem in #599. A request carried in QUIC 0-RTT data is replayable, so a
-// state-changing opcode must not be forwarded upstream. Unlike DoQ there is no
-// QUIC connection to wait on from inside an http.Handler, so the request is
-// refused with 425 Too Early (RFC 8470) and the client retries after the
-// handshake.
+// state-changing opcode must not be forwarded upstream. Where DoQ holds the
+// transaction, HTTP has an interoperable way to say "not yet": the request is
+// refused with 425 Too Early (RFC 8470) and the client retries once the
+// handshake is done.
 func TestDoHListener0RTTNonReplayableOpcode(t *testing.T) {
 	upstream := new(TestResolver)
 
@@ -366,45 +366,33 @@ func TestDoHListener0RTTNonReplayableOpcode(t *testing.T) {
 	defer s.Stop()
 	time.Sleep(time.Second)
 
-	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
-	require.NoError(t, err)
-	tlsClientConfig.ServerName = "localhost"
-	tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
+	tlsClientConfig := resumableTestTLSConfig(t)
 
 	query := new(dns.Msg)
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	update := new(dns.Msg)
 	update.SetUpdate("replay.lab.")
-	rr, err := dns.NewRR(`early.replay.lab. 60 IN TXT "h3-0rtt-update"`)
-	require.NoError(t, err)
-	update.Insert([]dns.RR{rr})
 
 	// Warm up so the client holds a session ticket to resume with.
-	status, err := dohGet(t, tlsClientConfig, addr, query, http.MethodGet)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, http.StatusOK, dohGet(t, tlsClientConfig, addr, query, http.MethodGet))
 	require.Equal(t, 1, upstream.HitCount())
 	time.Sleep(500 * time.Millisecond)
 
 	// A resumed UPDATE goes out as 0-RTT and must be refused, not forwarded.
-	status, err = dohGet(t, tlsClientConfig, addr, update, http3.MethodGet0RTT)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusTooEarly, status)
+	require.Equal(t, http.StatusTooEarly, dohGet(t, tlsClientConfig, addr, update, http3.MethodGet0RTT))
 	require.Equal(t, 1, upstream.HitCount(), "UPDATE received as 0-RTT was forwarded upstream")
 
 	// A resumed QUERY is replayable and must still be answered from early data.
 	// This doubles as proof that the request above really did arrive as 0-RTT.
-	status, err = dohGet(t, tlsClientConfig, addr, query, http3.MethodGet0RTT)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, http.StatusOK, dohGet(t, tlsClientConfig, addr, query, http3.MethodGet0RTT))
 	require.Equal(t, 2, upstream.HitCount())
 }
 
 // dohGet sends a single DoH GET over its own HTTP/3 transport, so that a
 // request using http3.MethodGet0RTT resumes rather than reusing a connection
 // whose handshake has already completed. It returns the response status.
-func dohGet(t *testing.T, tlsConfig *tls.Config, addr string, m *dns.Msg, method string) (int, error) {
+func dohGet(t *testing.T, tlsConfig *tls.Config, addr string, m *dns.Msg, method string) int {
 	t.Helper()
 	p, err := m.Pack()
 	require.NoError(t, err)
@@ -419,9 +407,7 @@ func dohGet(t *testing.T, tlsConfig *tls.Config, addr string, m *dns.Msg, method
 	req, err := http.NewRequestWithContext(context.Background(), method, u, nil)
 	require.NoError(t, err)
 	resp, err := tr.RoundTrip(req)
-	if err != nil {
-		return 0, err
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
-	return resp.StatusCode, nil
+	return resp.StatusCode
 }

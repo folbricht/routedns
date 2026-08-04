@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"net"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -85,48 +84,32 @@ func TestDoQListenerStopRaceDuringStart(t *testing.T) {
 // forwarded to the upstream resolver, putting a state-changing transaction on a
 // replayable transport.
 //
-// The client here is cut off from the server as soon as the server replies, so
-// its handshake can never complete. That is the shape of a replayed first
-// flight: an attacker can resend captured 0-RTT packets but cannot produce the
-// handshake that follows. Nothing non-replayable may reach the resolver.
+// The server here is silenced as soon as the client resumes, so the client can
+// never see the handshake flight it would have to respond to and the server's
+// handshake never completes. That is the shape of a replayed first flight: an
+// attacker can resend captured 0-RTT packets but cannot produce the handshake
+// that follows. Nothing non-replayable may reach the resolver.
 //
-// A QUERY is sent on the same connection, written *before* the UPDATE, as a
-// control. Since the relay's cutoff is one-way, the QUERY arriving proves the
-// earlier UPDATE datagram was delivered too. Without that control the test
-// would pass just as happily if the relay had cut the connection off early and
-// the server had never seen anything at all.
+// A QUERY is written on the same connection, right after the UPDATE, as a
+// control. Its arrival proves the earlier UPDATE datagram was delivered too.
+// Without that control the test would pass just as happily if the server had
+// never seen anything at all.
 func TestDoQListener0RTTBlocksNonReplayableOpcode(t *testing.T) {
-	var (
-		mu      sync.Mutex
-		opcodes []int
-	)
+	var queries, updates atomic.Int32
 	upstream := &TestResolver{
 		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-			mu.Lock()
-			opcodes = append(opcodes, q.Opcode)
-			mu.Unlock()
+			if q.Opcode == dns.OpcodeUpdate {
+				updates.Add(1)
+			} else {
+				queries.Add(1)
+			}
 			a := new(dns.Msg)
 			a.SetReply(q)
 			return a, nil
 		},
 	}
-	seen := func() []int {
-		mu.Lock()
-		defer mu.Unlock()
-		return append([]int(nil), opcodes...)
-	}
 
-	addr, err := getUDPLnAddress()
-	require.NoError(t, err)
-
-	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
-	require.NoError(t, err)
-
-	s := NewQUICListener("test-doq", addr, DoQListenerOptions{TLSConfig: tlsServerConfig}, upstream)
-	go func() { _ = s.Start() }()
-	defer s.Stop()
-	time.Sleep(500 * time.Millisecond)
-
+	addr := startTestDoQListener(t, upstream)
 	relay := newEarlyDataRelay(t, addr)
 	tlsClientConfig := doqTestClientConfig(t)
 	quicConfig := &quic.Config{Allow0RTT: true}
@@ -137,12 +120,8 @@ func TestDoQListener0RTTBlocksNonReplayableOpcode(t *testing.T) {
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 	writeDoQQuery(t, warmup, q)
-	require.Eventually(t, func() bool { return len(seen()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return queries.Load() == 1 }, 5*time.Second, 20*time.Millisecond)
 	warmup.CloseWithError(0, "")
-
-	mu.Lock()
-	opcodes = nil
-	mu.Unlock()
 
 	// Resume. Everything written now goes out as 0-RTT data.
 	relay.armCutoff()
@@ -152,27 +131,18 @@ func TestDoQListener0RTTBlocksNonReplayableOpcode(t *testing.T) {
 
 	update := new(dns.Msg)
 	update.SetUpdate("replay.lab.")
-	rr, err := dns.NewRR(`early.replay.lab. 60 IN TXT "doq-0rtt-update"`)
-	require.NoError(t, err)
-	update.Insert([]dns.RR{rr})
 	writeDoQQuery(t, resumed, update)
 	writeDoQQuery(t, resumed, q)
 
 	// The control must arrive, otherwise the rest of the test proves nothing.
-	require.Eventually(t, func() bool {
-		for _, o := range seen() {
-			if o == dns.OpcodeQuery {
-				return true
-			}
-		}
-		return false
-	}, 5*time.Second, 20*time.Millisecond, "0-RTT QUERY never reached the resolver; the relay cut the connection off too early and this test is inconclusive")
+	require.Eventually(t, func() bool { return queries.Load() == 2 }, 5*time.Second, 20*time.Millisecond,
+		"0-RTT QUERY never reached the resolver; this test is inconclusive")
 
 	require.Positive(t, relay.dropped.Load(), "cutoff never engaged; the client could still complete its handshake")
 
 	// Give a late UPDATE every chance to show up before declaring it blocked.
 	time.Sleep(time.Second)
-	require.NotContains(t, seen(), dns.OpcodeUpdate, "UPDATE received as 0-RTT was forwarded upstream")
+	require.Zero(t, updates.Load(), "UPDATE received as 0-RTT was forwarded upstream")
 }
 
 // TestDoQListener0RTTAllowsNonReplayableOpcodeAfterHandshake covers the other
@@ -182,17 +152,7 @@ func TestDoQListener0RTTBlocksNonReplayableOpcode(t *testing.T) {
 func TestDoQListener0RTTAllowsNonReplayableOpcodeAfterHandshake(t *testing.T) {
 	upstream := new(TestResolver)
 
-	addr, err := getUDPLnAddress()
-	require.NoError(t, err)
-
-	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
-	require.NoError(t, err)
-
-	s := NewQUICListener("test-doq", addr, DoQListenerOptions{TLSConfig: tlsServerConfig}, upstream)
-	go func() { _ = s.Start() }()
-	defer s.Stop()
-	time.Sleep(500 * time.Millisecond)
-
+	addr := startTestDoQListener(t, upstream)
 	tlsClientConfig := doqTestClientConfig(t)
 	quicConfig := &quic.Config{Allow0RTT: true}
 
@@ -210,20 +170,42 @@ func TestDoQListener0RTTAllowsNonReplayableOpcodeAfterHandshake(t *testing.T) {
 
 	update := new(dns.Msg)
 	update.SetUpdate("replay.lab.")
-	rr, err := dns.NewRR(`early.replay.lab. 60 IN TXT "doq-0rtt-update"`)
-	require.NoError(t, err)
-	update.Insert([]dns.RR{rr})
 	writeDoQQuery(t, resumed, update)
 
 	require.Eventually(t, func() bool { return upstream.HitCount() == 2 }, 5*time.Second, 20*time.Millisecond,
 		"UPDATE was dropped instead of being held until the handshake completed")
 }
 
+// startTestDoQListener brings up a DoQ listener on a free port and returns its
+// address. It is stopped when the test ends.
+func startTestDoQListener(t *testing.T, upstream Resolver) string {
+	t.Helper()
+	addr, err := getUDPLnAddress()
+	require.NoError(t, err)
+
+	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
+	require.NoError(t, err)
+
+	s := NewQUICListener("test-doq", addr, DoQListenerOptions{TLSConfig: tlsServerConfig}, upstream)
+	go func() { _ = s.Start() }()
+	t.Cleanup(func() { s.Stop() })
+	time.Sleep(500 * time.Millisecond)
+	return addr
+}
+
 func doqTestClientConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	c := resumableTestTLSConfig(t)
+	c.NextProtos = []string{"doq"}
+	return c
+}
+
+// resumableTestTLSConfig returns a client config with a session cache, which is
+// what makes 0-RTT resumption possible in these tests.
+func resumableTestTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
 	c, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
-	c.NextProtos = []string{"doq"}
 	c.ServerName = "localhost"
 	c.ClientSessionCache = tls.NewLRUClientSessionCache(10)
 	return c
@@ -247,17 +229,22 @@ func writeDoQQuery(t *testing.T, connection *quic.Conn, m *dns.Msg) {
 	require.NoError(t, stream.Close())
 }
 
-// earlyDataRelay is a UDP proxy that can silence the client. Once armed, the
-// first datagram the server sends triggers a cutoff, after which no further
-// client datagram is forwarded. The client's handshake can then never complete,
-// so anything the server acts on came from the replayable 0-RTT first flight.
+// earlyDataRelay is a UDP proxy that can silence the server. Everything the
+// client sends is always forwarded; once armed, nothing the server sends is
+// delivered back. The client can then never see the server's handshake flight,
+// so it never sends its Finished and the server's handshake never completes.
+// Anything the server acts on in that state came from the replayable 0-RTT
+// first flight.
+//
+// Silencing the server rather than the client is what makes this deterministic:
+// no client datagram is ever dropped, so the 0-RTT queries and any
+// retransmission of them reach the server regardless of when the cutoff engages.
 type earlyDataRelay struct {
 	addr     string
-	upstream *net.UDPAddr
 	conn     *net.UDPConn
+	toServer *net.UDPConn
 	client   atomic.Pointer[net.UDPAddr]
 	armed    atomic.Bool
-	cutoff   atomic.Bool
 	dropped  atomic.Int32
 }
 
@@ -265,21 +252,20 @@ func newEarlyDataRelay(t *testing.T, upstreamAddr string) *earlyDataRelay {
 	t.Helper()
 	upstream, err := net.ResolveUDPAddr("udp", upstreamAddr)
 	require.NoError(t, err)
+	toServer, err := net.DialUDP("udp", nil, upstream)
+	require.NoError(t, err)
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
 	require.NoError(t, err)
-	r := &earlyDataRelay{addr: conn.LocalAddr().String(), upstream: upstream, conn: conn}
-	t.Cleanup(func() { conn.Close() })
-	go r.run()
+	r := &earlyDataRelay{addr: conn.LocalAddr().String(), conn: conn, toServer: toServer}
+	t.Cleanup(func() { conn.Close(); toServer.Close() })
+	go r.clientToServer()
+	go r.serverToClient()
 	return r
 }
 
 func (r *earlyDataRelay) armCutoff() { r.armed.Store(true) }
 
-func (r *earlyDataRelay) run() {
-	var (
-		toServer *net.UDPConn
-		once     sync.Once
-	)
+func (r *earlyDataRelay) clientToServer() {
 	buf := make([]byte, 2048)
 	for {
 		n, addr, err := r.conn.ReadFromUDP(buf)
@@ -287,36 +273,25 @@ func (r *earlyDataRelay) run() {
 			return
 		}
 		r.client.Store(addr)
-		once.Do(func() {
-			toServer, err = net.DialUDP("udp", nil, r.upstream)
-			if err != nil {
-				return
-			}
-			go func() {
-				b := make([]byte, 2048)
-				for {
-					n, err := toServer.Read(b)
-					if err != nil {
-						return
-					}
-					if r.armed.Load() {
-						r.cutoff.Store(true)
-					}
-					if client := r.client.Load(); client != nil {
-						r.conn.WriteToUDP(b[:n], client)
-					}
-				}
-			}()
-		})
-		if toServer == nil {
+		if _, err := r.toServer.Write(buf[:n]); err != nil {
 			return
 		}
-		if r.cutoff.Load() {
+	}
+}
+
+func (r *earlyDataRelay) serverToClient() {
+	buf := make([]byte, 2048)
+	for {
+		n, err := r.toServer.Read(buf)
+		if err != nil {
+			return
+		}
+		if r.armed.Load() {
 			r.dropped.Add(1)
 			continue
 		}
-		if _, err := toServer.Write(buf[:n]); err != nil {
-			return
+		if client := r.client.Load(); client != nil {
+			_, _ = r.conn.WriteToUDP(buf[:n], client)
 		}
 	}
 }
