@@ -52,6 +52,13 @@ func qType(q *dns.Msg) string {
 	return dns.TypeToString[q.Question[0].Qtype]
 }
 
+// Reports whether an opcode may be acted on in QUIC 0-RTT data. RFC 9250 4.5
+// permits only QUERY and NOTIFY, as 0-RTT is replayable and every other opcode
+// changes state on the server that ultimately handles it.
+func isReplayableOpcode(opcode int) bool {
+	return opcode == dns.OpcodeQuery || opcode == dns.OpcodeNotify
+}
+
 // Return the result code name from a DNS response.
 func rCode(r *dns.Msg) string {
 	if result, ok := dns.RcodeToString[r.Rcode]; ok {

@@ -204,7 +204,7 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	defer cancel()
 
 	// Build a DoH request and execute it
-	req, err := d.buildRequest(ctx, msg)
+	req, err := d.buildRequest(ctx, msg, q.Opcode)
 	if err != nil {
 		return nil, err
 	}
@@ -218,12 +218,12 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	return d.responseFromHTTP(q, resp)
 }
 
-func (d *DoHClient) buildRequest(ctx context.Context, msg []byte) (*http.Request, error) {
+func (d *DoHClient) buildRequest(ctx context.Context, msg []byte, opcode int) (*http.Request, error) {
 	switch d.opt.Method {
 	case "POST":
 		return d.buildPostRequest(ctx, msg)
 	case "GET":
-		return d.buildGetRequest(ctx, msg)
+		return d.buildGetRequest(ctx, msg, opcode)
 	default:
 		return nil, errors.New("unsupported method")
 	}
@@ -256,7 +256,7 @@ func (d *DoHClient) buildPostRequest(ctx context.Context, msg []byte) (*http.Req
 	return req, nil
 }
 
-func (d *DoHClient) buildGetRequest(ctx context.Context, msg []byte) (*http.Request, error) {
+func (d *DoHClient) buildGetRequest(ctx context.Context, msg []byte, opcode int) (*http.Request, error) {
 	// Encode the query as base64url
 	b64 := base64.RawURLEncoding.EncodeToString(msg)
 
@@ -267,8 +267,12 @@ func (d *DoHClient) buildGetRequest(ctx context.Context, msg []byte) (*http.Requ
 		return nil, err
 	}
 
+	// Requests sent with MethodGet0RTT can go out in QUIC 0-RTT data, which is
+	// replayable. Only QUERY and NOTIFY are safe to send that way (RFC 9250 4.5);
+	// everything else is state-changing and would be rejected with 425 by a
+	// conforming server anyway, so send it after the handshake instead.
 	method := http.MethodGet
-	if d.opt.Use0RTT && d.opt.Transport == "quic" {
+	if d.opt.Use0RTT && d.opt.Transport == "quic" && isReplayableOpcode(opcode) {
 		method = http3.MethodGet0RTT
 	}
 

@@ -169,13 +169,11 @@ func (s *DoHListener) startQUIC() error {
 		udpConn.Close()
 		return err
 	}
+	// Note: no QUICConfig here. It is only consulted when http3.Server builds
+	// its own listener; ServeListener below uses the one configured above.
 	quicServer := &http3.Server{
 		TLSConfig: s.opt.TLSConfig,
-		QUICConfig: &quic.Config{
-			Allow0RTT:      true,
-			MaxIdleTimeout: 5 * time.Minute,
-		},
-		Handler: s.opt.customMux,
+		Handler:   s.opt.customMux,
 	}
 	s.mu.Lock()
 	s.quicServer = quicServer
@@ -325,6 +323,17 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		s.metrics.err.Add("noquestion", 1)
 		Log.With("id", s.id, "protocol", "doh", "addr", s.addr).Warn("dropping query with no Question section")
 		http.Error(w, "no question in query", http.StatusBadRequest)
+		return
+	}
+	// Over HTTP/3 a request can arrive in QUIC 0-RTT data, which is replayable.
+	// Only QUERY and NOTIFY are safe to act on there (RFC 9250 4.5); anything
+	// else changes state and must not be replayable, so ask the client to retry
+	// once the handshake is done (RFC 8470). r.TLS reports an incomplete
+	// handshake only for early data; on the TCP transport it is always complete.
+	if r.TLS != nil && !r.TLS.HandshakeComplete && !isReplayableOpcode(q.Opcode) {
+		s.metrics.err.Add("tooearly", 1)
+		Log.With("id", s.id, "protocol", "doh", "addr", s.addr).Warn("rejecting non-replayable opcode received as 0-RTT", "opcode", dns.OpcodeToString[q.Opcode])
+		http.Error(w, "opcode not allowed in early data", http.StatusTooEarly)
 		return
 	}
 	// Extract the remote host address from the HTTP headers.

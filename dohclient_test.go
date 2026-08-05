@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"context"
 	"expvar"
 	"net/http"
 	"net/http/httptest"
@@ -145,6 +146,35 @@ func TestDoHClient0RTTOptions(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.wantMethod, d.opt.Method)
+		})
+	}
+}
+
+// TestDoHClient0RTTOpcode verifies the method selection inside buildGetRequest:
+// only opcodes that are safe to replay may be sent as 0-RTT data.
+func TestDoHClient0RTTOpcode(t *testing.T) {
+	d, err := NewDoHClient("test-doh", "https://example.com/dns-query{?dns}", DoHClientOptions{
+		Method:    "GET",
+		Transport: "quic",
+		Use0RTT:   true,
+	})
+	require.NoError(t, err)
+
+	// Only replayable opcodes may be sent in 0-RTT data, everything else has to
+	// wait for the handshake to complete.
+	for _, tc := range []struct {
+		opcode int
+		method string
+	}{
+		{dns.OpcodeQuery, http3.MethodGet0RTT},
+		{dns.OpcodeNotify, http3.MethodGet0RTT},
+		{dns.OpcodeUpdate, http.MethodGet},
+		{dns.OpcodeStatus, http.MethodGet},
+	} {
+		t.Run(dns.OpcodeToString[tc.opcode], func(t *testing.T) {
+			req, err := d.buildRequest(context.Background(), []byte{0, 0}, tc.opcode)
+			require.NoError(t, err)
+			require.Equal(t, tc.method, req.Method)
 		})
 	}
 }

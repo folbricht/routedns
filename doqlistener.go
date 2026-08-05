@@ -172,13 +172,13 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 		}
 		log.With("stream", stream.StreamID()).Debug("opening stream")
 		go func() {
-			s.handleStream(stream, log, ci)
+			s.handleStream(stream, connection, log, ci)
 			log.With("stream", stream.StreamID()).Debug("closing stream")
 		}()
 	}
 }
 
-func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, log *slog.Logger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)
@@ -232,6 +232,23 @@ func (s *DoQListener) handleStream(stream *quic.Stream, log *slog.Logger, ci Cli
 				s.metrics.err.Add("keepalive", 1)
 				return
 			}
+		}
+	}
+
+	// RFC 9250 4.5: only QUERY and NOTIFY may be acted on in 0-RTT, since 0-RTT
+	// data is replayable and everything else is state-changing. Hold the
+	// transaction until the handshake completes rather than refusing it; that
+	// keeps legitimate clients working while a replayed first flight, which can
+	// never complete a handshake, never reaches the resolver at all. Once the
+	// handshake is done the channel is closed, so this is a no-op for every
+	// stream that did not arrive as early data.
+	if !isReplayableOpcode(q.Opcode) {
+		select {
+		case <-connection.HandshakeComplete():
+		case <-connection.Context().Done():
+			s.metrics.err.Add("tooearly", 1)
+			log.Warn("dropping non-replayable opcode, handshake did not complete", "opcode", dns.OpcodeToString[q.Opcode])
+			return
 		}
 	}
 
