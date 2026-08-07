@@ -788,6 +788,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 					GCPeriod:     time.Duration(g.Backend.GCPeriod) * time.Second,
 					Filename:     g.Backend.Filename,
 					SaveInterval: time.Duration(g.Backend.SaveInterval) * time.Second,
+					MetricsID:    id,
 				})
 				onClose = append(onClose, func() { backend.Close() })
 			case "redis":
