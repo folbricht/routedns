@@ -1,10 +1,14 @@
 package rdns
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/miekg/dns"
 )
@@ -36,9 +40,19 @@ type cacheAnswer struct {
 	Msg              *dns.Msg
 }
 
-// The custom JSON marshaling is used by the memory backend to persist the
-// cache to a file (MemoryBackendOptions.Filename), packing the message to
-// wire format.
+// Reports whether the record is still valid at time now. The single
+// definition of the expiry rule, used by lookups, GC, and both sides of
+// cache-file persistence.
+func (c *cacheAnswer) live(now time.Time) bool {
+	return !now.After(c.Expiry)
+}
+
+// The custom JSON marshaling defines the on-disk format of the cache file
+// (MemoryBackendOptions.Filename), packing the message to wire format.
+//
+// serialize() doesn't call this; it writes the same JSON via an append
+// encoder. This stays as the format definition alongside UnmarshalJSON, and
+// as the oracle TestLRUSerializeMatchesEncodingJSON checks that encoder against.
 func (c cacheAnswer) MarshalJSON() ([]byte, error) {
 	msg, err := c.Msg.Pack()
 	if err != nil {
@@ -190,17 +204,132 @@ func (c *lruCache) size() int {
 	return len(c.items)
 }
 
-func (c *lruCache) serialize(w io.Writer) error {
-	enc := json.NewEncoder(w)
+// Writes the cache as newline-delimited JSON, oldest item first, so that
+// deserialize() re-inserts them in the same order and preserves the LRU
+// ordering. Expired items are skipped; they'd be dropped on load anyway.
+//
+// Records are encoded by appending to a reused buffer rather than via
+// json.Encoder, which would reflect over every record and re-parse the
+// output of cacheAnswer.MarshalJSON to compact it.
+//
+// Records that can't be packed are dropped rather than failing the whole
+// save, and summarised in a single log line so a systematic problem doesn't
+// turn into one line per record on every save-interval. Returns how many
+// were dropped, for the caller to surface as a metric.
+func (c *lruCache) serialize(w io.Writer, log *slog.Logger) (skipped int, err error) {
+	now := time.Now()
+	var (
+		buf      []byte // reused line buffer
+		wire     []byte // reused message wire-format buffer
+		firstErr error
+		firstQ   string
+	)
 	for item := c.tail.prev; item != c.head; item = item.prev {
-		if err := enc.Encode(item); err != nil {
-			return err
+		if item.Answer == nil || !item.Answer.live(now) {
+			continue
+		}
+		// PackBuffer only reuses the buffer if its *length* is sufficient, and
+		// it returns a length-truncated slice. Pass the full capacity back in,
+		// then keep whichever buffer is larger, or nothing is ever reused.
+		packed, err := item.Answer.Msg.PackBuffer(wire[:cap(wire)])
+		if err != nil {
+			// A record that can't be packed can't be restored either.
+			skipped++
+			if firstErr == nil {
+				// Report the first failure, not the last: for a systematic
+				// problem the first is the actionable one.
+				firstErr, firstQ = err, item.Key.Question.Name
+			}
+			continue
+		}
+		if cap(packed) > cap(wire) {
+			wire = packed
+		}
+		// packed must be fully consumed before the next PackBuffer call, which
+		// reuses (and so overwrites) the same array. appendCacheItemJSON copies
+		// it into buf, and w is expected to copy rather than retain what it's
+		// handed -- passing packed to a writer that keeps the slice would
+		// corrupt earlier records.
+		buf = appendCacheItemJSON(buf[:0], item, packed)
+		if _, err := w.Write(buf); err != nil {
+			return skipped, err
 		}
 	}
-	return nil
+	if skipped > 0 {
+		log.Warn("failed to pack cached messages, records not persisted",
+			"skipped", skipped, "first_qname", firstQ, "first_error", firstErr)
+	}
+	return skipped, nil
+}
+
+// Appends one cache item to buf as a single JSON line, matching the layout
+// produced by encoding/json for cacheItem/cacheAnswer.
+//
+// The field list below must track lruKey, cacheAnswer, and dns.Question --
+// the last owned by miekg/dns, so a dependency bump can also break this.
+// TestLRUSerializeMatchesEncodingJSON compares against encoding/json at test
+// time and fails if any of the three gains or reorders a field.
+func appendCacheItemJSON(buf []byte, item *cacheItem, wire []byte) []byte {
+	k, a := item.Key, item.Answer
+
+	buf = append(buf, `{"Key":{"Question":{"Name":`...)
+	buf = appendJSONString(buf, k.Question.Name)
+	buf = append(buf, `,"Qtype":`...)
+	buf = strconv.AppendUint(buf, uint64(k.Question.Qtype), 10)
+	buf = append(buf, `,"Qclass":`...)
+	buf = strconv.AppendUint(buf, uint64(k.Question.Qclass), 10)
+	buf = append(buf, `},"Net":`...)
+	buf = appendJSONString(buf, k.Net)
+	buf = append(buf, `,"Do":`...)
+	buf = strconv.AppendBool(buf, k.Do)
+	buf = append(buf, `,"CD":`...)
+	buf = strconv.AppendBool(buf, k.CD)
+	buf = append(buf, `,"ECSMask":`...)
+	buf = strconv.AppendUint(buf, uint64(k.ECSMask), 10)
+
+	buf = append(buf, `},"Answer":{"Timestamp":`...)
+	buf = appendJSONTime(buf, a.Timestamp)
+	buf = append(buf, `,"Expiry":`...)
+	buf = appendJSONTime(buf, a.Expiry)
+	buf = append(buf, `,"PrefetchEligible":`...)
+	buf = strconv.AppendBool(buf, a.PrefetchEligible)
+	buf = append(buf, `,"Msg":"`...)
+	buf = base64.StdEncoding.AppendEncode(buf, wire)
+	buf = append(buf, "\"}}\n"...)
+	return buf
+}
+
+func appendJSONTime(buf []byte, t time.Time) []byte {
+	buf = append(buf, '"')
+	buf = t.AppendFormat(buf, time.RFC3339Nano)
+	return append(buf, '"')
+}
+
+// Appends s as a quoted JSON string. Domain names and IP addresses are
+// almost always plain ASCII, so the common path is a straight copy; anything
+// needing escaping falls back to encoding/json.
+//
+// '<', '>' and '&' must take the fallback too: encoding/json escapes them to
+// their \u00xx form by default, and they are valid bytes inside a DNS label,
+// so copying them verbatim would diverge from the previous output.
+func appendJSONString(buf []byte, s string) []byte {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x20 || c == '"' || c == '\\' || c >= utf8.RuneSelf ||
+			c == '<' || c == '>' || c == '&' {
+			b, err := json.Marshal(s)
+			if err != nil { // cannot happen for a string
+				return append(buf, `""`...)
+			}
+			return append(buf, b...)
+		}
+	}
+	buf = append(buf, '"')
+	buf = append(buf, s...)
+	return append(buf, '"')
 }
 
 func (c *lruCache) deserialize(r io.Reader) error {
+	now := time.Now()
 	dec := json.NewDecoder(r)
 	for dec.More() {
 		item := new(cacheItem)
@@ -209,6 +338,12 @@ func (c *lruCache) deserialize(r io.Reader) error {
 		}
 		// Skip bad (or incompatible) records
 		if item.Key.Question.Name == "" || item.Answer == nil {
+			continue
+		}
+		// Skip records that expired while the file sat on disk; until the
+		// next lookup or GC run they'd occupy capacity live records could use.
+		// Files written by older versions aren't filtered on the write side.
+		if !item.Answer.live(now) {
 			continue
 		}
 		c.addKey(item.Key, item.Answer)
