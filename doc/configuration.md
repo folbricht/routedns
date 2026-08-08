@@ -1716,7 +1716,7 @@ Scripts have access to the following types and globals:
 - **Question** - DNS question. Create with `Question.new(name, qtype, qclass)`. Fields: `name`, `qtype`, `qclass`.
 - **RR** - Resource record. Create with `RR.new({rtype = TypeA, name = "example.com.", class = ClassIN, ttl = 300, a = "1.2.3.4"})`. Header fields: `name`, `rtype`, `class`, `ttl`, `rdlength`. Data fields are type-specific and use lowercase names (e.g., `a`, `aaaa`, `ns`, `cname`, `mx`, `preference`, `target`, etc.).
 - **OPT** - EDNS0 OPT pseudo-record. Create with `OPT.new(udp_size, do_bit)`. Fields: `udp_size`, `do_bit`, `version`, `extended_rcode`, `option` (array of EDNS0 options), `name`, `rtype`. Also returned by `Message:is_edns0()` and created implicitly by `Message:set_edns0(udp_size, do_bit)`.
-- **ClientInfo** - Client information passed as the second argument (`ci`) to `Resolve(msg, ci)`. Read-only fields: `source_ip` (string or nil), `doh_path` (string), `tls_server_name` (string), `listener` (string).
+- **ClientInfo** - Client information passed as the second argument (`ci`) to `Resolve(msg, ci)`. Read-only fields: `source_ip` (string or nil), `doh_path` (string), `tls_server_name` (string), `listener` (string), `protocol` (string, the transport the query arrived on, one of `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls` or `odoh`), `listener_addr` (string, the address the receiving listener is bound to). The last two are empty for queries that were not produced by a listener, such as those from the `prefetch` component.
 - **Error** - Error value. Create with `Error.new("message")`. Methods: `error()`.
 - **Resolvers** - Table of upstream resolvers. Each resolver has a `:resolve(msg, ci)` method that returns `(response, error)` (e.g. `Resolvers[1]:resolve(msg, ci)`).
 - **DNS constants** - Type constants (`TypeA`, `TypeAAAA`, `TypeMX`, ...), class constants (`ClassIN`, `ClassCH`, ...), rcode constants (`RcodeNOERROR`, `RcodeNXDOMAIN`, ...).
@@ -1805,6 +1805,11 @@ function Resolve(msg, ci)
 
     -- Route based on TLS server name
     if ci.tls_server_name == "private.dns.example.com" then
+        return Resolvers[1]:resolve(msg, ci)
+    end
+
+    -- Treat anything that arrived over an encrypted transport as trusted
+    if ci.protocol == "dot" or ci.protocol == "doh" or ci.protocol == "doq" then
         return Resolvers[1]:resolve(msg, ci)
     end
 
