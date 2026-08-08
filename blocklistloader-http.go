@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,7 +33,14 @@ var _ BlocklistLoader = &HTTPLoader{}
 const httpTimeout = 30 * time.Minute
 
 func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
-	return &HTTPLoader{url, opt, opt.CacheDir != "", nil}
+	l := &HTTPLoader{url, opt, opt.CacheDir != "", nil}
+	if opt.CacheDir != "" {
+		// Clean up after a previous run that was killed mid-write. Done here
+		// rather than per-write: leftovers can only predate the process, and
+		// sweeping while a write is in flight could remove its temp file.
+		removeStaleTempFiles(l.cacheFilename())
+	}
+	return l
 }
 
 func (l *HTTPLoader) Load() (rules []string, err error) {
@@ -117,9 +125,12 @@ func (l *HTTPLoader) loadFromDisk() ([]string, error) {
 }
 
 func (l *HTTPLoader) writeToDisk(rules []string) error {
-	return writeFileAtomic(l.cacheFilename(), func(w *bufio.Writer) error {
+	return writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
 		for _, r := range rules {
-			if _, err := w.WriteString(r + "\n"); err != nil {
+			if _, err := io.WriteString(w, r); err != nil {
+				return err
+			}
+			if _, err := io.WriteString(w, "\n"); err != nil {
 				return err
 			}
 		}

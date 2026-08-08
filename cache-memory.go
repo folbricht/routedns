@@ -2,7 +2,7 @@ package rdns
 
 import (
 	"bufio"
-	"expvar"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -19,8 +19,6 @@ type memoryBackend struct {
 	// writeToFile, while mu is only held for the encode itself.
 	saveMu sync.Mutex
 	opt    MemoryBackendOptions
-	// Records dropped from the cache file because they couldn't be packed.
-	saveSkipped *expvar.Int
 }
 
 type MemoryBackendOptions struct {
@@ -35,10 +33,6 @@ type MemoryBackendOptions struct {
 
 	// Write the file in an interval. Only write on shutdown if not set
 	SaveInterval time.Duration
-
-	// Identifier used in this backend's expvar metric names. Defaults to
-	// "memory", which means several backends share one set of counters.
-	MetricsID string
 }
 
 var _ CacheBackend = (*memoryBackend)(nil)
@@ -47,15 +41,15 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 	if opt.GCPeriod == 0 {
 		opt.GCPeriod = time.Minute
 	}
-	if opt.MetricsID == "" {
-		opt.MetricsID = "memory"
-	}
 	b := &memoryBackend{
-		lru:         newLRUCache(opt.Capacity),
-		opt:         opt,
-		saveSkipped: getVarInt("cache", opt.MetricsID, "save-skipped"),
+		lru: newLRUCache(opt.Capacity),
+		opt: opt,
 	}
 	if opt.Filename != "" {
+		// Clean up after a previous run that was killed mid-write. Done here
+		// rather than per-save: leftovers can only predate the process, and
+		// sweeping while a save is in flight could remove its temp file.
+		removeStaleTempFiles(opt.Filename)
 		b.loadFromFile(opt.Filename)
 	}
 	go b.startGC(opt.GCPeriod)
@@ -149,11 +143,11 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if a.live(now) {
-				return false
+			if now.After(a.Expiry) {
+				removed++
+				return true
 			}
-			removed++
-			return true
+			return false
 		})
 		total = b.lru.size()
 		b.mu.Unlock()
@@ -190,19 +184,13 @@ func (b *memoryBackend) writeToFile(filename string) error {
 	log := Log.With("filename", filename)
 	log.Info("writing cache file")
 
-	var skipped int
-	err := writeFileAtomic(filename, func(w *bufio.Writer) error {
+	err := writeFileAtomic(filename, func(w io.Writer) error {
 		// Queries block for the encode, so hold b.mu for just that. Note the
 		// buffered writer may still flush to disk here, under the lock.
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		var err error
-		skipped, err = b.lru.serialize(w, log)
-		return err
+		return b.lru.serialize(w)
 	})
-	if skipped > 0 && b.saveSkipped != nil {
-		b.saveSkipped.Add(int64(skipped))
-	}
 	if err != nil {
 		log.Warn("failed to write cache file", "error", err)
 		return err

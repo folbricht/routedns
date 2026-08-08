@@ -390,8 +390,6 @@ The memory backend will keep all cache items in memory. It can be configured to 
 - `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence
 - `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
 
-A record that can't be encoded is dropped from the cache file rather than failing the whole save. The number of records dropped this way is exported via expvar as `routedns.cache.<id>.save-skipped`, alongside the usual `hit`, `miss`, and `entries` metrics; a non-zero value means the file on disk is missing records that were in memory.
-
 **Redis backend**
 
 The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. The following options are supported:
