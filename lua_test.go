@@ -949,6 +949,16 @@ function Resolve(msg, ci)
 		return nil, Error.new("unexpected listener: " .. tostring(ci.listener))
 	end
 
+	-- Verify protocol
+	if ci.protocol ~= "doh" then
+		return nil, Error.new("unexpected protocol: " .. tostring(ci.protocol))
+	end
+
+	-- Verify listener_addr
+	if ci.listener_addr ~= ":443" then
+		return nil, Error.new("unexpected listener_addr: " .. tostring(ci.listener_addr))
+	end
+
 	return nil, nil
 end`,
 	}
@@ -958,6 +968,8 @@ end`,
 		DoHPath:       "/dns-query",
 		TLSServerName: "dns.example.com",
 		Listener:      "my-listener",
+		Protocol:      "doh",
+		ListenerAddr:  ":443",
 	}
 	resolver := new(TestResolver)
 
@@ -969,6 +981,27 @@ end`,
 
 	_, err = r.Resolve(q, ci)
 	require.NoError(t, err)
+}
+
+// Reading a field the type does not have must fail rather than silently
+// yielding nil, so a typo in a script surfaces at the first query.
+func TestLuaClientInfoUnknownField(t *testing.T) {
+	opt := LuaOptions{
+		Script: `
+function Resolve(msg, ci)
+	local _ = ci.protocol_typo
+	return nil, nil
+end`,
+	}
+	r, err := NewLua("test-lua", opt, new(TestResolver))
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err = r.Resolve(q, ClientInfo{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "protocol_typo")
 }
 
 func TestLuaClientInfoNilSourceIP(t *testing.T) {
@@ -983,6 +1016,14 @@ function Resolve(msg, ci)
 	-- Empty string fields should be empty
 	if ci.doh_path ~= "" then
 		return nil, Error.new("expected empty doh_path")
+	end
+
+	-- Queries not produced by a listener carry no transport context
+	if ci.protocol ~= "" then
+		return nil, Error.new("expected empty protocol")
+	end
+	if ci.listener_addr ~= "" then
+		return nil, Error.new("expected empty listener_addr")
 	end
 
 	return nil, nil
