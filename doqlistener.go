@@ -148,6 +148,8 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	ci := ClientInfo{
 		Listener:      s.id,
 		TLSServerName: tlsServerName,
+		Protocol:      "doq",
+		ListenerAddr:  s.addr,
 	}
 	switch addr := connection.RemoteAddr().(type) {
 	case *net.TCPAddr:
@@ -155,7 +157,8 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	case *net.UDPAddr:
 		ci.SourceIP = addr.IP
 	}
-	log := s.log.With("client", connection.RemoteAddr())
+	// No query yet, so this logger carries only the connection context.
+	log := logger(s.id, nil, ci)
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
 		log.Debug("rejecting incoming connection")
@@ -170,17 +173,22 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 		if err != nil {
 			break
 		}
-		log.With("stream", stream.StreamID()).Debug("opening stream")
+		log.Debug("opening stream", "stream", stream.StreamID())
 		go func() {
-			s.handleStream(stream, connection, log, ci)
-			log.With("stream", stream.StreamID()).Debug("closing stream")
+			s.handleStream(stream, connection, ci)
+			log.Debug("closing stream", "stream", stream.StreamID())
 		}()
 	}
 }
 
-func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
+
+	// Until the query has been decoded there is nothing to name it by, so
+	// the read and decode failures below are reported with the connection
+	// context alone.
+	log := logger(s.id, nil, ci)
 	s.metrics.stream.Add(1)
 
 	// The deadline covers the whole query read, including the length prefix.
@@ -211,6 +219,7 @@ func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, l
 		log.Warn("failed to decode query", "error", err)
 		return
 	}
+	log = logger(s.id, q, ci)
 	// A DNS message with QDCOUNT=0 unpacks cleanly but downstream resolvers
 	// (logger, cache, blocklists) all index `q.Question[0]` unconditionally
 	// and panic on an empty Question slice. Reject these at the listener.
@@ -219,7 +228,6 @@ func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, l
 		log.Warn("dropping query with no Question section")
 		return
 	}
-	log = log.With("qname", qName(q))
 	log.Debug("received query")
 	s.metrics.query.Add(1)
 
