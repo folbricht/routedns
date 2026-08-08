@@ -45,8 +45,9 @@ func (m *RegexpDB) Reload() (BlocklistDB, error) {
 
 func (m *RegexpDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
 	q := msg.Question[0]
+	name := strings.ToLower(q.Name)
 	for _, rule := range m.rules {
-		if rule.MatchString(strings.ToLower(q.Name)) {
+		if rule.MatchString(name) {
 			return nil, nil, &BlocklistMatch{List: m.name, Rule: rule.String()}, true
 		}
 	}
