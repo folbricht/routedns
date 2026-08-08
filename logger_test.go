@@ -204,114 +204,113 @@ func TestQueryLoggerEmptyQuestion(t *testing.T) {
 	require.Contains(t, buf.String(), "qname=")
 }
 
-// The listener attribute sets, which vary by protocol, must render exactly as
-// slog.Logger.With renders them. The attribute order is part of the output, so
-// this pins it for each listener.
-func TestDeferredLoggerMatchesSlogWith(t *testing.T) {
+// A listener logs through the same type, with its protocol, bind address and
+// DoH path coming from ClientInfo. The attribute order is part of the output,
+// so this pins it for each listener shape.
+func TestQueryLoggerListenerContext(t *testing.T) {
+	q := testQuery()
 	clientIP := net.IP{192, 168, 1, 5}
 
 	tests := []struct {
 		name string
-		args []any
-		emit func(l deferredLogger)
-		orcl func(l *slog.Logger)
+		ci   ClientInfo
+		want []any
 	}{
 		{
-			name: "dns listener",
-			args: []any{
-				"id", "listener1", "client", clientIP, "qname", "www.example.com.",
-				"protocol", "udp", "addr", ":53",
+			name: "plain dns listener",
+			ci: ClientInfo{
+				SourceIP: clientIP, Listener: "listener1",
+				Protocol: "udp", ListenerAddr: ":53",
 			},
-			emit: func(l deferredLogger) { l.Debug("received query") },
-			orcl: func(l *slog.Logger) { l.Debug("received query") },
+			want: []any{
+				slog.String("id", "listener1"), slog.Any("client", clientIP),
+				slog.String("qtype", "A"), slog.String("qname", "www.example.com."),
+				slog.String("protocol", "udp"), slog.String("addr", ":53"),
+			},
 		},
 		{
-			name: "dns listener forwarding",
-			args: []any{
-				"id", "listener1", "client", clientIP, "qname", "www.example.com.",
-				"protocol", "udp", "addr", ":53",
+			name: "doh listener carries the path",
+			ci: ClientInfo{
+				SourceIP: clientIP, Listener: "doh1", DoHPath: "/dns-query",
+				Protocol: "doh", ListenerAddr: ":443",
 			},
-			emit: func(l deferredLogger) { l.With("resolver", "cache1").Debug("forwarding query to resolver") },
-			orcl: func(l *slog.Logger) { l.With("resolver", "cache1").Debug("forwarding query to resolver") },
+			want: []any{
+				slog.String("id", "doh1"), slog.Any("client", clientIP),
+				slog.String("qtype", "A"), slog.String("qname", "www.example.com."),
+				slog.String("protocol", "doh"), slog.String("addr", ":443"),
+				slog.String("path", "/dns-query"),
+			},
 		},
 		{
-			name: "doh listener",
-			args: []any{
-				"id", "doh1", "client", clientIP, "qtype", "A", "qname", "www.example.com.",
-				"protocol", "doh", "addr", ":443", "path", "/dns-query",
+			name: "resolver has no listener context",
+			ci:   ClientInfo{SourceIP: clientIP},
+			want: []any{
+				slog.String("id", "resolver1"), slog.Any("client", clientIP),
+				slog.String("qtype", "A"), slog.String("qname", "www.example.com."),
 			},
-			emit: func(l deferredLogger) { l.Warn("failed to resolve", "error", "boom") },
-			orcl: func(l *slog.Logger) { l.Warn("failed to resolve", "error", "boom") },
-		},
-		{
-			name: "doq listener stream",
-			args: []any{"id", "doq1", "protocol", "doq", "addr", ":853", "client", clientIP},
-			emit: func(l deferredLogger) { l.With("stream", int64(7)).Debug("opening stream") },
-			orcl: func(l *slog.Logger) { l.With("stream", int64(7)).Debug("opening stream") },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			id := tt.want[0].(slog.Attr).Value.String()
 			dst, buf := captureLog(t, slog.LevelDebug)
-			tt.emit(deferredLog(dst).With(tt.args...))
+			testQueryLogger(dst, id, q, tt.ci).Debug("received query")
 			got := buf.String()
 
 			buf.Reset()
-			tt.orcl(dst.With(tt.args...))
+			dst.With(tt.want...).Debug("received query")
 			require.Equal(t, buf.String(), got)
 		})
 	}
 }
 
-// As for queryLogger, derived loggers must not share the array their
-// attributes live in.
-func TestDeferredLoggerWithDoesNotShareSpareCapacity(t *testing.T) {
+// Connection-scoped records, logged before a query has been read, carry the
+// listener context without empty qtype and qname attributes.
+func TestQueryLoggerNilQueryOmitsQuestion(t *testing.T) {
+	ci := ClientInfo{
+		SourceIP: net.IP{192, 168, 1, 5}, Listener: "doq1",
+		Protocol: "doq", ListenerAddr: ":853",
+	}
 	dst, buf := captureLog(t, slog.LevelDebug)
-
-	base := deferredLog(dst)
-	base.attrs = append(make([]any, 0, 8), "id", "listener1")
-	require.Greater(t, cap(base.attrs), len(base.attrs), "test needs spare capacity to be meaningful")
-
-	branchA := base.With("stream", int64(1))
-	branchB := base.With("stream", int64(2))
-
-	branchA.Debug("first")
-	branchB.Debug("second")
-
-	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	require.Len(t, lines, 2)
-	require.Contains(t, lines[0], "stream=1")
-	require.Contains(t, lines[1], "stream=2")
-}
-
-func TestDeferredLoggerReportsCallerSource(t *testing.T) {
-	dst, buf := captureLog(t, slog.LevelDebug, func(o *slog.HandlerOptions) { o.AddSource = true })
-	deferredLog(dst).With("id", "listener1").Debug("here")
+	testQueryLogger(dst, "doq1", nil, ci).Debug("accepting incoming connection")
 
 	out := buf.String()
-	require.Contains(t, out, "logger_test.go", "source should point at the call site")
-	require.NotContains(t, out, "logger.go:", "source must not point at the logging helper")
+	require.Contains(t, out, "id=doq1")
+	require.Contains(t, out, "protocol=doq")
+	require.Contains(t, out, "addr=:853")
+	require.NotContains(t, out, "qtype=")
+	require.NotContains(t, out, "qname=")
 }
 
-// Emitting nothing must cost only the level check. The attributes are held
-// as given, so the sole allocation is the one the caller's variadic slice
-// already required.
-func TestDeferredLoggerSuppressedCallIsCheap(t *testing.T) {
+// A query that unpacked but carries no question keeps the attributes, empty,
+// so the record still shows a query was involved.
+func TestQueryLoggerEmptyQuestionKeepsAttributes(t *testing.T) {
+	dst, buf := captureLog(t, slog.LevelDebug)
+	testQueryLogger(dst, "listener1", new(dns.Msg), ClientInfo{Protocol: "udp"}).
+		Warn("dropping query with no Question section")
+
+	out := buf.String()
+	require.Contains(t, out, "qtype=")
+	require.Contains(t, out, "qname=")
+	require.Contains(t, out, "protocol=udp")
+}
+
+// The listener path must stay allocation-free too, which is what folding the
+// listener attributes into ClientInfo buys over holding them as a slice.
+func TestQueryLoggerListenerSuppressedCallDoesNotAllocate(t *testing.T) {
 	dst, _ := captureLog(t, slog.LevelInfo)
-	clientIP := net.IP{192, 168, 1, 5}
+	q := testQuery()
+	ci := ClientInfo{
+		SourceIP: net.IP{192, 168, 1, 5}, Listener: "doh1", DoHPath: "/dns-query",
+		Protocol: "doh", ListenerAddr: ":443",
+	}
 
 	allocs := testing.AllocsPerRun(100, func() {
-		log := deferredLog(dst).With(
-			"id", "listener1", "client", clientIP, "qname", "www.example.com.",
-			"protocol", "udp", "addr", ":53",
-		)
+		log := testQueryLogger(dst, "doh1", q, ci)
 		log.Debug("received query")
-		log.With("resolver", "cache1").Debug("forwarding query to resolver")
 	})
-	// One slice for each of the two With calls, plus the boxing of the only
-	// value that is not a constant string.
-	require.LessOrEqual(t, allocs, float64(3))
+	require.Zero(t, allocs)
 }
 
 // A call whose level is not enabled must do no work beyond the level check.

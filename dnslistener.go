@@ -87,7 +87,9 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 		var err error
 
 		ci := ClientInfo{
-			Listener: id,
+			Listener:     id,
+			Protocol:     protocol,
+			ListenerAddr: addr,
 		}
 
 		if r, ok := w.(interface{ ConnectionState() *tls.ConnectionState }); ok {
@@ -104,13 +106,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			ci.SourceIP = addr.IP
 		}
 
-		log := deferredLog(Log).With(
-			"id", id,
-			"client", ci.SourceIP,
-			"qname", qName(req),
-			"protocol", protocol,
-			"addr", addr,
-		)
+		log := logger(id, req, ci)
 		if len(req.Question) == 0 {
 			metrics.err.Add("noquestion", 1)
 			log.Warn("dropping query with no Question section")

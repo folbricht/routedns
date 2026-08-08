@@ -14,12 +14,21 @@ import (
 // changed directly on this instance or the instance replaced.
 var Log = slog.Default()
 
-// queryLogger holds the per-query log context (resolver id, client, question)
-// and renders it only once a level check has passed. Attributes are stored
-// rather than formatted, so a call that ends up being suppressed costs nothing
-// beyond the level check. Every record carries the full query context
-// regardless of level, so Warn and Error identify the query they refer to even
-// when debug logging is off.
+// queryLogger holds the per-query log context and renders it only once a level
+// check has passed. Attributes are stored rather than formatted, so a call that
+// ends up being suppressed costs nothing beyond the level check. Every record
+// carries the full query context regardless of level, so Warn and Error
+// identify the query they refer to even when debug logging is off.
+//
+// The context is whatever the component already has in hand: its own id, the
+// query, and the ClientInfo threaded through every Resolve. The listener half
+// of it (protocol, listener address, DoH path) comes from ClientInfo, so a
+// listener logs through this type exactly as a resolver does.
+//
+// Attributes with no value are omitted: a nil query drops qtype and qname,
+// which is what connection-scoped records logged before a query is read look
+// like, and the three listener attributes are absent for queries that no
+// listener produced.
 type queryLogger struct {
 	// Destination, resolved when the logger is created so that a record and
 	// the level check that admitted it always go to the same logger. Falls
@@ -67,66 +76,20 @@ func (l queryLogger) log(level slog.Level, msg string, args ...any) {
 	}
 
 	r := newRecord(level, msg)
-	r.Add(
-		slog.String("id", l.id),
-		slog.Any("client", l.ci.SourceIP),
-		slog.String("qtype", qTypeName(l.q)),
-		slog.String("qname", qName(l.q)),
-	)
+	r.Add(slog.String("id", l.id), slog.Any("client", l.ci.SourceIP))
+	if l.q != nil {
+		r.Add(slog.String("qtype", qTypeName(l.q)), slog.String("qname", qName(l.q)))
+	}
+	if l.ci.Protocol != "" {
+		r.Add(slog.String("protocol", l.ci.Protocol))
+	}
+	if l.ci.ListenerAddr != "" {
+		r.Add(slog.String("addr", l.ci.ListenerAddr))
+	}
+	if l.ci.DoHPath != "" {
+		r.Add(slog.String("path", l.ci.DoHPath))
+	}
 	r.Add(l.extra...)
-	r.Add(args...)
-	_ = dst.Handler().Handle(ctx, r)
-}
-
-// deferredLogger holds an arbitrary set of attributes and applies them only
-// once a level check has passed. It serves the listeners, whose attributes vary
-// by protocol and so can't be typed fields the way queryLogger's are; a call
-// that is suppressed costs the level check and nothing else, and one that is
-// emitted costs the same as slog.Logger.With would have.
-//
-// Prefer queryLogger for the resolver chain: its fixed attribute set is held in
-// typed fields, so it does not allocate at all.
-type deferredLogger struct {
-	dst *slog.Logger
-
-	// Attributes in slog's alternating key/value form (slog.Attr values are
-	// also accepted, as by slog.Logger.With).
-	attrs []any
-}
-
-func deferredLog(dst *slog.Logger) deferredLogger {
-	return deferredLogger{dst: dst}
-}
-
-// With returns a copy of the logger with additional attributes appended.
-func (l deferredLogger) With(args ...any) deferredLogger {
-	if len(args) == 0 {
-		return l
-	}
-	// Clip so the append allocates rather than writing into an array shared
-	// with the receiver. Callers keep logging through the value they called
-	// With on, which must not see the attributes added to the copy.
-	l.attrs = append(slices.Clip(l.attrs), args...)
-	return l
-}
-
-func (l deferredLogger) Debug(msg string, args ...any) { l.log(slog.LevelDebug, msg, args...) }
-func (l deferredLogger) Info(msg string, args ...any)  { l.log(slog.LevelInfo, msg, args...) }
-func (l deferredLogger) Warn(msg string, args ...any)  { l.log(slog.LevelWarn, msg, args...) }
-func (l deferredLogger) Error(msg string, args ...any) { l.log(slog.LevelError, msg, args...) }
-
-func (l deferredLogger) log(level slog.Level, msg string, args ...any) {
-	dst := l.dst
-	if dst == nil {
-		dst = Log
-	}
-	ctx := context.Background()
-	if !dst.Enabled(ctx, level) {
-		return
-	}
-
-	r := newRecord(level, msg)
-	r.Add(l.attrs...)
 	r.Add(args...)
 	_ = dst.Handler().Handle(ctx, r)
 }

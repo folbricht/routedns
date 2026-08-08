@@ -231,7 +231,12 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	a, err := s.r.Resolve(q, ClientInfo{Listener: s.id, TLSServerName: r.TLS.ServerName})
+	a, err := s.r.Resolve(q, ClientInfo{
+		Listener:      s.id,
+		TLSServerName: r.TLS.ServerName,
+		Protocol:      "odoh",
+		ListenerAddr:  s.addr,
+	})
 	if err != nil {
 		Log.Warn("failed to resolve", "error", err)
 		a = new(dns.Msg)
