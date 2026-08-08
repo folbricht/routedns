@@ -33,6 +33,10 @@ func (s *LuaScript) RegisterClientInfoType() {
 				L.Push(lua.LString(ci.TLSServerName))
 			case "listener":
 				L.Push(lua.LString(ci.Listener))
+			case "protocol":
+				L.Push(lua.LString(ci.Protocol))
+			case "listener_addr":
+				L.Push(lua.LString(ci.ListenerAddr))
 			default:
 				L.ArgError(2, fmt.Sprintf("clientinfo does not have field %q", fieldName))
 				return 0

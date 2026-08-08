@@ -28,6 +28,13 @@ type ClientInfo struct {
 	// Listener ID of the listener that first received the request. Can be
 	// used to route queries.
 	Listener string
+
+	// Transport the query arrived on, such as "udp", "tcp", "dot", "doh",
+	// "doq", "dtls" or "odoh". Empty for queries not produced by a listener.
+	Protocol string
+
+	// Address the receiving listener is bound to.
+	ListenerAddr string
 }
 
 // Metrics that are available from listeners and clients.

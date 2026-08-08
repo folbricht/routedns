@@ -159,7 +159,10 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			if min, ok := minTTL(a); ok && min < r.CacheOptions.PrefetchTrigger {
 				prefetchQ := q.Copy()
 				go func() {
-					log.Debug("prefetching record")
+					// Built here rather than captured: capturing the
+					// caller's logger would move it to the heap on every
+					// query, prefetching or not.
+					logger(r.id, prefetchQ, ci).Debug("prefetching record")
 
 					// Send the same query upstream
 					prefetchA, err := r.resolver.Resolve(prefetchQ, ci)
