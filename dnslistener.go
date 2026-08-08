@@ -104,7 +104,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 			ci.SourceIP = addr.IP
 		}
 
-		log := Log.With(
+		log := deferredLog(Log).With(
 			"id", id,
 			"client", ci.SourceIP,
 			"qname", qName(req),

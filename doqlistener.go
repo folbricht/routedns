@@ -155,7 +155,7 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	case *net.UDPAddr:
 		ci.SourceIP = addr.IP
 	}
-	log := s.log.With("client", connection.RemoteAddr())
+	log := deferredLog(s.log).With("client", connection.RemoteAddr())
 
 	if !isAllowed(s.opt.AllowedNet, ci.SourceIP) {
 		log.Debug("rejecting incoming connection")
@@ -178,7 +178,7 @@ func (s *DoQListener) handleConnection(connection *quic.Conn) {
 	}
 }
 
-func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, log *slog.Logger, ci ClientInfo) {
+func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, log deferredLogger, ci ClientInfo) {
 	// DNS over QUIC uses one stream per query/response.
 	defer stream.Close()
 	s.metrics.stream.Add(1)

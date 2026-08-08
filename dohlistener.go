@@ -353,7 +353,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		TLSServerName: tlsServerName,
 		Listener:      s.id,
 	}
-	log := Log.With(
+	log := deferredLog(Log).With(
 		"id", s.id,
 		"client", ci.SourceIP,
 		"qtype", qType(q),

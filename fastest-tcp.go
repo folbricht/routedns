@@ -3,7 +3,6 @@ package rdns
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -140,7 +139,7 @@ func (r *FastestTCP) String() string {
 // Probes all IPs and returns only the RR with the fastest responding IP.
 // Waits for the first one that comes back. Returns an error if the fastest response
 // is an error.
-func (r *FastestTCP) probeFastest(log *slog.Logger, rrs []dns.RR) ([]dns.RR, error) {
+func (r *FastestTCP) probeFastest(log queryLogger, rrs []dns.RR) ([]dns.RR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	resultCh := r.probe(ctx, log, rrs)
@@ -163,7 +162,7 @@ func (r *FastestTCP) probeFastest(log *slog.Logger, rrs []dns.RR) ([]dns.RR, err
 
 // Probes all IPs and returns them in the order of response time, fastest first. Returns
 // an error if any of the probes fail or if the probe times out.
-func (r *FastestTCP) probeAll(log *slog.Logger, rrs []dns.RR) ([]dns.RR, error) {
+func (r *FastestTCP) probeAll(log queryLogger, rrs []dns.RR) ([]dns.RR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	resultCh := r.probe(ctx, log, rrs)
@@ -192,7 +191,7 @@ type tcpProbeResult struct {
 // even when the caller stops reading early (e.g. probeFastest after the first result,
 // or probeAll on error/timeout). This guarantees every goroutine runs to completion
 // and closes its socket.
-func (r *FastestTCP) probe(ctx context.Context, log *slog.Logger, rrs []dns.RR) <-chan tcpProbeResult {
+func (r *FastestTCP) probe(ctx context.Context, log queryLogger, rrs []dns.RR) <-chan tcpProbeResult {
 	resultCh := make(chan tcpProbeResult, len(rrs))
 	for _, rr := range rrs {
 		var d net.Dialer
