@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,7 +33,12 @@ var _ BlocklistLoader = &HTTPLoader{}
 const httpTimeout = 30 * time.Minute
 
 func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
-	return &HTTPLoader{url, opt, opt.CacheDir != "", nil}
+	l := &HTTPLoader{url, opt, opt.CacheDir != "", nil}
+	if opt.CacheDir != "" {
+		// Clean up temp files left behind by a run that was killed mid-write.
+		removeStaleTempFiles(opt.CacheDir)
+	}
+	return l
 }
 
 func (l *HTTPLoader) Load() (rules []string, err error) {
@@ -116,30 +122,18 @@ func (l *HTTPLoader) loadFromDisk() ([]string, error) {
 	return rules, scanner.Err()
 }
 
-func (l *HTTPLoader) writeToDisk(rules []string) (err error) {
-	f, err := os.CreateTemp(l.opt.CacheDir, "routedns")
-	if err != nil {
-		return
-	}
-	fb := bufio.NewWriter(f)
-
-	defer func() {
-		tmpFileName := f.Name()
-		fb.Flush()
-		f.Close() // Close the file before trying to rename (Windows needs it)
-		if err == nil {
-			err = os.Rename(tmpFileName, l.cacheFilename())
+func (l *HTTPLoader) writeToDisk(rules []string) error {
+	return writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
+		for _, r := range rules {
+			if _, err := io.WriteString(w, r); err != nil {
+				return err
+			}
+			if _, err := io.WriteString(w, "\n"); err != nil {
+				return err
+			}
 		}
-		// Make sure to clean up even if the move above was successful
-		os.Remove(tmpFileName)
-	}()
-
-	for _, r := range rules {
-		if _, err := fb.WriteString(r + "\n"); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Returns the name of the list cache file, which is the SHA256 of url in the cache-dir.

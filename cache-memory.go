@@ -1,7 +1,10 @@
 package rdns
 
 import (
+	"bufio"
+	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,7 +16,10 @@ import (
 type memoryBackend struct {
 	lru *lruCache
 	mu  sync.Mutex
-	opt MemoryBackendOptions
+	// Serializes cache-file writes against each other. Held for the whole of
+	// writeToFile, while mu is only held for the encode itself.
+	saveMu sync.Mutex
+	opt    MemoryBackendOptions
 }
 
 type MemoryBackendOptions struct {
@@ -41,6 +47,8 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 		opt: opt,
 	}
 	if opt.Filename != "" {
+		// Clean up temp files left behind by a run that was killed mid-write.
+		removeStaleTempFiles(filepath.Dir(opt.Filename))
 		b.loadFromFile(opt.Filename)
 	}
 	go b.startGC(opt.GCPeriod)
@@ -166,19 +174,24 @@ func (b *memoryBackend) Close() error {
 }
 
 func (b *memoryBackend) writeToFile(filename string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	// Only one save at a time. An interval save can otherwise overlap with the
+	// one from Close(), with both writing the same file concurrently. This is
+	// a separate lock from b.mu, which is only held for the encode.
+	b.saveMu.Lock()
+	defer b.saveMu.Unlock()
+
 	log := Log.With("filename", filename)
 	log.Info("writing cache file")
-	f, err := os.Create(filename)
-	if err != nil {
-		log.Warn("failed to create cache file", "error", err)
-		return err
-	}
-	defer f.Close()
 
-	if err := b.lru.serialize(f); err != nil {
-		log.Warn("failed to persist cache to disk", "error", err)
+	err := writeFileAtomic(filename, func(w io.Writer) error {
+		// Queries block for the encode, so hold b.mu for just that. Note the
+		// buffered writer may still flush to disk here, under the lock.
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return b.lru.serialize(w)
+	})
+	if err != nil {
+		log.Warn("failed to write cache file", "error", err)
 		return err
 	}
 	return nil
@@ -196,7 +209,7 @@ func (b *memoryBackend) loadFromFile(filename string) error {
 	}
 	defer f.Close()
 
-	if err := b.lru.deserialize(f); err != nil {
+	if err := b.lru.deserialize(bufio.NewReaderSize(f, fileBufSize)); err != nil {
 		log.Warn("failed to read cache from disk", "error", err)
 		return err
 	}
