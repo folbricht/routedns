@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"time"
@@ -36,38 +37,62 @@ type cacheAnswer struct {
 	Msg              *dns.Msg
 }
 
-// The custom JSON marshaling is used by the memory backend to persist the
-// cache to a file (MemoryBackendOptions.Filename), packing the message to
-// wire format.
-func (c cacheAnswer) MarshalJSON() ([]byte, error) {
-	msg, err := c.Msg.Pack()
-	if err != nil {
-		return nil, err
-	}
-	type alias cacheAnswer
-	record := struct {
-		alias
-		Msg []byte
-	}{
-		alias: alias(c),
-		Msg:   msg,
-	}
-	return json.Marshal(record)
+// How a cacheItem is written to, and read from, the cache file
+// (MemoryBackendOptions.Filename). It mirrors cacheItem/cacheAnswer with the
+// message in wire format, which is what makes the record marshalable.
+//
+// The cache types deliberately don't carry a MarshalJSON method of their own.
+// One would have to build its output with json.Marshal, which the encoder then
+// re-parses to compact it, encoding every record twice.
+type cacheItemJSON struct {
+	Key    lruKey
+	Answer cacheAnswerJSON
 }
 
-func (c *cacheAnswer) UnmarshalJSON(data []byte) error {
-	type alias cacheAnswer
-	aux := struct {
-		*alias
-		Msg []byte
-	}{
-		alias: (*alias)(c),
+type cacheAnswerJSON struct {
+	Timestamp        time.Time
+	Expiry           time.Time
+	PrefetchEligible bool
+	Msg              []byte
+}
+
+// Builds the on-disk form of an item, packing its message to wire format.
+func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
+	if item.Answer == nil || item.Answer.Msg == nil {
+		return cacheItemJSON{}, errors.New("cache item has no message")
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
+	msg, err := item.Answer.Msg.Pack()
+	if err != nil {
+		return cacheItemJSON{}, err
 	}
-	c.Msg = new(dns.Msg)
-	return c.Msg.Unpack(aux.Msg)
+	return cacheItemJSON{
+		Key: item.Key,
+		Answer: cacheAnswerJSON{
+			Timestamp:        item.Answer.Timestamp,
+			Expiry:           item.Answer.Expiry,
+			PrefetchEligible: item.Answer.PrefetchEligible,
+			Msg:              msg,
+		},
+	}, nil
+}
+
+// Rebuilds a cache item from its on-disk form, unpacking the wire-format
+// message. Returns false for a record that can't be used, which includes ones
+// written by a version that stored different fields.
+func (r cacheItemJSON) toCacheItem() (lruKey, *cacheAnswer, bool) {
+	if r.Key.Question.Name == "" || len(r.Answer.Msg) == 0 {
+		return lruKey{}, nil, false
+	}
+	msg := new(dns.Msg)
+	if err := msg.Unpack(r.Answer.Msg); err != nil {
+		return lruKey{}, nil, false
+	}
+	return r.Key, &cacheAnswer{
+		Timestamp:        r.Answer.Timestamp,
+		Expiry:           r.Answer.Expiry,
+		PrefetchEligible: r.Answer.PrefetchEligible,
+		Msg:              msg,
+	}, true
 }
 
 func newLRUCache(capacity int) *lruCache {
@@ -193,7 +218,11 @@ func (c *lruCache) size() int {
 func (c *lruCache) serialize(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	for item := c.tail.prev; item != c.head; item = item.prev {
-		if err := enc.Encode(item); err != nil {
+		record, err := newCacheItemJSON(item)
+		if err != nil {
+			return err
+		}
+		if err := enc.Encode(record); err != nil {
 			return err
 		}
 	}
@@ -203,15 +232,16 @@ func (c *lruCache) serialize(w io.Writer) error {
 func (c *lruCache) deserialize(r io.Reader) error {
 	dec := json.NewDecoder(r)
 	for dec.More() {
-		item := new(cacheItem)
-		if err := dec.Decode(item); err != nil {
+		var record cacheItemJSON
+		if err := dec.Decode(&record); err != nil {
 			return err
 		}
 		// Skip bad (or incompatible) records
-		if item.Key.Question.Name == "" || item.Answer == nil {
+		key, answer, ok := record.toCacheItem()
+		if !ok {
 			continue
 		}
-		c.addKey(item.Key, item.Answer)
+		c.addKey(key, answer)
 	}
 	return nil
 }
