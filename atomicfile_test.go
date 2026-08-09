@@ -59,8 +59,8 @@ func TestWriteFileAtomic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "no temp file should be left behind: %v", entries)
 
-	// A file that doesn't exist yet gets the mode os.Create would have given
-	// it, rather than os.CreateTemp's 0600.
+	// A file that doesn't exist yet keeps os.CreateTemp's 0600 rather than
+	// being widened by a chmod, which would bypass the process umask.
 	fresh := filepath.Join(dir, "fresh")
 	require.NoError(t, writeFileAtomic(fresh, func(w io.Writer) error {
 		_, err := io.WriteString(w, "x")
@@ -68,7 +68,7 @@ func TestWriteFileAtomic(t *testing.T) {
 	}))
 	fi, err = os.Stat(fresh)
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(defaultFileMode), fi.Mode().Perm())
+	require.Equal(t, os.FileMode(0600), fi.Mode().Perm(), "a new file must not be widened past what os.CreateTemp gave it")
 }
 
 // Two writers to the same file must not mix their output. Sharing one temp
@@ -127,15 +127,18 @@ func TestRemoveStaleTempFiles(t *testing.T) {
 	// A temp whose target has since been dropped from the config: the sweep
 	// has no target name to derive it from, so only a prefix scan finds it.
 	orphan := write(tmpPrefix+"999999", staleAge)
-	legacy := write(legacyTmpPrefix+"123456", staleAge)
 	inFlight := write(tmpPrefix+"777777", time.Now())
 	cache := write("cache.db", staleAge)
 
 	// The docs suggest sharing a cache-dir, so the sweep has to leave
 	// everything it didn't write alone, however much the name looks like ours.
+	// The digit-stamped names are the reason the old "routedns" prefix went:
+	// they're indistinguishable from a name os.CreateTemp could have produced,
+	// so matching them would unlink an operator's pinned build or dated copy.
 	bystanders := []string{
 		"routedns.toml", "routedns.log", "routedns.pid", "routedns",
 		"routedns-cache.json", "routedns123456.bak",
+		"routedns2", "routedns0231", "routedns20250101",
 	}
 	var keep []string
 	for _, n := range bystanders {
@@ -146,7 +149,6 @@ func TestRemoveStaleTempFiles(t *testing.T) {
 
 	require.NoFileExists(t, stale)
 	require.NoFileExists(t, orphan, "a temp with no live target must still be reclaimed")
-	require.NoFileExists(t, legacy, "temps from before the prefix changed must be reclaimed")
 	require.FileExists(t, inFlight, "a recently written temp may still be in flight")
 	require.FileExists(t, cache, "cache files must be left alone")
 	for _, p := range keep {

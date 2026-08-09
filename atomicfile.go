@@ -24,31 +24,7 @@ const (
 	// Temps younger than this belong to a write that may still be in flight,
 	// possibly in another process sharing the directory.
 	tmpMaxAge = time.Hour
-
-	// Temp file prefix used before tmpPrefix existed. Matched only when
-	// followed by the digits os.CreateTemp appends, so the sweep can't reach
-	// a routedns.toml or a routedns binary sharing the directory.
-	legacyTmpPrefix = "routedns"
 )
-
-// Reports whether name is a temp file written by this package, either under
-// the current prefix or the one used before it.
-func isTempFileName(name string) bool {
-	if strings.HasPrefix(name, tmpPrefix) {
-		return true
-	}
-	suffix, ok := strings.CutPrefix(name, legacyTmpPrefix)
-	if !ok || suffix == "" {
-		return false
-	}
-	// os.CreateTemp appends a decimal random number and nothing else.
-	return strings.IndexFunc(suffix, func(r rune) bool { return r < '0' || r > '9' }) < 0
-}
-
-// Mode to give a cache file that doesn't exist yet. Matches what os.Create
-// would have produced, so an upgrade doesn't silently make files unreadable to
-// anything else on the box.
-const defaultFileMode = 0644
 
 // Removes temp files in dir left behind by a writeFileAtomic call that was
 // interrupted before it could rename or clean up. Errors are ignored; a
@@ -61,6 +37,14 @@ const defaultFileMode = 0644
 // Note os.Remove unlinks the name rather than following it, and ReadDir's
 // Info is an lstat, so neither the age check nor the removal follows a symlink
 // planted in the directory.
+//
+// Only tmpPrefix is matched. The prefix used before it was "routedns" followed
+// by the digits os.CreateTemp appends, which can't be told apart from a version-
+// or date-stamped file an operator keeps alongside: os.CreateTemp formats a
+// random uint32 unpadded, so it emits one to ten digits and "routedns2" is a
+// name it could have produced itself. This is a directory the config named for
+// one particular file rather than one routedns owns, and it generally runs as
+// root, so a false positive here unlinks a file we have no business touching.
 func removeStaleTempFiles(dir string) {
 	// Only sweep a directory the config actually named. filepath.Dir returns
 	// "." for a bare filename like "cache.json", and the working directory is
@@ -75,7 +59,7 @@ func removeStaleTempFiles(dir string) {
 	cutoff := time.Now().Add(-tmpMaxAge)
 	for _, e := range entries {
 		name := e.Name()
-		if !e.Type().IsRegular() || !isTempFileName(name) {
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, tmpPrefix) {
 			continue
 		}
 		info, err := e.Info()
@@ -92,9 +76,12 @@ func removeStaleTempFiles(dir string) {
 // rather than a truncated one. The writer passed to write is buffered and
 // flushed before the rename.
 //
-// The temp file keeps the mode of the file it replaces, or 0644 for a new one,
-// since os.CreateTemp creates at 0600 and the rename would otherwise carry that
-// onto the target.
+// The temp file keeps the mode of the file it replaces, since os.CreateTemp
+// creates at 0600 and the rename would otherwise carry that onto the target. A
+// file that doesn't exist yet keeps the 0600, which is the restrictive choice
+// for data that records what's been looked up. Widening it to 0644 instead
+// would ignore the process umask, since chmod(2) isn't filtered by it the way
+// the mode passed to open(2) is.
 //
 // Two things here are load-bearing and shouldn't be simplified away:
 //
@@ -120,17 +107,15 @@ func writeFileAtomic(filename string, write func(w io.Writer) error) error {
 	}()
 
 	// Keep the mode of the file being replaced. Only a genuinely missing file
-	// falls back to the default: anything else means we couldn't read the mode
+	// keeps os.CreateTemp's 0600: anything else means we couldn't read the mode
 	// we're meant to preserve, and guessing could widen it on a cache holding
 	// a record of what's been looked up.
-	mode := os.FileMode(defaultFileMode)
 	switch fi, err := os.Stat(filename); {
 	case err == nil:
-		mode = fi.Mode().Perm()
+		if err := tmp.Chmod(fi.Mode().Perm()); err != nil {
+			return err
+		}
 	case !errors.Is(err, fs.ErrNotExist):
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
 		return err
 	}
 

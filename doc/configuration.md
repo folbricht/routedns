@@ -387,7 +387,7 @@ The memory backend will keep all cache items in memory. It can be configured to 
 
 - `type="memory"`
 - `size` - Max number of responses to cache. Defaults to 0 which means no limit.
-- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs.
+- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs. A new file is created with mode `0600`, since it records what has been looked up; an existing file keeps whatever mode it already has.
 - `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
 
 **Redis backend**
@@ -747,7 +747,7 @@ Options:
 - `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
-When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup).
+When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup). As with the cache `filename` option, a new file is created with mode `0600` and an existing one keeps whatever mode it already has.
 
 To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
 
