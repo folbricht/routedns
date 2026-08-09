@@ -35,10 +35,8 @@ const httpTimeout = 30 * time.Minute
 func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
 	l := &HTTPLoader{url, opt, opt.CacheDir != "", nil}
 	if opt.CacheDir != "" {
-		// Clean up after a previous run that was killed mid-write. Done here
-		// rather than per-write: leftovers can only predate the process, and
-		// sweeping while a write is in flight could remove its temp file.
-		removeStaleTempFiles(l.cacheFilename())
+		// Clean up temp files left behind by a run that was killed mid-write.
+		removeStaleTempFiles(opt.CacheDir)
 	}
 	return l
 }

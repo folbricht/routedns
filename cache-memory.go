@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -46,10 +47,8 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 		opt: opt,
 	}
 	if opt.Filename != "" {
-		// Clean up after a previous run that was killed mid-write. Done here
-		// rather than per-save: leftovers can only predate the process, and
-		// sweeping while a save is in flight could remove its temp file.
-		removeStaleTempFiles(opt.Filename)
+		// Clean up temp files left behind by a run that was killed mid-write.
+		removeStaleTempFiles(filepath.Dir(opt.Filename))
 		b.loadFromFile(opt.Filename)
 	}
 	go b.startGC(opt.GCPeriod)
