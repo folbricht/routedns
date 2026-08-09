@@ -64,17 +64,17 @@ func (b *memoryBackend) Store(query *dns.Msg, item *cacheAnswer) {
 
 func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	var answer *dns.Msg
-	var timestamp time.Time
+	var timestamp int64
 	var prefetchEligible bool
-	var expiry time.Time
+	var expiry int64
 	b.mu.Lock()
-	if a := b.lru.get(q); a != nil {
+	if item := b.lru.get(q); item != nil {
 		// Copy the message so later elements can modify the response
 		// without affecting the cached original.
-		answer = a.Msg.Copy()
-		timestamp = a.Timestamp
-		prefetchEligible = a.PrefetchEligible
-		expiry = a.Expiry
+		answer = item.msg.Copy()
+		timestamp = item.timestamp
+		prefetchEligible = item.prefetchEligible
+		expiry = item.expiry
 	}
 	b.mu.Unlock()
 
@@ -84,7 +84,8 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	}
 
 	// Check if item has expired from the cache
-	if time.Now().After(expiry) {
+	now := time.Now().UnixNano()
+	if now > expiry {
 		b.Evict(q)
 		return nil, false, false
 	}
@@ -93,8 +94,13 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	answer.Question = q.Question // restore the case used in the question
 
 	// Calculate the time the record spent in the cache. We need to
-	// subtract that from the TTL of each answer record.
-	age := uint32(time.Since(timestamp).Seconds())
+	// subtract that from the TTL of each answer record. A record stored
+	// ahead of the current time, which a backwards clock step or a cache
+	// file from another machine can produce, counts as brand new.
+	var age uint32
+	if now > timestamp {
+		age = uint32((now - timestamp) / int64(time.Second))
+	}
 
 	// Go through all the answers, NS, and Extra and adjust the TTL (subtract the time
 	// it's spent in the cache). If the record is too old, evict it from the cache
@@ -138,11 +144,11 @@ func (b *memoryBackend) Flush() {
 func (b *memoryBackend) startGC(period time.Duration) {
 	for {
 		time.Sleep(period)
-		now := time.Now()
+		now := time.Now().UnixNano()
 		var total, removed int
 		b.mu.Lock()
-		b.lru.deleteFunc(func(a *cacheAnswer) bool {
-			if now.After(a.Expiry) {
+		b.lru.deleteFunc(func(item *cacheItem) bool {
+			if now > item.expiry {
 				removed++
 				return true
 			}

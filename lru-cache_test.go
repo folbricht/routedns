@@ -46,13 +46,12 @@ func TestLRUAddGet(t *testing.T) {
 
 	// Check it's the right items in the cache
 	for _, item := range items[:5] {
-		answer := c.get(item.query)
-		require.Nil(t, answer)
+		require.Nil(t, c.get(item.query))
 	}
 	for _, item := range items[5:] {
-		answer := c.get(item.query)
-		require.NotNil(t, answer)
-		require.Equal(t, item.answer, answer)
+		cached := c.get(item.query)
+		require.NotNil(t, cached)
+		require.Equal(t, item.answer.Msg, cached.msg)
 	}
 
 	// Delete one of the items directly
@@ -60,8 +59,8 @@ func TestLRUAddGet(t *testing.T) {
 	require.Equal(t, 4, c.size())
 
 	// Use an iterator to delete two more
-	c.deleteFunc(func(a *cacheAnswer) bool {
-		question := a.Msg.Question[0]
+	c.deleteFunc(func(item *cacheItem) bool {
+		question := item.msg.Question[0]
 		return question.Name == "test8.com." || question.Name == "test9.com."
 	})
 	require.Equal(t, 2, c.size())
@@ -100,13 +99,13 @@ func TestLRUKeyCD(t *testing.T) {
 		"CD=0 query must not be served the cached CD=1 response")
 
 	// The original CD=1 query still hits its own entry.
-	require.Equal(t, cdAnswer, c.get(queryCD("cd.example.com.", true)))
+	require.Equal(t, cdAnswer.Msg, c.get(queryCD("cd.example.com.", true)).msg)
 
 	// Storing a CD=0 answer is kept separate from the CD=1 one.
 	plainAnswer := answerFor("cd.example.com.")
 	c.add(queryCD("cd.example.com.", false), plainAnswer)
-	require.Equal(t, plainAnswer, c.get(queryCD("cd.example.com.", false)))
-	require.Equal(t, cdAnswer, c.get(queryCD("cd.example.com.", true)))
+	require.Equal(t, plainAnswer.Msg, c.get(queryCD("cd.example.com.", false)).msg)
+	require.Equal(t, cdAnswer.Msg, c.get(queryCD("cd.example.com.", true)).msg)
 	require.Equal(t, 2, c.size())
 }
 

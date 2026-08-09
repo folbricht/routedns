@@ -3,6 +3,7 @@ package rdns
 import (
 	"encoding/json"
 	"errors"
+	"hash/maphash"
 	"io"
 	"strings"
 	"time"
@@ -10,16 +11,36 @@ import (
 	"github.com/miekg/dns"
 )
 
+// lruCache holds cached DNS responses in a doubly-linked list ordered by
+// recency, indexed by a 64-bit hash of the cache key.
+//
+// Indexing by hash rather than by lruKey directly keeps the 48-byte key out
+// of every map slot, which matters because the item already holds the key.
+// A lookup compares the full key, so a hash collision can only ever cause a
+// cache miss. Two distinct keys colliding on 64 bits is rare enough that the
+// loser is dropped rather than chained; the seed is random per instance, so
+// a client cannot craft names that collide on purpose.
 type lruCache struct {
 	maxItems   int
-	items      map[lruKey]*cacheItem
+	items      map[uint64]*cacheItem
 	head, tail *cacheItem
+	seed       maphash.Seed
+	count      int
 }
 
+// cacheItem holds a cached answer inline rather than pointing at a
+// cacheAnswer, which saves an allocation and a traced pointer per entry.
 type cacheItem struct {
-	Key        lruKey
-	Answer     *cacheAnswer
+	key        lruKey
 	prev, next *cacheItem
+
+	msg *dns.Msg
+	// Unix nanoseconds. A time.Time would carry a location pointer that the
+	// GC has to trace for every entry in the cache, for no more resolution
+	// than an int64 already gives.
+	timestamp        int64 // time the record was cached, used to adjust TTL
+	expiry           int64 // time the record expires and should be removed
+	prefetchEligible bool  // the cache can prefetch this record
 }
 
 type lruKey struct {
@@ -58,22 +79,40 @@ type cacheAnswerJSON struct {
 
 // Builds the on-disk form of an item, packing its message to wire format.
 func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
-	if item.Answer == nil || item.Answer.Msg == nil {
+	if item.msg == nil {
 		return cacheItemJSON{}, errors.New("cache item has no message")
 	}
-	msg, err := item.Answer.Msg.Pack()
+	msg, err := item.msg.Pack()
 	if err != nil {
 		return cacheItemJSON{}, err
 	}
 	return cacheItemJSON{
-		Key: item.Key,
+		Key: item.key,
 		Answer: cacheAnswerJSON{
-			Timestamp:        item.Answer.Timestamp,
-			Expiry:           item.Answer.Expiry,
-			PrefetchEligible: item.Answer.PrefetchEligible,
+			Timestamp:        nanoTime(item.timestamp),
+			Expiry:           nanoTime(item.expiry),
+			PrefetchEligible: item.prefetchEligible,
 			Msg:              msg,
 		},
 	}, nil
+}
+
+// Conversions between the time.Time a cacheAnswer carries and the unix
+// nanoseconds an item holds. The zero time maps to zero, which UnixNano
+// cannot represent, and back again; times are written out in UTC so a cache
+// file doesn't depend on the timezone of the host that wrote it.
+func unixNano(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
+}
+
+func nanoTime(n int64) time.Time {
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n).UTC()
 }
 
 // Rebuilds a cache item from its on-disk form, unpacking the wire-format
@@ -103,9 +142,10 @@ func newLRUCache(capacity int) *lruCache {
 
 	return &lruCache{
 		maxItems: capacity,
-		items:    make(map[lruKey]*cacheItem),
+		items:    make(map[uint64]*cacheItem),
 		head:     head,
 		tail:     tail,
+		seed:     maphash.MakeSeed(),
 	}
 }
 
@@ -119,25 +159,63 @@ func (c *lruCache) addKey(key lruKey, answer *cacheAnswer) {
 	if item != nil {
 		// Update the item, it's already at the top of the list
 		// so we can just change the value
-		item.Answer = answer
+		item.setAnswer(answer)
 		return
 	}
-	// Add new item to the top of the linked list
-	item = &cacheItem{
-		Key:    key,
-		Answer: answer,
-		next:   c.head.next,
-		prev:   c.head,
+	item = &cacheItem{key: key}
+	item.setAnswer(answer)
+	c.insert(item)
+}
+
+// Copies an answer into the item. The cacheAnswer itself is not retained.
+func (i *cacheItem) setAnswer(a *cacheAnswer) {
+	i.msg = a.Msg
+	i.timestamp = unixNano(a.Timestamp)
+	i.expiry = unixNano(a.Expiry)
+	i.prefetchEligible = a.PrefetchEligible
+}
+
+// Link a new item into the index and the top of the linked list.
+func (c *lruCache) insert(item *cacheItem) {
+	h := c.hash(item.key)
+	if existing := c.items[h]; existing != nil {
+		c.unlink(existing)
 	}
+	c.items[h] = item
+
+	item.next = c.head.next
+	item.prev = c.head
 	c.head.next.prev = item
 	c.head.next = item
-	c.items[key] = item
+
+	c.count++
 	c.resize()
+}
+
+// Unlink an item from both the index and the linked list.
+func (c *lruCache) unlink(item *cacheItem) {
+	item.prev.next = item.next
+	item.next.prev = item.prev
+	delete(c.items, c.hash(item.key))
+	c.count--
+}
+
+func (c *lruCache) hash(key lruKey) uint64 {
+	return maphash.Comparable(c.seed, key)
+}
+
+// Find an item by key without changing its position in the queue.
+func (c *lruCache) find(key lruKey) *cacheItem {
+	item := c.items[c.hash(key)]
+	if item == nil || item.key != key {
+		return nil
+	}
+	return item
 }
 
 // Loads a cache item and puts it to the top of the queue (most recent).
 func (c *lruCache) touch(key lruKey) *cacheItem {
-	item := c.items[key]
+	item := c.find(key)
 	if item == nil {
 		return nil
 	}
@@ -152,23 +230,15 @@ func (c *lruCache) touch(key lruKey) *cacheItem {
 }
 
 func (c *lruCache) delete(q *dns.Msg) {
-	key := lruKeyFromQuery(q)
-	item := c.items[key]
+	item := c.find(lruKeyFromQuery(q))
 	if item == nil {
 		return
 	}
-	item.prev.next = item.next
-	item.next.prev = item.prev
-	delete(c.items, key)
+	c.unlink(item)
 }
 
-func (c *lruCache) get(query *dns.Msg) *cacheAnswer {
-	key := lruKeyFromQuery(query)
-	item := c.touch(key)
-	if item != nil {
-		return item.Answer
-	}
-	return nil
+func (c *lruCache) get(query *dns.Msg) *cacheItem {
+	return c.touch(lruKeyFromQuery(query))
 }
 
 // Shrink the cache down to the maximum number of items.
@@ -176,12 +246,8 @@ func (c *lruCache) resize() {
 	if c.maxItems <= 0 { // no size limit
 		return
 	}
-	drop := len(c.items) - c.maxItems
-	for range drop {
-		item := c.tail.prev
-		item.prev.next = c.tail
-		c.tail.prev = item.prev
-		delete(c.items, item.Key)
+	for c.count > c.maxItems {
+		c.unlink(c.tail.prev)
 	}
 }
 
@@ -194,25 +260,25 @@ func (c *lruCache) reset() {
 
 	c.head = head
 	c.tail = tail
-	c.items = make(map[lruKey]*cacheItem)
+	c.items = make(map[uint64]*cacheItem)
+	c.count = 0
 }
 
-// Iterate over the cached answers and call the provided function. If it
+// Iterate over the cached items and call the provided function. If it
 // returns true, the item is deleted from the cache.
-func (c *lruCache) deleteFunc(f func(*cacheAnswer) bool) {
+func (c *lruCache) deleteFunc(f func(*cacheItem) bool) {
 	item := c.head.next
 	for item != c.tail {
-		if f(item.Answer) {
-			item.prev.next = item.next
-			item.next.prev = item.prev
-			delete(c.items, item.Key)
+		next := item.next
+		if f(item) {
+			c.unlink(item)
 		}
-		item = item.next
+		item = next
 	}
 }
 
 func (c *lruCache) size() int {
-	return len(c.items)
+	return c.count
 }
 
 func (c *lruCache) serialize(w io.Writer) error {
