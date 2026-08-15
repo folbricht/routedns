@@ -203,32 +203,14 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		return nil, false, false
 	}
 
-	answer := a.Msg
-	prefetchEligible := a.PrefetchEligible
-	answer.Id = q.Id
-	answer.Question = q.Question // restore the case used in the question
-
-	// Calculate the time the record spent in the cache. We need to
-	// subtract that from the TTL of each answer record.
-	age := uint32(time.Since(a.Timestamp).Seconds())
-
-	// Go through all the answers, NS, and Extra and adjust the TTL (subtract the time
-	// it's spent in the cache). If the record is too old, evict it from the cache
-	// and return a cache-miss. OPT records have a TTL of 0 and are ignored.
-	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
-		for _, a := range rr {
-			if _, ok := a.(*dns.OPT); ok {
-				continue
-			}
-			h := a.Header()
-			if age >= h.Ttl {
-				return nil, false, false
-			}
-			h.Ttl -= age
-		}
+	// A record that has aged out is left in place: Redis expires it on its
+	// own TTL, so deleting it here would only cost a round trip.
+	age := cacheAge(time.Now().UnixNano(), a.Timestamp.UnixNano())
+	if !ageCachedAnswer(a.Msg, q, age) {
+		return nil, false, false
 	}
 
-	return answer, prefetchEligible, true
+	return a.Msg, a.PrefetchEligible, true
 }
 
 func (b *redisBackend) Flush() {

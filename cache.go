@@ -99,6 +99,48 @@ func adoptPackBuf(bufPtr *[]byte, encoded []byte) {
 	}
 }
 
+// cacheAge returns how long a record has been in the cache, in seconds, from
+// the time it was stored. Both arguments are unix nanoseconds.
+//
+// A record timestamped ahead of now counts as brand new rather than wrapping
+// into a huge age. That happens on a backwards clock step, and on a cache file
+// or a shared Redis written by a machine whose clock runs ahead.
+func cacheAge(now, stored int64) uint32 {
+	if now <= stored {
+		return 0
+	}
+	return uint32((now - stored) / int64(time.Second))
+}
+
+// ageCachedAnswer prepares a decoded cache entry to be served as the response
+// to q: it restores the query's ID and the case of its question, then takes
+// the time the entry spent in the cache off every record's TTL.
+//
+// It reports false if any record has aged out, in which case the answer is
+// left partly adjusted and must not be served. Whether the entry is also
+// dropped from the store is up to the caller: a backend that expires records
+// itself has nothing to do.
+func ageCachedAnswer(answer, q *dns.Msg, age uint32) bool {
+	answer.Id = q.Id
+	answer.Question = q.Question // restore the case used in the question
+
+	// Go through all the answers, NS, and Extra and adjust the TTL. OPT
+	// records have a TTL of 0 and are ignored.
+	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
+		for _, a := range rr {
+			if _, ok := a.(*dns.OPT); ok {
+				continue
+			}
+			h := a.Header()
+			if age >= h.Ttl {
+				return false
+			}
+			h.Ttl -= age
+		}
+	}
+	return true
+}
+
 type CacheBackend interface {
 	// Store a response. The query and the message belong to the caller and may
 	// be modified once Store returns, so a backend has to encode or copy what
