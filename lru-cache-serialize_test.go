@@ -32,7 +32,7 @@ func TestLRUDeserializeLegacyFormat(t *testing.T) {
 	item := c.find(key)
 	require.NotNil(t, item, "the record's key must survive unchanged")
 	require.Equal(t, "host.example.com.", storedMsg(t, item).Question[0].Name)
-	require.True(t, blobPrefetchEligible(item.blob))
+	require.True(t, item.blob.prefetchEligible())
 }
 
 // Pins the exact bytes written for a fully-populated record. The cache file
@@ -60,7 +60,7 @@ func TestLRUSerializeFormatStable(t *testing.T) {
 		CD:       true,
 		ECSMask:  24,
 	}
-	blob, err := encodeCacheAnswerBlob(key, &cacheAnswer{
+	blob, err := newCacheBlob(key, &cacheAnswer{
 		Timestamp:        ts,
 		Expiry:           ts.Add(time.Hour),
 		PrefetchEligible: true,

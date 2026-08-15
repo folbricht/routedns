@@ -1,13 +1,10 @@
 package rdns
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"hash/maphash"
 	"io"
-	"math"
 	"strings"
 	"time"
 
@@ -30,189 +27,11 @@ type lruCache struct {
 	seed       maphash.Seed
 }
 
-// cacheItem holds an entry as a single packed byte slice: the key, its
-// metadata and the message in wire format. A []byte holds no pointers, so the
-// collector skips its contents entirely, where an unpacked dns.Msg is a tree
-// of about a dozen objects it has to trace on every cycle.
-//
-// A blob is never modified once built. Replacing an entry allocates a new one,
-// so a reader that took the slice under the lock can decode it after releasing
-// the lock.
+// cacheItem is one entry in the queue, holding the stored form of a response.
 type cacheItem struct {
 	prev, next *cacheItem
 	hash       uint64 // key hash, kept so eviction doesn't have to decode the blob
-	blob       []byte
-}
-
-// Layout of the blob. Offsets are fixed so the metadata can be read without
-// decoding the key or the message.
-//
-//	0      version
-//	1      meta flags (prefetch-eligible)
-//	2..9   timestamp, unix nanoseconds
-//	10..17 expiry, unix nanoseconds
-//	18     key flags (DO, CD)          <- key region starts
-//	19..20 qtype
-//	21..22 qclass
-//	23     ECS source prefix length
-//	24..25 length of the ECS address
-//	26..27 length of the question name
-//	28..   ECS address, then question name
-//	       <- key region ends, packed message follows
-//
-// The key fields are contiguous so a lookup can compare them as one span, and
-// so an on-disk format can hash the same bytes.
-const (
-	blobVersion = 1
-
-	blobOffMetaFlags = 1
-	blobOffTimestamp = 2
-	blobOffExpiry    = 10
-	blobOffKeyFlags  = 18
-	blobOffQtype     = 19
-	blobOffQclass    = 21
-	blobOffECSMask   = 23
-	blobOffNetLen    = 24
-	blobOffNameLen   = 26
-	blobHdrLen       = 28
-)
-
-const (
-	blobMetaPrefetchEligible = 1 << 0
-
-	blobKeyDo = 1 << 0
-	blobKeyCD = 1 << 1
-)
-
-// encodeCacheItem builds the stored form of an entry in one exact-size
-// allocation. wire must already hold the packed message.
-func encodeCacheItem(key lruKey, timestamp, expiry int64, prefetchEligible bool, wire []byte) ([]byte, error) {
-	// The protocol caps a name at 255 octets on the wire, but this is the
-	// presentation form, where an unprintable octet escapes to \DDD and a
-	// legal name can run four times that. Both lengths get a uint16, which no
-	// name can outgrow; the checks are here so the encoding stays total.
-	if len(key.Question.Name) > math.MaxUint16 {
-		return nil, fmt.Errorf("question name too long to cache: %d bytes", len(key.Question.Name))
-	}
-	if len(key.Net) > math.MaxUint16 {
-		return nil, fmt.Errorf("ECS address too long to cache: %d bytes", len(key.Net))
-	}
-
-	blob := make([]byte, blobHdrLen+len(key.Net)+len(key.Question.Name)+len(wire))
-	blob[0] = blobVersion
-	if prefetchEligible {
-		blob[blobOffMetaFlags] |= blobMetaPrefetchEligible
-	}
-	binary.BigEndian.PutUint64(blob[blobOffTimestamp:], uint64(timestamp))
-	binary.BigEndian.PutUint64(blob[blobOffExpiry:], uint64(expiry))
-	if key.Do {
-		blob[blobOffKeyFlags] |= blobKeyDo
-	}
-	if key.CD {
-		blob[blobOffKeyFlags] |= blobKeyCD
-	}
-	binary.BigEndian.PutUint16(blob[blobOffQtype:], key.Question.Qtype)
-	binary.BigEndian.PutUint16(blob[blobOffQclass:], key.Question.Qclass)
-	blob[blobOffECSMask] = key.ECSMask
-	binary.BigEndian.PutUint16(blob[blobOffNetLen:], uint16(len(key.Net)))
-	binary.BigEndian.PutUint16(blob[blobOffNameLen:], uint16(len(key.Question.Name)))
-
-	n := blobHdrLen
-	n += copy(blob[n:], key.Net)
-	n += copy(blob[n:], key.Question.Name)
-	copy(blob[n:], wire)
-	return blob, nil
-}
-
-// encodeCacheAnswer packs a cacheAnswer's message into a pooled buffer and
-// builds the stored form from it. The message is not retained.
-func encodeCacheAnswerBlob(key lruKey, a *cacheAnswer) ([]byte, error) {
-	if a.Msg == nil {
-		return nil, errors.New("cache item has no message")
-	}
-	bufPtr := packBufPool.Get().(*[]byte)
-	wire, err := a.Msg.PackBuffer((*bufPtr)[:cap(*bufPtr)])
-	if err != nil {
-		putPackBuf(bufPtr)
-		return nil, err
-	}
-	// If packing outgrew the pooled buffer, keep the larger one so the pool
-	// adapts to the workload.
-	if cap(wire) > cap(*bufPtr) {
-		*bufPtr = wire
-	}
-	blob, err := encodeCacheItem(key, unixNano(a.Timestamp), unixNano(a.Expiry), a.PrefetchEligible, wire)
-	putPackBuf(bufPtr)
-	return blob, err
-}
-
-func blobTimestamp(blob []byte) int64 {
-	return int64(binary.BigEndian.Uint64(blob[blobOffTimestamp:]))
-}
-
-func blobExpiry(blob []byte) int64 {
-	return int64(binary.BigEndian.Uint64(blob[blobOffExpiry:]))
-}
-
-func blobPrefetchEligible(blob []byte) bool {
-	return blob[blobOffMetaFlags]&blobMetaPrefetchEligible != 0
-}
-
-// blobMessage returns the packed message, which aliases the blob.
-func blobMessage(blob []byte) []byte {
-	return blob[blobHdrLen+blobNetLen(blob)+blobNameLen(blob):]
-}
-
-func blobNetLen(blob []byte) int {
-	return int(binary.BigEndian.Uint16(blob[blobOffNetLen:]))
-}
-
-func blobNameLen(blob []byte) int {
-	return int(binary.BigEndian.Uint16(blob[blobOffNameLen:]))
-}
-
-// blobMatchesKey reports whether the blob was stored under key. Comparing a
-// byte slice against a string this way doesn't allocate.
-func blobMatchesKey(blob []byte, key lruKey) bool {
-	if len(blob) < blobHdrLen {
-		return false
-	}
-	var flags byte
-	if key.Do {
-		flags |= blobKeyDo
-	}
-	if key.CD {
-		flags |= blobKeyCD
-	}
-	netLen, nameLen := blobNetLen(blob), blobNameLen(blob)
-	if len(blob) < blobHdrLen+netLen+nameLen ||
-		blob[blobOffKeyFlags] != flags ||
-		blob[blobOffECSMask] != key.ECSMask ||
-		netLen != len(key.Net) ||
-		nameLen != len(key.Question.Name) ||
-		binary.BigEndian.Uint16(blob[blobOffQtype:]) != key.Question.Qtype ||
-		binary.BigEndian.Uint16(blob[blobOffQclass:]) != key.Question.Qclass {
-		return false
-	}
-	return string(blob[blobHdrLen:blobHdrLen+netLen]) == key.Net &&
-		string(blob[blobHdrLen+netLen:blobHdrLen+netLen+nameLen]) == key.Question.Name
-}
-
-// blobKey rebuilds the key a blob was stored under. Used when writing the
-// cache file, not on the query path.
-func blobKey(blob []byte) lruKey {
-	netLen, nameLen := blobNetLen(blob), blobNameLen(blob)
-	return lruKey{
-		Question: dns.Question{
-			Name:   string(blob[blobHdrLen+netLen : blobHdrLen+netLen+nameLen]),
-			Qtype:  binary.BigEndian.Uint16(blob[blobOffQtype:]),
-			Qclass: binary.BigEndian.Uint16(blob[blobOffQclass:]),
-		},
-		Net:     string(blob[blobHdrLen : blobHdrLen+netLen]),
-		Do:      blob[blobOffKeyFlags]&blobKeyDo != 0,
-		CD:      blob[blobOffKeyFlags]&blobKeyCD != 0,
-		ECSMask: blob[blobOffECSMask],
-	}
+	blob       cacheBlob
 }
 
 type lruKey struct {
@@ -257,12 +76,12 @@ func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
 		return cacheItemJSON{}, errors.New("cache item is malformed")
 	}
 	return cacheItemJSON{
-		Key: blobKey(item.blob),
+		Key: item.blob.key(),
 		Answer: cacheAnswerJSON{
-			Timestamp:        nanoTime(blobTimestamp(item.blob)),
-			Expiry:           nanoTime(blobExpiry(item.blob)),
-			PrefetchEligible: blobPrefetchEligible(item.blob),
-			Msg:              blobMessage(item.blob),
+			Timestamp:        nanoTime(item.blob.timestamp()),
+			Expiry:           nanoTime(item.blob.expiry()),
+			PrefetchEligible: item.blob.prefetchEligible(),
+			Msg:              item.blob.message(),
 		},
 	}, nil
 }
@@ -292,14 +111,14 @@ func nanoTime(n int64) time.Time {
 // The file already holds the message in wire format, so it goes into the blob
 // as-is. It is still unpacked once here to reject a corrupt record at load
 // time rather than on every lookup that finds it.
-func (r cacheItemJSON) toCacheItem() (lruKey, []byte, bool) {
+func (r cacheItemJSON) toCacheItem() (lruKey, cacheBlob, bool) {
 	if r.Key.Question.Name == "" || len(r.Answer.Msg) == 0 {
 		return lruKey{}, nil, false
 	}
 	if err := new(dns.Msg).Unpack(r.Answer.Msg); err != nil {
 		return lruKey{}, nil, false
 	}
-	blob, err := encodeCacheItem(r.Key, unixNano(r.Answer.Timestamp), unixNano(r.Answer.Expiry),
+	blob, err := newCacheBlobFromWire(r.Key, unixNano(r.Answer.Timestamp), unixNano(r.Answer.Expiry),
 		r.Answer.PrefetchEligible, r.Answer.Msg)
 	if err != nil {
 		return lruKey{}, nil, false
@@ -326,7 +145,7 @@ func newLRUCache(capacity int) *lruCache {
 // the caller's goroutine before the cache is locked; see memoryBackend.Store.
 func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) error {
 	key := lruKeyFromQuery(query)
-	blob, err := encodeCacheAnswerBlob(key, answer)
+	blob, err := newCacheBlob(key, answer)
 	if err != nil {
 		return err
 	}
@@ -334,7 +153,7 @@ func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) error {
 	return nil
 }
 
-func (c *lruCache) addKey(key lruKey, blob []byte) {
+func (c *lruCache) addKey(key lruKey, blob cacheBlob) {
 	item := c.touch(key)
 	if item != nil {
 		// Already at the top of the list, so only the blob changes. The old
@@ -374,7 +193,7 @@ func (c *lruCache) hash(key lruKey) uint64 {
 // Find an item by key without changing its position in the queue.
 func (c *lruCache) find(key lruKey) *cacheItem {
 	item := c.items[c.hash(key)]
-	if item == nil || !blobMatchesKey(item.blob, key) {
+	if item == nil || !item.blob.matchesKey(key) {
 		return nil
 	}
 	return item

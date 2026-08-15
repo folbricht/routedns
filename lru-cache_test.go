@@ -22,7 +22,7 @@ func storedMsg(t *testing.T, item *cacheItem) *dns.Msg {
 	t.Helper()
 	require.NotNil(t, item)
 	m := new(dns.Msg)
-	require.NoError(t, m.Unpack(blobMessage(item.blob)))
+	require.NoError(t, m.Unpack(item.blob.message()))
 	return m
 }
 
@@ -68,7 +68,7 @@ func TestLRUAddGet(t *testing.T) {
 	for _, item := range items[5:] {
 		cached := c.get(item.query)
 		require.NotNil(t, cached)
-		require.Equal(t, mustPack(t, item.answer.Msg), blobMessage(cached.blob))
+		require.Equal(t, mustPack(t, item.answer.Msg), cached.blob.message())
 	}
 
 	// Delete one of the items directly
@@ -77,7 +77,7 @@ func TestLRUAddGet(t *testing.T) {
 
 	// Use an iterator to delete two more
 	c.deleteFunc(func(item *cacheItem) bool {
-		name := blobKey(item.blob).Question.Name
+		name := item.blob.key().Question.Name
 		return name == "test8.com." || name == "test9.com."
 	})
 	require.Equal(t, 2, c.size())
@@ -116,13 +116,13 @@ func TestLRUKeyCD(t *testing.T) {
 		"CD=0 query must not be served the cached CD=1 response")
 
 	// The original CD=1 query still hits its own entry.
-	require.Equal(t, mustPack(t, cdAnswer.Msg), blobMessage(c.get(queryCD("cd.example.com.", true)).blob))
+	require.Equal(t, mustPack(t, cdAnswer.Msg), c.get(queryCD("cd.example.com.", true)).blob.message())
 
 	// Storing a CD=0 answer is kept separate from the CD=1 one.
 	plainAnswer := answerFor("cd.example.com.")
 	require.NoError(t, c.add(queryCD("cd.example.com.", false), plainAnswer))
-	require.Equal(t, mustPack(t, plainAnswer.Msg), blobMessage(c.get(queryCD("cd.example.com.", false)).blob))
-	require.Equal(t, mustPack(t, cdAnswer.Msg), blobMessage(c.get(queryCD("cd.example.com.", true)).blob))
+	require.Equal(t, mustPack(t, plainAnswer.Msg), c.get(queryCD("cd.example.com.", false)).blob.message())
+	require.Equal(t, mustPack(t, cdAnswer.Msg), c.get(queryCD("cd.example.com.", true)).blob.message())
 	require.Equal(t, 2, c.size())
 }
 

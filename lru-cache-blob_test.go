@@ -39,9 +39,9 @@ func blobTestAnswer(t *testing.T) *dns.Msg {
 // bits are the easiest to miss because they share a byte.
 func TestBlobKeyComparisonCoversEveryField(t *testing.T) {
 	key := blobTestKey()
-	blob, err := encodeCacheAnswerBlob(key, &cacheAnswer{Msg: blobTestAnswer(t)})
+	blob, err := newCacheBlob(key, &cacheAnswer{Msg: blobTestAnswer(t)})
 	require.NoError(t, err)
-	require.True(t, blobMatchesKey(blob, key), "the key it was stored under must match")
+	require.True(t, blob.matchesKey(key), "the key it was stored under must match")
 
 	differs := map[string]func(*lruKey){
 		// same length, different content, so this can't pass on a length check
@@ -60,7 +60,7 @@ func TestBlobKeyComparisonCoversEveryField(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			other := blobTestKey()
 			mutate(&other)
-			require.False(t, blobMatchesKey(blob, other),
+			require.False(t, blob.matchesKey(other),
 				"a key differing only in %s must not match", name)
 		})
 	}
@@ -71,10 +71,10 @@ func TestBlobKeyComparisonCoversEveryField(t *testing.T) {
 func TestBlobKeyIgnoresMetadata(t *testing.T) {
 	key := blobTestKey()
 	for _, eligible := range []bool{false, true} {
-		blob, err := encodeCacheAnswerBlob(key, &cacheAnswer{Msg: blobTestAnswer(t), PrefetchEligible: eligible})
+		blob, err := newCacheBlob(key, &cacheAnswer{Msg: blobTestAnswer(t), PrefetchEligible: eligible})
 		require.NoError(t, err)
-		require.True(t, blobMatchesKey(blob, key))
-		require.Equal(t, eligible, blobPrefetchEligible(blob))
+		require.True(t, blob.matchesKey(key))
+		require.Equal(t, eligible, blob.prefetchEligible())
 	}
 }
 
@@ -83,7 +83,7 @@ func TestBlobRoundTrip(t *testing.T) {
 	msg := blobTestAnswer(t)
 	ts := time.Date(2026, 8, 15, 9, 30, 0, 123456789, time.UTC)
 
-	blob, err := encodeCacheAnswerBlob(key, &cacheAnswer{
+	blob, err := newCacheBlob(key, &cacheAnswer{
 		Timestamp:        ts,
 		Expiry:           ts.Add(time.Hour),
 		PrefetchEligible: true,
@@ -91,13 +91,13 @@ func TestBlobRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, key, blobKey(blob))
-	require.Equal(t, ts.UnixNano(), blobTimestamp(blob))
-	require.Equal(t, ts.Add(time.Hour).UnixNano(), blobExpiry(blob))
-	require.True(t, blobPrefetchEligible(blob))
+	require.Equal(t, key, blob.key())
+	require.Equal(t, ts.UnixNano(), blob.timestamp())
+	require.Equal(t, ts.Add(time.Hour).UnixNano(), blob.expiry())
+	require.True(t, blob.prefetchEligible())
 
 	got := new(dns.Msg)
-	require.NoError(t, got.Unpack(blobMessage(blob)))
+	require.NoError(t, got.Unpack(blob.message()))
 	require.Equal(t, mustPack(t, msg), mustPack(t, got))
 }
 
@@ -107,10 +107,10 @@ func TestBlobRoundTripWithoutECS(t *testing.T) {
 	msg := new(dns.Msg)
 	msg.SetQuestion("plain.example.com.", dns.TypeA)
 
-	blob, err := encodeCacheAnswerBlob(key, &cacheAnswer{Msg: msg})
+	blob, err := newCacheBlob(key, &cacheAnswer{Msg: msg})
 	require.NoError(t, err)
-	require.Equal(t, key, blobKey(blob))
-	require.True(t, blobMatchesKey(blob, key))
+	require.Equal(t, key, blob.key())
+	require.True(t, blob.matchesKey(key))
 }
 
 // A question name arrives in presentation form, where every unprintable octet
@@ -156,7 +156,7 @@ func TestBlobRejectsOversizedName(t *testing.T) {
 	msg := new(dns.Msg)
 	msg.SetQuestion("short.example.com.", dns.TypeA)
 
-	_, err := encodeCacheAnswerBlob(key, &cacheAnswer{Msg: msg})
+	_, err := newCacheBlob(key, &cacheAnswer{Msg: msg})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "too long")
 }

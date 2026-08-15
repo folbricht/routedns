@@ -60,7 +60,7 @@ func (b *memoryBackend) Store(query *dns.Msg, item *cacheAnswer) {
 	// Encode before locking. Packing the message is the expensive half of a
 	// store and it doesn't need the cache, so queries aren't held up for it.
 	key := lruKeyFromQuery(query)
-	blob, err := encodeCacheAnswerBlob(key, item)
+	blob, err := newCacheBlob(key, item)
 	if err != nil {
 		Log.Warn("failed to encode cache record", "error", err)
 		return
@@ -73,7 +73,7 @@ func (b *memoryBackend) Store(query *dns.Msg, item *cacheAnswer) {
 func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	// A stored blob is never modified, so only the reference is taken under
 	// the lock and everything below runs outside it.
-	var blob []byte
+	var blob cacheBlob
 	b.mu.Lock()
 	if item := b.lru.get(q); item != nil {
 		blob = item.blob
@@ -87,7 +87,7 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 
 	// Check if item has expired from the cache
 	now := time.Now().UnixNano()
-	if now > blobExpiry(blob) {
+	if now > blob.expiry() {
 		b.Evict(q)
 		return nil, false, false
 	}
@@ -95,13 +95,13 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 	// Unpacking yields a message owned by this caller, so later elements in
 	// the chain can modify it without affecting the cached original.
 	answer := new(dns.Msg)
-	if err := answer.Unpack(blobMessage(blob)); err != nil {
+	if err := answer.Unpack(blob.message()); err != nil {
 		Log.Warn("failed to decode cache record", "error", err)
 		b.Evict(q)
 		return nil, false, false
 	}
-	timestamp := blobTimestamp(blob)
-	prefetchEligible := blobPrefetchEligible(blob)
+	timestamp := blob.timestamp()
+	prefetchEligible := blob.prefetchEligible()
 
 	answer.Id = q.Id
 	answer.Question = q.Question // restore the case used in the question
@@ -161,7 +161,7 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(item *cacheItem) bool {
-			if now > blobExpiry(item.blob) {
+			if now > item.blob.expiry() {
 				removed++
 				return true
 			}
