@@ -29,9 +29,13 @@ const (
 	rawCacheHeaderLen = len(rawCacheMagic) + 1
 
 	// An upper bound on a stored record, so a corrupt length can't ask for an
-	// unbounded allocation. A DNS message is capped at 64KB by the protocol
-	// and the key adds a few hundred bytes at most.
-	maxRawCacheRecord = dns.MaxMsgSize + 1024
+	// unbounded allocation. This is a sanity limit rather than a property of
+	// the data: a stored entry is not bounded by the 64KB wire limit, because
+	// the cache packs without name compression and a response that arrived
+	// near the limit can be twice that once stored. The theoretical worst case
+	// is a few megabytes, so this sits well above anything real while still
+	// keeping a bad length to a bounded allocation.
+	maxRawCacheRecord = 16 << 20
 )
 
 // isRawCacheFile reports whether the reader is positioned at a raw cache file,
@@ -52,7 +56,10 @@ func (c *lruCache) serializeRaw(w io.Writer) error {
 	var length [4]byte
 	for item := c.tail.prev; item != c.head; item = item.prev {
 		if len(item.blob) > maxRawCacheRecord {
-			// Can't be framed, and can't have been stored either.
+			// Nothing on the store path bounds an entry this far, so this
+			// should not happen; say so rather than dropping it in silence.
+			Log.Warn("cache entry too large for the cache file, skipping",
+				"size", len(item.blob), "name", item.blob.key().Question.Name)
 			continue
 		}
 		binary.BigEndian.PutUint32(length[:], uint32(len(item.blob)))
@@ -115,8 +122,10 @@ func (c *lruCache) deserializeRaw(r io.Reader) error {
 // blobFromFile checks a blob read from disk far enough to be sure the
 // accessors on it are safe, and returns the key it is stored under.
 func blobFromFile(blob cacheBlob) (lruKey, bool) {
-	if len(blob) < blobHdrLen ||
-		blobHdrLen+blob.netLen()+blob.nameLen() > len(blob) {
+	if len(blob) < blobHdrLen || blob.version() != blobVersion {
+		return lruKey{}, false
+	}
+	if blobHdrLen+blob.netLen()+blob.nameLen() > len(blob) {
 		return lruKey{}, false
 	}
 	// Unpack once here so a corrupt message is kept out of the cache rather
