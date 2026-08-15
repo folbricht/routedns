@@ -389,6 +389,7 @@ The memory backend will keep all cache items in memory. It can be configured to 
 - `size` - Max number of responses to cache. Defaults to 0 which means no limit.
 - `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs. A new file is created with mode `0600`, since it records what has been looked up; an existing file keeps whatever mode it already has.
 - `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
+- `file-format` - Format of the cache file, `json` (default) or `raw`. The raw format stores each entry the way the cache holds it in memory, which makes the file smaller and much faster to write and read; a 20,000-entry cache writes in a twentieth of the time and loads in a sixth. Reading detects the format from the file itself rather than from this option, so switching either way keeps an existing cache. Note that a cache file written in the raw format cannot be read by a version of RouteDNS that predates it; it is ignored and the cache starts empty.
 
 **Redis backend**
 

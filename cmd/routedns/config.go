@@ -94,6 +94,7 @@ type cacheBackend struct {
 	GCPeriod             int    `toml:"gc-period"` // Time-period (seconds) used to expire cached items
 	Filename             string // File to load/store cache content, optional, for "memory" type cache
 	SaveInterval         int    `toml:"save-interval"`           // Seconds to write the cache to file
+	FileFormat           string `toml:"file-format"`             // Format of the cache file, "json" (default) or "raw"
 	RedisNetwork         string `toml:"redis-network"`           // The network type, either tcp or unix. Defaults to tcp.
 	RedisAddress         string `toml:"redis-address"`           // Address for redis cache
 	RedisUsername        string `toml:"redis-username"`          // Redis username

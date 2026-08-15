@@ -783,11 +783,17 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			var backend rdns.CacheBackend
 			switch g.Backend.Type {
 			case "memory":
+				switch g.Backend.FileFormat {
+				case "", rdns.CacheFileFormatJSON, rdns.CacheFileFormatRaw:
+				default:
+					return fmt.Errorf("unsupported cache file-format '%s' in group '%s'", g.Backend.FileFormat, id)
+				}
 				backend = rdns.NewMemoryBackend(rdns.MemoryBackendOptions{
 					Capacity:     g.Backend.Size,
 					GCPeriod:     time.Duration(g.Backend.GCPeriod) * time.Second,
 					Filename:     g.Backend.Filename,
 					SaveInterval: time.Duration(g.Backend.SaveInterval) * time.Second,
+					FileFormat:   g.Backend.FileFormat,
 				})
 				onClose = append(onClose, func() { backend.Close() })
 			case "redis":
