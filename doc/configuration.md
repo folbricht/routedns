@@ -392,7 +392,7 @@ The memory backend will keep all cache items in memory. It can be configured to 
 
 **Redis backend**
 
-The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. The following options are supported:
+The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. It is not available in binaries built with the `noredis` tag, such as the `routedns-minimal-*` release artifacts. The following options are supported:
 
 - `type="redis"`
 - `redis-network` - The network type, either `tcp` or `unix`. Defaults to `tcp`.
@@ -1688,7 +1688,7 @@ Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.tom
 
 ### Lua
 
-Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers.
+Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
 
 #### Configuration
 

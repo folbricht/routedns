@@ -1,3 +1,5 @@
+//go:build !nolua
+
 package rdns
 
 import (
@@ -18,12 +20,6 @@ type Lua struct {
 }
 
 var _ Resolver = &Lua{}
-
-type LuaOptions struct {
-	Script      string
-	Concurrency uint
-	NoSandbox   bool // Disables the sandbox. When false (default), scripts cannot access os/io/debug/etc.
-}
 
 func NewLua(id string, opt LuaOptions, resolvers ...Resolver) (*Lua, error) {
 	if opt.Concurrency == 0 {

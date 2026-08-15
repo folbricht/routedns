@@ -70,12 +70,52 @@ builds:
     gomips:
       - softfloat
 
+  # Same small-device targets again, built without the Redis cache backend
+  # and without Lua. Those two dependencies are about a third of the binary,
+  # and neither is likely to be used on a router with 16MB of flash. The
+  # config options remain, a config that uses them fails at startup with a
+  # message saying the build doesn't support them.
+  - id: minimal
+    binary: routedns
+    main: ./cmd/routedns/
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    tags:
+      - nolua
+      - noredis
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+    goarch:
+      - arm
+      - arm64
+      - mips
+      - mipsle
+    goarm:
+      - "6"
+      - "7"
+    gomips:
+      - softfloat
+
 # Upload plain binaries named like the previous handcrafted releases
 # (routedns-linux-amd64, routedns-linux-armv7, ...) so existing download
-# links keep working.
+# links keep working. The reduced builds carry a -minimal suffix.
 archives:
-  - formats: [binary]
+  - id: default
+    ids:
+      - packaged
+      - embedded
+    formats: [binary]
     name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}'
+
+  - id: minimal
+    ids:
+      - minimal
+    formats: [binary]
+    name_template: '{{ .ProjectName }}-minimal-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}'
 
 nfpms:
   - package_name: routedns
