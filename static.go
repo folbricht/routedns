@@ -70,15 +70,16 @@ func (r *StaticResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	answer.Authoritative = true      // we made that reply up
 	log := logger(r.id, q, ci)
 
+	// Every response gets its own copy of the records. They're shared state and
+	// whatever handles the response downstream is free to modify them.
+	answer.Answer = copyRRs(r.answer)
+	answer.Ns = copyRRs(r.ns)
+	answer.Extra = copyRRs(r.extra)
+
 	// Update the name of every answer record to match that of the query
-	answer.Answer = make([]dns.RR, 0, len(r.answer))
-	for _, rr := range r.answer {
-		r := dns.Copy(rr)
-		r.Header().Name = qName(q)
-		answer.Answer = append(answer.Answer, r)
+	for _, rr := range answer.Answer {
+		rr.Header().Name = qName(q)
 	}
-	answer.Ns = r.ns
-	answer.Extra = r.extra
 	answer.Rcode = r.rcode
 	answer.Truncated = r.truncate
 
