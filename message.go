@@ -112,6 +112,20 @@ func ptr(q *dns.Msg, names []string) *dns.Msg {
 	return a
 }
 
+// Returns a deep copy of a set of records. Used where records are handed
+// out from state that is shared between queries, since consumers of a
+// response, packing it included, can modify the records in it.
+func copyRRs(rrs []dns.RR) []dns.RR {
+	if len(rrs) == 0 {
+		return nil
+	}
+	out := make([]dns.RR, 0, len(rrs))
+	for _, rr := range rrs {
+		out = append(out, dns.Copy(rr))
+	}
+	return out
+}
+
 // Changes the UDP size in the EDNS0 record and returns a
 // copy of the query. Adds an OPT record if there isn't one
 // already. If size is 0, the original query is returned.
