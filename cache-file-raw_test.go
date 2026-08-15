@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,4 +211,60 @@ func TestMemoryBackendWritesRequestedFormat(t *testing.T) {
 			require.True(t, bytes.HasPrefix(content, []byte("{")), "%q must default to JSON", format)
 		}
 	}
+}
+
+// A stored entry is not bounded by the 64KB wire limit. The cache packs
+// without name compression, so a response that arrived comfortably inside the
+// limit can be twice that once stored, and the record limit has to leave room
+// for it rather than dropping the largest entries on the way to disk.
+func TestRawCacheFileKeepsOversizedEntries(t *testing.T) {
+	q := new(dns.Msg)
+	q.SetQuestion("big.example.com.", dns.TypeTXT)
+	a := new(dns.Msg)
+	a.SetReply(q)
+	name := strings.Repeat("averylonglabelusedtomakethisnamebig.", 6) + "example.com."
+	for range 290 {
+		rr, err := dns.NewRR(fmt.Sprintf(`%s 3600 IN TXT "%s"`, name, strings.Repeat("x", 200)))
+		require.NoError(t, err)
+		a.Answer = append(a.Answer, rr)
+	}
+
+	a.Compress = true
+	onTheWire, err := a.Pack()
+	require.NoError(t, err)
+	require.Less(t, len(onTheWire), dns.MaxMsgSize, "this has to be a response that could arrive")
+	a.Compress = false
+
+	now := time.Now()
+	key := lruKeyFromQuery(q)
+	blob, err := newCacheBlob(key, &cacheAnswer{Msg: a, Timestamp: now, Expiry: now.Add(time.Hour)})
+	require.NoError(t, err)
+	require.Greater(t, len(blob), dns.MaxMsgSize, "stored uncompressed, it outgrows the wire limit")
+
+	src := newLRUCache(0)
+	src.addKey(key, blob)
+
+	var buf bytes.Buffer
+	require.NoError(t, src.serializeRaw(&buf))
+
+	dst := newLRUCache(0)
+	require.NoError(t, dst.deserializeRaw(bytes.NewReader(buf.Bytes())))
+	require.Equal(t, 1, dst.size(), "the entry must survive the file, not be skipped")
+}
+
+// A blob laid out by a later version has to be refused rather than read
+// through accessors that no longer match it.
+func TestRawCacheFileRejectsUnknownBlobVersion(t *testing.T) {
+	src := newLRUCache(0)
+	fillCache(t, src, 3)
+	var buf bytes.Buffer
+	require.NoError(t, src.serializeRaw(&buf))
+
+	// Bump the version byte of the first record only.
+	damaged := bytes.Clone(buf.Bytes())
+	damaged[rawCacheHeaderLen+4+blobOffVersion] = blobVersion + 1
+
+	dst := newLRUCache(0)
+	require.NoError(t, dst.deserializeRaw(bytes.NewReader(damaged)))
+	require.Equal(t, 2, dst.size(), "the record with an unknown layout is skipped, the rest load")
 }

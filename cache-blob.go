@@ -38,11 +38,11 @@ import (
 // blob be matched, or hashed, without decoding it back into an lruKey.
 type cacheBlob []byte
 
-// blobVersion is the version of the layout above. It is reserved rather than
-// used: every blob is freshly allocated and so carries 0, and nothing reads it
-// back. It is here so that a later change to the layout has somewhere to say
-// so, and can tell its own records from these. A writer that bumps it has to
-// start setting it explicitly.
+// blobVersion is the version of the layout above. A blob is freshly allocated
+// and so carries 0 without being written, but it is read back: a blob read
+// from the cache file is rejected unless it carries this version, so a later
+// change to the layout keeps old records out of new accessors. A writer that
+// bumps it has to start setting it explicitly.
 //
 // Note that 1 is already taken: it is binaryFormatVersion, the Redis record
 // format, which is a different layout in the same first byte. A stored form
