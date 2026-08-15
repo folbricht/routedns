@@ -43,6 +43,10 @@ type cacheBlob []byte
 // back. It is here so that a later change to the layout has somewhere to say
 // so, and can tell its own records from these. A writer that bumps it has to
 // start setting it explicitly.
+//
+// Note that 1 is already taken: it is binaryFormatVersion, the Redis record
+// format, which is a different layout in the same first byte. A stored form
+// meant to be read by either backend has to start at 2.
 const blobVersion = 0
 
 const (
