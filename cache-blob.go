@@ -20,16 +20,17 @@ import (
 // Layout. Offsets are fixed so the metadata can be read without decoding the
 // key or the message:
 //
-//	0      meta flags (prefetch-eligible)
-//	1..8   timestamp, unix nanoseconds
-//	9..16  expiry, unix nanoseconds
-//	17     key flags (DO, CD)          <- key region starts
-//	18..19 qtype
-//	20..21 qclass
-//	22     ECS source prefix length
-//	23..24 length of the ECS address
-//	25..26 length of the question name
-//	27..   ECS address, then question name
+//	0      version
+//	1      meta flags (prefetch-eligible)
+//	2..9   timestamp, unix nanoseconds
+//	10..17 expiry, unix nanoseconds
+//	18     key flags (DO, CD)          <- key region starts
+//	19..20 qtype
+//	21..22 qclass
+//	23     ECS source prefix length
+//	24..25 length of the ECS address
+//	26..27 length of the question name
+//	28..   ECS address, then question name
 //	       <- key region ends, packed message follows
 //
 // Everything the key is built from sits in one span, which keyRegion returns.
@@ -37,17 +38,25 @@ import (
 // blob be matched, or hashed, without decoding it back into an lruKey.
 type cacheBlob []byte
 
+// blobVersion is the version of the layout above. It is reserved rather than
+// used: every blob is freshly allocated and so carries 0, and nothing reads it
+// back. It is here so that a later change to the layout has somewhere to say
+// so, and can tell its own records from these. A writer that bumps it has to
+// start setting it explicitly.
+const blobVersion = 0
+
 const (
-	blobOffMetaFlags = 0
-	blobOffTimestamp = 1
-	blobOffExpiry    = 9
-	blobOffKeyFlags  = 17 // first byte of the key region
-	blobOffQtype     = 18
-	blobOffQclass    = 20
-	blobOffECSMask   = 22
-	blobOffNetLen    = 23
-	blobOffNameLen   = 25
-	blobHdrLen       = 27
+	blobOffVersion   = 0
+	blobOffMetaFlags = 1
+	blobOffTimestamp = 2
+	blobOffExpiry    = 10
+	blobOffKeyFlags  = 18 // first byte of the key region
+	blobOffQtype     = 19
+	blobOffQclass    = 21
+	blobOffECSMask   = 23
+	blobOffNetLen    = 24
+	blobOffNameLen   = 26
+	blobHdrLen       = 28
 )
 
 const (
@@ -126,6 +135,10 @@ func (b cacheBlob) timestamp() int64 {
 
 func (b cacheBlob) expiry() int64 {
 	return int64(binary.BigEndian.Uint64(b[blobOffExpiry:]))
+}
+
+func (b cacheBlob) version() byte {
+	return b[blobOffVersion]
 }
 
 func (b cacheBlob) prefetchEligible() bool {

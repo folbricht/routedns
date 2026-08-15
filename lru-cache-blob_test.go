@@ -274,3 +274,13 @@ func TestBlobKeyRegionDependsOnlyOnTheKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, first.keyRegion(), third.keyRegion())
 }
+
+// The version byte is reserved, not yet used: blobs are freshly allocated so
+// it reads as 0 without being written. Pinning it means a later layout change
+// bumps it deliberately, and notices it has to start setting it.
+func TestBlobVersionIsReserved(t *testing.T) {
+	blob, err := newCacheBlob(blobTestKey(), &cacheAnswer{Msg: blobTestAnswer(t)})
+	require.NoError(t, err)
+	require.Equal(t, byte(blobVersion), blob.version())
+	require.Zero(t, blobVersion, "still reserved; bumping it means writing it too")
+}
