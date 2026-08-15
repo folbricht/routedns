@@ -25,7 +25,6 @@ type lruCache struct {
 	items      map[uint64]*cacheItem
 	head, tail *cacheItem
 	seed       maphash.Seed
-	count      int
 }
 
 // cacheItem holds a cached answer inline rather than pointing at a
@@ -188,7 +187,6 @@ func (c *lruCache) insert(item *cacheItem) {
 	c.head.next.prev = item
 	c.head.next = item
 
-	c.count++
 	c.resize()
 }
 
@@ -197,7 +195,6 @@ func (c *lruCache) unlink(item *cacheItem) {
 	item.prev.next = item.next
 	item.next.prev = item.prev
 	delete(c.items, c.hash(item.key))
-	c.count--
 }
 
 func (c *lruCache) hash(key lruKey) uint64 {
@@ -246,7 +243,7 @@ func (c *lruCache) resize() {
 	if c.maxItems <= 0 { // no size limit
 		return
 	}
-	for c.count > c.maxItems {
+	for len(c.items) > c.maxItems {
 		c.unlink(c.tail.prev)
 	}
 }
@@ -261,7 +258,6 @@ func (c *lruCache) reset() {
 	c.head = head
 	c.tail = tail
 	c.items = make(map[uint64]*cacheItem)
-	c.count = 0
 }
 
 // Iterate over the cached items and call the provided function. If it
@@ -278,7 +274,7 @@ func (c *lruCache) deleteFunc(f func(*cacheItem) bool) {
 }
 
 func (c *lruCache) size() int {
-	return c.count
+	return len(c.items)
 }
 
 func (c *lruCache) serialize(w io.Writer) error {
