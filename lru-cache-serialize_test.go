@@ -29,10 +29,10 @@ func TestLRUDeserializeLegacyFormat(t *testing.T) {
 		CD:       true,
 		ECSMask:  24,
 	}
-	item := c.items[key]
+	item := c.find(key)
 	require.NotNil(t, item, "the record's key must survive unchanged")
-	require.Equal(t, "host.example.com.", item.Answer.Msg.Question[0].Name)
-	require.True(t, item.Answer.PrefetchEligible)
+	require.Equal(t, "host.example.com.", item.msg.Question[0].Name)
+	require.True(t, item.prefetchEligible)
 }
 
 // Pins the exact bytes written for a fully-populated record. The cache file
