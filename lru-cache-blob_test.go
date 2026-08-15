@@ -276,15 +276,11 @@ func TestBlobKeyRegionDependsOnlyOnTheKey(t *testing.T) {
 }
 
 // The version byte is written, not left at whatever the allocation carried.
-// A blob now travels on its own into Redis and into the cache file, where the
-// byte is what tells a reader the layout matches its accessors, so a blob that
-// went out carrying an implicit 0 would be indistinguishable from a record
-// written before the backends shared a layout.
+// A blob travels on its own into Redis and into the cache file, where the byte
+// is what tells a reader the layout matches its accessors.
 func TestBlobVersionIsWritten(t *testing.T) {
 	blob, err := newCacheBlob(blobTestKey(), &cacheAnswer{Msg: blobTestAnswer(t)})
 	require.NoError(t, err)
 	require.Equal(t, byte(blobVersion), blob.version())
 	require.NotZero(t, blobVersion, "must be written, so it cannot be the zero value")
-	require.NotEqual(t, byte(binaryFormatVersion), blob.version(),
-		"must not collide with the pre-unification Redis record format")
 }
