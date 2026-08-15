@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -34,19 +33,6 @@ type RedisBackendOptions struct {
 }
 
 var _ CacheBackend = (*redisBackend)(nil)
-
-// Buffer pool for encoding cache records to minimize allocations.
-var packBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 0, 2048)
-		return &b
-	},
-}
-
-func putPackBuf(bufPtr *[]byte) {
-	*bufPtr = (*bufPtr)[:0]
-	packBufPool.Put(bufPtr)
-}
 
 const (
 	binaryFormatVersion = 1
@@ -162,11 +148,7 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 		Log.Error("failed to encode cache record", "error", err)
 		return
 	}
-	// If encoding outgrew the pooled buffer, keep the larger one so the
-	// pool adapts to the workload
-	if cap(value) > cap(*bufPtr) {
-		*bufPtr = value
-	}
+	adoptPackBuf(bufPtr, value)
 
 	if b.opt.SyncSet {
 		b.set(key, value, ttl)

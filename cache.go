@@ -77,7 +77,37 @@ type CacheOptions struct {
 	Backend CacheBackend
 }
 
+// Buffer pool for encoding cache records to minimize allocations. Shared by
+// the backends, which all encode a message into wire format to store it.
+var packBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 2048)
+		return &b
+	},
+}
+
+func putPackBuf(bufPtr *[]byte) {
+	*bufPtr = (*bufPtr)[:0]
+	packBufPool.Put(bufPtr)
+}
+
+// adoptPackBuf keeps a buffer that outgrew the pooled one, so the pool adapts
+// to the workload rather than reallocating for every large answer.
+func adoptPackBuf(bufPtr *[]byte, encoded []byte) {
+	if cap(encoded) > cap(*bufPtr) {
+		*bufPtr = encoded
+	}
+}
+
 type CacheBackend interface {
+	// Store a response. The query and the message belong to the caller and may
+	// be modified once Store returns, so a backend has to encode or copy what
+	// it needs before then rather than holding on to them.
+	//
+	// Packing a message is not read-only: dns.Msg.Pack writes the extended
+	// rcode into an OPT record in Extra, if there is one. A backend encodes
+	// during Store, so the caller must not hand over a message whose records
+	// another goroutine is reading at the same time.
 	Store(query *dns.Msg, item *cacheAnswer)
 
 	// Lookup a cached response
@@ -205,9 +235,10 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return a, nil
 	}
 
-	// Put the upstream response into the cache and return it. Need to store
-	// a copy since other elements might modify the response, like the replacer.
-	r.storeInCache(q, a.Copy())
+	// Put the upstream response into the cache and return it. Backends encode
+	// the message during Store and don't retain it, so the copy other elements
+	// like the replacer would otherwise need isn't made here.
+	r.storeInCache(q, a)
 	return a, nil
 }
 

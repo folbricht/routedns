@@ -57,38 +57,51 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 }
 
 func (b *memoryBackend) Store(query *dns.Msg, item *cacheAnswer) {
+	// Encode before locking. Packing the message is the expensive half of a
+	// store and it doesn't need the cache, so queries aren't held up for it.
+	key := lruKeyFromQuery(query)
+	blob, err := newCacheBlob(key, item)
+	if err != nil {
+		Log.Warn("failed to encode cache record", "error", err)
+		return
+	}
 	b.mu.Lock()
-	b.lru.add(query, item)
+	b.lru.addKey(key, blob)
 	b.mu.Unlock()
 }
 
 func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
-	var answer *dns.Msg
-	var timestamp int64
-	var prefetchEligible bool
-	var expiry int64
+	// A stored blob is never modified, so only the reference is taken under
+	// the lock and everything below runs outside it.
+	var blob cacheBlob
 	b.mu.Lock()
 	if item := b.lru.get(q); item != nil {
-		// Copy the message so later elements can modify the response
-		// without affecting the cached original.
-		answer = item.msg.Copy()
-		timestamp = item.timestamp
-		prefetchEligible = item.prefetchEligible
-		expiry = item.expiry
+		blob = item.blob
 	}
 	b.mu.Unlock()
 
 	// Return a cache-miss if there's no answer record in the map
-	if answer == nil {
+	if blob == nil {
 		return nil, false, false
 	}
 
 	// Check if item has expired from the cache
 	now := time.Now().UnixNano()
-	if now > expiry {
+	if now > blob.expiry() {
 		b.Evict(q)
 		return nil, false, false
 	}
+
+	// Unpacking yields a message owned by this caller, so later elements in
+	// the chain can modify it without affecting the cached original.
+	answer := new(dns.Msg)
+	if err := answer.Unpack(blob.message()); err != nil {
+		Log.Warn("failed to decode cache record", "error", err)
+		b.Evict(q)
+		return nil, false, false
+	}
+	timestamp := blob.timestamp()
+	prefetchEligible := blob.prefetchEligible()
 
 	answer.Id = q.Id
 	answer.Question = q.Question // restore the case used in the question
@@ -148,7 +161,7 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		var total, removed int
 		b.mu.Lock()
 		b.lru.deleteFunc(func(item *cacheItem) bool {
-			if now > item.expiry {
+			if now > item.blob.expiry() {
 				removed++
 				return true
 			}

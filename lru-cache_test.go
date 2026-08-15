@@ -9,6 +9,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mustPack returns the wire form of a message, which is what the cache stores.
+func mustPack(t *testing.T, m *dns.Msg) []byte {
+	t.Helper()
+	b, err := m.Pack()
+	require.NoError(t, err)
+	return b
+}
+
+// storedMsg decodes the message held by a cached item.
+func storedMsg(t *testing.T, item *cacheItem) *dns.Msg {
+	t.Helper()
+	require.NotNil(t, item)
+	m := new(dns.Msg)
+	require.NoError(t, m.Unpack(item.blob.message()))
+	return m
+}
+
+// store puts an answer in the cache the way memoryBackend.Store does.
+func store(t *testing.T, c *lruCache, query *dns.Msg, answer *cacheAnswer) {
+	t.Helper()
+	key := lruKeyFromQuery(query)
+	blob, err := newCacheBlob(key, answer)
+	require.NoError(t, err)
+	c.addKey(key, blob)
+}
+
 func TestLRUAddGet(t *testing.T) {
 	c := newLRUCache(5)
 
@@ -38,7 +64,7 @@ func TestLRUAddGet(t *testing.T) {
 			answer: answer,
 		})
 		// Load into the cache
-		c.add(msg, answer)
+		store(t, c, msg, answer)
 	}
 
 	// Since the capacity is only 5 and we loaded 10, only the last 5 should be in there
@@ -51,7 +77,7 @@ func TestLRUAddGet(t *testing.T) {
 	for _, item := range items[5:] {
 		cached := c.get(item.query)
 		require.NotNil(t, cached)
-		require.Equal(t, item.answer.Msg, cached.msg)
+		require.Equal(t, mustPack(t, item.answer.Msg), cached.blob.message())
 	}
 
 	// Delete one of the items directly
@@ -60,8 +86,8 @@ func TestLRUAddGet(t *testing.T) {
 
 	// Use an iterator to delete two more
 	c.deleteFunc(func(item *cacheItem) bool {
-		question := item.msg.Question[0]
-		return question.Name == "test8.com." || question.Name == "test9.com."
+		name := item.blob.key().Question.Name
+		return name == "test8.com." || name == "test9.com."
 	})
 	require.Equal(t, 2, c.size())
 }
@@ -92,20 +118,20 @@ func TestLRUKeyCD(t *testing.T) {
 
 	// Store an (unvalidated) answer for a CD=1 query.
 	cdAnswer := answerFor("cd.example.com.")
-	c.add(queryCD("cd.example.com.", true), cdAnswer)
+	store(t, c, queryCD("cd.example.com.", true), cdAnswer)
 
 	// A CD=0 lookup for the same name must NOT hit the CD=1 entry.
 	require.Nil(t, c.get(queryCD("cd.example.com.", false)),
 		"CD=0 query must not be served the cached CD=1 response")
 
 	// The original CD=1 query still hits its own entry.
-	require.Equal(t, cdAnswer.Msg, c.get(queryCD("cd.example.com.", true)).msg)
+	require.Equal(t, mustPack(t, cdAnswer.Msg), c.get(queryCD("cd.example.com.", true)).blob.message())
 
 	// Storing a CD=0 answer is kept separate from the CD=1 one.
 	plainAnswer := answerFor("cd.example.com.")
-	c.add(queryCD("cd.example.com.", false), plainAnswer)
-	require.Equal(t, plainAnswer.Msg, c.get(queryCD("cd.example.com.", false)).msg)
-	require.Equal(t, cdAnswer.Msg, c.get(queryCD("cd.example.com.", true)).msg)
+	store(t, c, queryCD("cd.example.com.", false), plainAnswer)
+	require.Equal(t, mustPack(t, plainAnswer.Msg), c.get(queryCD("cd.example.com.", false)).blob.message())
+	require.Equal(t, mustPack(t, cdAnswer.Msg), c.get(queryCD("cd.example.com.", true)).blob.message())
 	require.Equal(t, 2, c.size())
 }
 
@@ -129,7 +155,7 @@ func TestLRUKeyECSMask(t *testing.T) {
 	c := newLRUCache(10)
 
 	answer24 := &cacheAnswer{Msg: new(dns.Msg)}
-	c.add(queryECS(24), answer24)
+	store(t, c, queryECS(24), answer24)
 
 	// Same address, different prefix length must be a distinct entry.
 	require.Nil(t, c.get(queryECS(16)),
