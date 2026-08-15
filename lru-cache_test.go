@@ -26,6 +26,15 @@ func storedMsg(t *testing.T, item *cacheItem) *dns.Msg {
 	return m
 }
 
+// store puts an answer in the cache the way memoryBackend.Store does.
+func store(t *testing.T, c *lruCache, query *dns.Msg, answer *cacheAnswer) {
+	t.Helper()
+	key := lruKeyFromQuery(query)
+	blob, err := newCacheBlob(key, answer)
+	require.NoError(t, err)
+	c.addKey(key, blob)
+}
+
 func TestLRUAddGet(t *testing.T) {
 	c := newLRUCache(5)
 
@@ -55,7 +64,7 @@ func TestLRUAddGet(t *testing.T) {
 			answer: answer,
 		})
 		// Load into the cache
-		require.NoError(t, c.add(msg, answer))
+		store(t, c, msg, answer)
 	}
 
 	// Since the capacity is only 5 and we loaded 10, only the last 5 should be in there
@@ -109,7 +118,7 @@ func TestLRUKeyCD(t *testing.T) {
 
 	// Store an (unvalidated) answer for a CD=1 query.
 	cdAnswer := answerFor("cd.example.com.")
-	require.NoError(t, c.add(queryCD("cd.example.com.", true), cdAnswer))
+	store(t, c, queryCD("cd.example.com.", true), cdAnswer)
 
 	// A CD=0 lookup for the same name must NOT hit the CD=1 entry.
 	require.Nil(t, c.get(queryCD("cd.example.com.", false)),
@@ -120,7 +129,7 @@ func TestLRUKeyCD(t *testing.T) {
 
 	// Storing a CD=0 answer is kept separate from the CD=1 one.
 	plainAnswer := answerFor("cd.example.com.")
-	require.NoError(t, c.add(queryCD("cd.example.com.", false), plainAnswer))
+	store(t, c, queryCD("cd.example.com.", false), plainAnswer)
 	require.Equal(t, mustPack(t, plainAnswer.Msg), c.get(queryCD("cd.example.com.", false)).blob.message())
 	require.Equal(t, mustPack(t, cdAnswer.Msg), c.get(queryCD("cd.example.com.", true)).blob.message())
 	require.Equal(t, 2, c.size())
@@ -146,7 +155,7 @@ func TestLRUKeyECSMask(t *testing.T) {
 	c := newLRUCache(10)
 
 	answer24 := &cacheAnswer{Msg: new(dns.Msg)}
-	require.NoError(t, c.add(queryECS(24), answer24))
+	store(t, c, queryECS(24), answer24)
 
 	// Same address, different prefix length must be a distinct entry.
 	require.Nil(t, c.get(queryECS(16)),

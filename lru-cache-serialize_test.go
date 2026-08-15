@@ -29,7 +29,7 @@ func TestLRUDeserializeLegacyFormat(t *testing.T) {
 		CD:       true,
 		ECSMask:  24,
 	}
-	item := c.find(key)
+	item := c.find(c.hash(key), key)
 	require.NotNil(t, item, "the record's key must survive unchanged")
 	require.Equal(t, "host.example.com.", storedMsg(t, item).Question[0].Name)
 	require.True(t, item.blob.prefetchEligible())

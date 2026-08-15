@@ -20,36 +20,34 @@ import (
 // Layout. Offsets are fixed so the metadata can be read without decoding the
 // key or the message:
 //
-//	0      version
-//	1      meta flags (prefetch-eligible)
-//	2..9   timestamp, unix nanoseconds
-//	10..17 expiry, unix nanoseconds
-//	18     key flags (DO, CD)          <- key region starts
-//	19..20 qtype
-//	21..22 qclass
-//	23     ECS source prefix length
-//	24..25 length of the ECS address
-//	26..27 length of the question name
-//	28..   ECS address, then question name
+//	0      meta flags (prefetch-eligible)
+//	1..8   timestamp, unix nanoseconds
+//	9..16  expiry, unix nanoseconds
+//	17     key flags (DO, CD)          <- key region starts
+//	18..19 qtype
+//	20..21 qclass
+//	22     ECS source prefix length
+//	23..24 length of the ECS address
+//	25..26 length of the question name
+//	27..   ECS address, then question name
 //	       <- key region ends, packed message follows
 //
-// The key fields are contiguous so a lookup can compare them as one span, and
-// so an on-disk format can hash the same bytes.
+// Everything the key is built from sits in one span, which keyRegion returns.
+// Nothing on the query path needs that today, but it is what lets a stored
+// blob be matched, or hashed, without decoding it back into an lruKey.
 type cacheBlob []byte
 
 const (
-	blobVersion = 1
-
-	blobOffMetaFlags = 1
-	blobOffTimestamp = 2
-	blobOffExpiry    = 10
-	blobOffKeyFlags  = 18
-	blobOffQtype     = 19
-	blobOffQclass    = 21
-	blobOffECSMask   = 23
-	blobOffNetLen    = 24
-	blobOffNameLen   = 26
-	blobHdrLen       = 28
+	blobOffMetaFlags = 0
+	blobOffTimestamp = 1
+	blobOffExpiry    = 9
+	blobOffKeyFlags  = 17 // first byte of the key region
+	blobOffQtype     = 18
+	blobOffQclass    = 20
+	blobOffECSMask   = 22
+	blobOffNetLen    = 23
+	blobOffNameLen   = 25
+	blobHdrLen       = 27
 )
 
 const (
@@ -66,24 +64,20 @@ func newCacheBlob(key lruKey, a *cacheAnswer) (cacheBlob, error) {
 		return nil, errors.New("cache item has no message")
 	}
 	bufPtr := packBufPool.Get().(*[]byte)
+	defer putPackBuf(bufPtr)
+
 	wire, err := a.Msg.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 	if err != nil {
-		putPackBuf(bufPtr)
 		return nil, err
 	}
-	// If packing outgrew the pooled buffer, keep the larger one so the pool
-	// adapts to the workload.
-	if cap(wire) > cap(*bufPtr) {
-		*bufPtr = wire
-	}
-	blob, err := newCacheBlobFromWire(key, unixNano(a.Timestamp), unixNano(a.Expiry), a.PrefetchEligible, wire)
-	putPackBuf(bufPtr)
-	return blob, err
+	adoptPackBuf(bufPtr, wire)
+	return newCacheBlobFromWire(key, a, wire)
 }
 
-// newCacheBlobFromWire builds the stored form in one exact-size allocation
-// from a message that is already packed.
-func newCacheBlobFromWire(key lruKey, timestamp, expiry int64, prefetchEligible bool, wire []byte) (cacheBlob, error) {
+// newCacheBlobFromWire builds the stored form in one exact-size allocation.
+// meta supplies the timestamps and flags; its Msg is ignored in favour of
+// wire, which is the message already in wire format.
+func newCacheBlobFromWire(key lruKey, meta *cacheAnswer, wire []byte) (cacheBlob, error) {
 	// The protocol caps a name at 255 octets on the wire, but this is the
 	// presentation form, where an unprintable octet escapes to \DDD and a
 	// legal name can run four times that. Both lengths get a uint16, which no
@@ -96,12 +90,11 @@ func newCacheBlobFromWire(key lruKey, timestamp, expiry int64, prefetchEligible 
 	}
 
 	blob := make(cacheBlob, blobHdrLen+len(key.Net)+len(key.Question.Name)+len(wire))
-	blob[0] = blobVersion
-	if prefetchEligible {
+	if meta.PrefetchEligible {
 		blob[blobOffMetaFlags] |= blobMetaPrefetchEligible
 	}
-	binary.BigEndian.PutUint64(blob[blobOffTimestamp:], uint64(timestamp))
-	binary.BigEndian.PutUint64(blob[blobOffExpiry:], uint64(expiry))
+	binary.BigEndian.PutUint64(blob[blobOffTimestamp:], uint64(unixNano(meta.Timestamp)))
+	binary.BigEndian.PutUint64(blob[blobOffExpiry:], uint64(unixNano(meta.Expiry)))
 	blob[blobOffKeyFlags] = keyFlags(key)
 	binary.BigEndian.PutUint16(blob[blobOffQtype:], key.Question.Qtype)
 	binary.BigEndian.PutUint16(blob[blobOffQclass:], key.Question.Qclass)
@@ -147,13 +140,21 @@ func (b cacheBlob) nameLen() int {
 	return int(binary.BigEndian.Uint16(b[blobOffNameLen:]))
 }
 
+// keyRegion returns the span that encodes the key, which is a pure function of
+// the key it was stored under and independent of the metadata and message.
+func (b cacheBlob) keyRegion() []byte {
+	return b[blobOffKeyFlags : blobHdrLen+b.netLen()+b.nameLen()]
+}
+
 // message returns the packed message, which aliases the blob.
 func (b cacheBlob) message() []byte {
 	return b[blobHdrLen+b.netLen()+b.nameLen():]
 }
 
-// matchesKey reports whether the blob was stored under key. Comparing a byte
-// slice against a string this way doesn't allocate.
+// matchesKey reports whether the blob was stored under key. Every field of
+// lruKey has to be checked here; TestBlobKeyComparisonCoversEveryField fails if
+// one is dropped, since missing one serves a response stored under a different
+// question. Comparing a byte slice against a string doesn't allocate.
 func (b cacheBlob) matchesKey(key lruKey) bool {
 	if len(b) < blobHdrLen {
 		return false

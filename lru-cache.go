@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"encoding/json"
-	"errors"
 	"hash/maphash"
 	"io"
 	"strings"
@@ -71,10 +70,7 @@ type cacheAnswerJSON struct {
 // Builds the on-disk form of an item. The stored blob already holds the
 // message in wire format, so the record borrows those bytes rather than
 // packing again.
-func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
-	if len(item.blob) < blobHdrLen {
-		return cacheItemJSON{}, errors.New("cache item is malformed")
-	}
+func newCacheItemJSON(item *cacheItem) cacheItemJSON {
 	return cacheItemJSON{
 		Key: item.blob.key(),
 		Answer: cacheAnswerJSON{
@@ -83,7 +79,7 @@ func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
 			PrefetchEligible: item.blob.prefetchEligible(),
 			Msg:              item.blob.message(),
 		},
-	}, nil
+	}
 }
 
 // Conversions between the time.Time a cacheAnswer carries and the unix
@@ -104,26 +100,30 @@ func nanoTime(n int64) time.Time {
 	return time.Unix(0, n).UTC()
 }
 
-// Rebuilds a stored item from its on-disk form. Returns false for a record
-// that can't be used, which includes ones written by a version that stored
-// different fields.
+// Builds the stored form of a record read from the cache file, returning false
+// for one that can't be used, which includes records written by a version that
+// stored different fields.
 //
 // The file already holds the message in wire format, so it goes into the blob
-// as-is. It is still unpacked once here to reject a corrupt record at load
-// time rather than on every lookup that finds it.
-func (r cacheItemJSON) toCacheItem() (lruKey, cacheBlob, bool) {
+// as-is rather than being unpacked and packed again. It is still unpacked once
+// to validate it, so a record that can't be decoded is kept out of the cache
+// rather than taking up an entry until the lookup that finds it evicts it.
+func (r cacheItemJSON) toCacheBlob() (cacheBlob, bool) {
 	if r.Key.Question.Name == "" || len(r.Answer.Msg) == 0 {
-		return lruKey{}, nil, false
+		return nil, false
 	}
 	if err := new(dns.Msg).Unpack(r.Answer.Msg); err != nil {
-		return lruKey{}, nil, false
+		return nil, false
 	}
-	blob, err := newCacheBlobFromWire(r.Key, unixNano(r.Answer.Timestamp), unixNano(r.Answer.Expiry),
-		r.Answer.PrefetchEligible, r.Answer.Msg)
+	blob, err := newCacheBlobFromWire(r.Key, &cacheAnswer{
+		Timestamp:        r.Answer.Timestamp,
+		Expiry:           r.Answer.Expiry,
+		PrefetchEligible: r.Answer.PrefetchEligible,
+	}, r.Answer.Msg)
 	if err != nil {
-		return lruKey{}, nil, false
+		return nil, false
 	}
-	return r.Key, blob, true
+	return blob, true
 }
 
 func newLRUCache(capacity int) *lruCache {
@@ -141,27 +141,15 @@ func newLRUCache(capacity int) *lruCache {
 	}
 }
 
-// add packs an answer and stores it under the query's key. Packing is done by
-// the caller's goroutine before the cache is locked; see memoryBackend.Store.
-func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) error {
-	key := lruKeyFromQuery(query)
-	blob, err := newCacheBlob(key, answer)
-	if err != nil {
-		return err
-	}
-	c.addKey(key, blob)
-	return nil
-}
-
 func (c *lruCache) addKey(key lruKey, blob cacheBlob) {
-	item := c.touch(key)
-	if item != nil {
+	h := c.hash(key)
+	if item := c.touch(h, key); item != nil {
 		// Already at the top of the list, so only the blob changes. The old
 		// one is left for the collector; a reader may still be decoding it.
 		item.blob = blob
 		return
 	}
-	c.insert(&cacheItem{hash: c.hash(key), blob: blob})
+	c.insert(&cacheItem{hash: h, blob: blob})
 }
 
 // Link a new item into the index and the top of the linked list.
@@ -190,9 +178,10 @@ func (c *lruCache) hash(key lruKey) uint64 {
 	return maphash.Comparable(c.seed, key)
 }
 
-// Find an item by key without changing its position in the queue.
-func (c *lruCache) find(key lruKey) *cacheItem {
-	item := c.items[c.hash(key)]
+// Find an item by key without changing its position in the queue. The hash is
+// passed in so a caller that needs it again, like addKey, computes it once.
+func (c *lruCache) find(h uint64, key lruKey) *cacheItem {
+	item := c.items[h]
 	if item == nil || !item.blob.matchesKey(key) {
 		return nil
 	}
@@ -200,8 +189,8 @@ func (c *lruCache) find(key lruKey) *cacheItem {
 }
 
 // Loads a cache item and puts it to the top of the queue (most recent).
-func (c *lruCache) touch(key lruKey) *cacheItem {
-	item := c.find(key)
+func (c *lruCache) touch(h uint64, key lruKey) *cacheItem {
+	item := c.find(h, key)
 	if item == nil {
 		return nil
 	}
@@ -216,7 +205,8 @@ func (c *lruCache) touch(key lruKey) *cacheItem {
 }
 
 func (c *lruCache) delete(q *dns.Msg) {
-	item := c.find(lruKeyFromQuery(q))
+	key := lruKeyFromQuery(q)
+	item := c.find(c.hash(key), key)
 	if item == nil {
 		return
 	}
@@ -224,7 +214,8 @@ func (c *lruCache) delete(q *dns.Msg) {
 }
 
 func (c *lruCache) get(query *dns.Msg) *cacheItem {
-	return c.touch(lruKeyFromQuery(query))
+	key := lruKeyFromQuery(query)
+	return c.touch(c.hash(key), key)
 }
 
 // Shrink the cache down to the maximum number of items.
@@ -269,11 +260,7 @@ func (c *lruCache) size() int {
 func (c *lruCache) serialize(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	for item := c.tail.prev; item != c.head; item = item.prev {
-		record, err := newCacheItemJSON(item)
-		if err != nil {
-			return err
-		}
-		if err := enc.Encode(record); err != nil {
+		if err := enc.Encode(newCacheItemJSON(item)); err != nil {
 			return err
 		}
 	}
@@ -288,11 +275,11 @@ func (c *lruCache) deserialize(r io.Reader) error {
 			return err
 		}
 		// Skip bad (or incompatible) records
-		key, blob, ok := record.toCacheItem()
+		blob, ok := record.toCacheBlob()
 		if !ok {
 			continue
 		}
-		c.addKey(key, blob)
+		c.addKey(record.Key, blob)
 	}
 	return nil
 }

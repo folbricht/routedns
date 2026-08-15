@@ -239,3 +239,38 @@ func TestMemoryBackendConcurrentStoreAndLookup(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// The layout keeps everything the key is built from in one span, so a stored
+// blob can be matched or hashed without decoding it back into an lruKey. That
+// only holds while no volatile field sits inside the region, so pin it: two
+// entries under the same key must have identical key regions however much
+// their metadata and messages differ.
+func TestBlobKeyRegionDependsOnlyOnTheKey(t *testing.T) {
+	key := blobTestKey()
+	ts := time.Date(2026, 8, 15, 9, 30, 0, 0, time.UTC)
+
+	first, err := newCacheBlob(key, &cacheAnswer{
+		Timestamp: ts, Expiry: ts.Add(time.Hour), PrefetchEligible: true, Msg: blobTestAnswer(t),
+	})
+	require.NoError(t, err)
+
+	other := blobTestAnswer(t)
+	rr, err := dns.NewRR("a.example.com. 60 IN A 198.51.100.9")
+	require.NoError(t, err)
+	other.Answer = append(other.Answer, rr)
+	other.Id = 9
+	second, err := newCacheBlob(key, &cacheAnswer{
+		Timestamp: ts.Add(time.Minute), Expiry: ts.Add(2 * time.Hour), PrefetchEligible: false, Msg: other,
+	})
+	require.NoError(t, err)
+
+	require.NotEqual(t, first.message(), second.message(), "the messages must actually differ")
+	require.Equal(t, first.keyRegion(), second.keyRegion())
+
+	// And a different key has to change it.
+	otherKey := blobTestKey()
+	otherKey.Question.Name = "z.example.com."
+	third, err := newCacheBlob(otherKey, &cacheAnswer{Msg: blobTestAnswer(t)})
+	require.NoError(t, err)
+	require.NotEqual(t, first.keyRegion(), third.keyRegion())
+}
