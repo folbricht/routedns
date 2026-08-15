@@ -100,39 +100,14 @@ func (b *memoryBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		b.Evict(q)
 		return nil, false, false
 	}
-	timestamp := blob.timestamp()
-	prefetchEligible := blob.prefetchEligible()
-
-	answer.Id = q.Id
-	answer.Question = q.Question // restore the case used in the question
-
-	// Calculate the time the record spent in the cache. We need to
-	// subtract that from the TTL of each answer record. A record stored
-	// ahead of the current time, which a backwards clock step or a cache
-	// file from another machine can produce, counts as brand new.
-	var age uint32
-	if now > timestamp {
-		age = uint32((now - timestamp) / int64(time.Second))
+	// Nothing expires an entry here but this backend, so a record that has
+	// aged out is dropped on the way past.
+	if !ageCachedAnswer(answer, q, cacheAge(now, blob.timestamp())) {
+		b.Evict(q)
+		return nil, false, false
 	}
 
-	// Go through all the answers, NS, and Extra and adjust the TTL (subtract the time
-	// it's spent in the cache). If the record is too old, evict it from the cache
-	// and return a cache-miss. OPT records have a TTL of 0 and are ignored.
-	for _, rr := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
-		for _, a := range rr {
-			if _, ok := a.(*dns.OPT); ok {
-				continue
-			}
-			h := a.Header()
-			if age >= h.Ttl {
-				b.Evict(q)
-				return nil, false, false
-			}
-			h.Ttl -= age
-		}
-	}
-
-	return answer, prefetchEligible, true
+	return answer, blob.prefetchEligible(), true
 }
 
 func (b *memoryBackend) Evict(queries ...*dns.Msg) {
