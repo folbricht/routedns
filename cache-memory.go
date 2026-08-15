@@ -34,7 +34,18 @@ type MemoryBackendOptions struct {
 
 	// Write the file in an interval. Only write on shutdown if not set
 	SaveInterval time.Duration
+
+	// Format to write the cache file in, "json" (default) or "raw". Reading
+	// detects the format from the file, so this can be changed either way
+	// without losing what is already on disk.
+	FileFormat string
 }
+
+// Values for MemoryBackendOptions.FileFormat.
+const (
+	CacheFileFormatJSON = "json"
+	CacheFileFormatRaw  = "raw"
+)
 
 var _ CacheBackend = (*memoryBackend)(nil)
 
@@ -182,6 +193,9 @@ func (b *memoryBackend) writeToFile(filename string) error {
 		// buffered writer may still flush to disk here, under the lock.
 		b.mu.Lock()
 		defer b.mu.Unlock()
+		if b.opt.FileFormat == CacheFileFormatRaw {
+			return b.lru.serializeRaw(w)
+		}
 		return b.lru.serialize(w)
 	})
 	if err != nil {
@@ -203,7 +217,15 @@ func (b *memoryBackend) loadFromFile(filename string) error {
 	}
 	defer f.Close()
 
-	if err := b.lru.deserialize(bufio.NewReaderSize(f, fileBufSize)); err != nil {
+	// The format is taken from the file rather than from the configuration,
+	// so switching FileFormat picks up an existing cache instead of dropping
+	// it on the floor.
+	r := bufio.NewReaderSize(f, fileBufSize)
+	read := b.lru.deserialize
+	if isRawCacheFile(r) {
+		read = b.lru.deserializeRaw
+	}
+	if err := read(r); err != nil {
 		log.Warn("failed to read cache from disk", "error", err)
 		return err
 	}
