@@ -19,7 +19,6 @@ import (
 	syslog "github.com/RackSec/srslog"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
-	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
 )
 
@@ -799,21 +798,22 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 				if g.Backend.RedisMaxRetryBackoff == -1 {
 					maxRetryBackoff = -1
 				}
-				backend = rdns.NewRedisBackend(rdns.RedisBackendOptions{
-					RedisOptions: redis.Options{
-						Network:               g.Backend.RedisNetwork,
-						Addr:                  g.Backend.RedisAddress,
-						Username:              g.Backend.RedisUsername,
-						Password:              g.Backend.RedisPassword,
-						DB:                    g.Backend.RedisDB,
-						ContextTimeoutEnabled: true,
-						MaxRetries:            g.Backend.RedisMaxRetries,
-						MinRetryBackoff:       minRetryBackoff,
-						MaxRetryBackoff:       maxRetryBackoff,
-					},
-					KeyPrefix: g.Backend.RedisKeyPrefix,
-					SyncSet:   g.Backend.RedisSyncSet,
+				var err error
+				backend, err = rdns.NewRedisBackend(rdns.RedisBackendOptions{
+					Network:         g.Backend.RedisNetwork,
+					Address:         g.Backend.RedisAddress,
+					Username:        g.Backend.RedisUsername,
+					Password:        g.Backend.RedisPassword,
+					DB:              g.Backend.RedisDB,
+					KeyPrefix:       g.Backend.RedisKeyPrefix,
+					MaxRetries:      g.Backend.RedisMaxRetries,
+					MinRetryBackoff: minRetryBackoff,
+					MaxRetryBackoff: maxRetryBackoff,
+					SyncSet:         g.Backend.RedisSyncSet,
 				})
+				if err != nil {
+					return err
+				}
 			default:
 				return fmt.Errorf("unsupported cache backend %q", g.Backend.Type)
 			}

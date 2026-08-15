@@ -1,3 +1,5 @@
+//go:build !noredis
+
 package rdns
 
 import (
@@ -24,12 +26,6 @@ type redisBackend struct {
 	opt           RedisBackendOptions
 	asyncWriteSem chan struct{}
 	asyncSkipped  *expvar.Int
-}
-
-type RedisBackendOptions struct {
-	RedisOptions redis.Options
-	KeyPrefix    string
-	SyncSet      bool // When true, perform Redis SET synchronously. Default is false (async writes).
 }
 
 var _ CacheBackend = (*redisBackend)(nil)
@@ -119,14 +115,24 @@ func decodeCacheAnswer(b []byte) (*cacheAnswer, error) {
 	}, nil
 }
 
-func NewRedisBackend(opt RedisBackendOptions) *redisBackend {
+func NewRedisBackend(opt RedisBackendOptions) (CacheBackend, error) {
 	b := &redisBackend{
-		client:        redis.NewClient(&opt.RedisOptions),
+		client: redis.NewClient(&redis.Options{
+			Network:               opt.Network,
+			Addr:                  opt.Address,
+			Username:              opt.Username,
+			Password:              opt.Password,
+			DB:                    opt.DB,
+			MaxRetries:            opt.MaxRetries,
+			MinRetryBackoff:       opt.MinRetryBackoff,
+			MaxRetryBackoff:       opt.MaxRetryBackoff,
+			ContextTimeoutEnabled: true,
+		}),
 		opt:           opt,
 		asyncWriteSem: make(chan struct{}, redisAsyncWriteSemCapacity),
 		asyncSkipped:  getVarInt("cache", "redis", "async-skipped"),
 	}
-	return b
+	return b, nil
 }
 
 func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {

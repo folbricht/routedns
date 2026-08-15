@@ -26,3 +26,11 @@ jobs:
 
     - name: Test
       run: go test -race ./...
+
+    # The reduced release builds replace the Redis backend and the Lua
+    # resolver with stubs. Nothing else exercises those, so build and test
+    # them here or they break unnoticed.
+    - name: Build and test without optional features
+      run: |
+        go build -v -tags nolua,noredis ./...
+        go test -tags nolua,noredis ./...
