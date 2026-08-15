@@ -1,8 +1,10 @@
 package rdns
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/maphash"
 	"io"
 	"strings"
@@ -27,19 +29,180 @@ type lruCache struct {
 	seed       maphash.Seed
 }
 
-// cacheItem holds a cached answer inline rather than pointing at a
-// cacheAnswer, which saves an allocation and a traced pointer per entry.
+// cacheItem holds an entry as a single packed byte slice: the key, its
+// metadata and the message in wire format. A []byte holds no pointers, so the
+// collector skips its contents entirely, where an unpacked dns.Msg is a tree
+// of about a dozen objects it has to trace on every cycle.
+//
+// A blob is never modified once built. Replacing an entry allocates a new one,
+// so a reader that took the slice under the lock can decode it after releasing
+// the lock.
 type cacheItem struct {
-	key        lruKey
 	prev, next *cacheItem
+	hash       uint64 // key hash, kept so eviction doesn't have to decode the blob
+	blob       []byte
+}
 
-	msg *dns.Msg
-	// Unix nanoseconds. A time.Time would carry a location pointer that the
-	// GC has to trace for every entry in the cache, for no more resolution
-	// than an int64 already gives.
-	timestamp        int64 // time the record was cached, used to adjust TTL
-	expiry           int64 // time the record expires and should be removed
-	prefetchEligible bool  // the cache can prefetch this record
+// Layout of the blob. Offsets are fixed so the metadata can be read without
+// decoding the key or the message.
+//
+//	0      version
+//	1      meta flags (prefetch-eligible)
+//	2..9   timestamp, unix nanoseconds
+//	10..17 expiry, unix nanoseconds
+//	18     key flags (DO, CD)          <- key region starts
+//	19..20 qtype
+//	21..22 qclass
+//	23     ECS source prefix length
+//	24     length of the ECS address
+//	25     length of the question name
+//	26..   ECS address, then question name
+//	       <- key region ends, packed message follows
+//
+// The key fields are contiguous so a lookup can compare them as one span, and
+// so an on-disk format can hash the same bytes.
+const (
+	blobVersion = 1
+
+	blobOffMetaFlags = 1
+	blobOffTimestamp = 2
+	blobOffExpiry    = 10
+	blobOffKeyFlags  = 18
+	blobOffQtype     = 19
+	blobOffQclass    = 21
+	blobOffECSMask   = 23
+	blobOffNetLen    = 24
+	blobOffNameLen   = 25
+	blobHdrLen       = 26
+)
+
+const (
+	blobMetaPrefetchEligible = 1 << 0
+
+	blobKeyDo = 1 << 0
+	blobKeyCD = 1 << 1
+)
+
+// encodeCacheItem builds the stored form of an entry in one exact-size
+// allocation. wire must already hold the packed message.
+func encodeCacheItem(key lruKey, timestamp, expiry int64, prefetchEligible bool, wire []byte) ([]byte, error) {
+	// Both lengths are held in a single byte. A question name is capped at 255
+	// by the protocol and an address string is far shorter, so this only trips
+	// on a synthesised query.
+	if len(key.Question.Name) > 255 {
+		return nil, fmt.Errorf("question name too long to cache: %d bytes", len(key.Question.Name))
+	}
+	if len(key.Net) > 255 {
+		return nil, fmt.Errorf("ECS address too long to cache: %d bytes", len(key.Net))
+	}
+
+	blob := make([]byte, blobHdrLen+len(key.Net)+len(key.Question.Name)+len(wire))
+	blob[0] = blobVersion
+	if prefetchEligible {
+		blob[blobOffMetaFlags] |= blobMetaPrefetchEligible
+	}
+	binary.BigEndian.PutUint64(blob[blobOffTimestamp:], uint64(timestamp))
+	binary.BigEndian.PutUint64(blob[blobOffExpiry:], uint64(expiry))
+	if key.Do {
+		blob[blobOffKeyFlags] |= blobKeyDo
+	}
+	if key.CD {
+		blob[blobOffKeyFlags] |= blobKeyCD
+	}
+	binary.BigEndian.PutUint16(blob[blobOffQtype:], key.Question.Qtype)
+	binary.BigEndian.PutUint16(blob[blobOffQclass:], key.Question.Qclass)
+	blob[blobOffECSMask] = key.ECSMask
+	blob[blobOffNetLen] = byte(len(key.Net))
+	blob[blobOffNameLen] = byte(len(key.Question.Name))
+
+	n := blobHdrLen
+	n += copy(blob[n:], key.Net)
+	n += copy(blob[n:], key.Question.Name)
+	copy(blob[n:], wire)
+	return blob, nil
+}
+
+// encodeCacheAnswer packs a cacheAnswer's message into a pooled buffer and
+// builds the stored form from it. The message is not retained.
+func encodeCacheAnswerBlob(key lruKey, a *cacheAnswer) ([]byte, error) {
+	if a.Msg == nil {
+		return nil, errors.New("cache item has no message")
+	}
+	bufPtr := packBufPool.Get().(*[]byte)
+	wire, err := a.Msg.PackBuffer((*bufPtr)[:cap(*bufPtr)])
+	if err != nil {
+		putPackBuf(bufPtr)
+		return nil, err
+	}
+	// If packing outgrew the pooled buffer, keep the larger one so the pool
+	// adapts to the workload.
+	if cap(wire) > cap(*bufPtr) {
+		*bufPtr = wire
+	}
+	blob, err := encodeCacheItem(key, unixNano(a.Timestamp), unixNano(a.Expiry), a.PrefetchEligible, wire)
+	putPackBuf(bufPtr)
+	return blob, err
+}
+
+func blobTimestamp(blob []byte) int64 {
+	return int64(binary.BigEndian.Uint64(blob[blobOffTimestamp:]))
+}
+
+func blobExpiry(blob []byte) int64 {
+	return int64(binary.BigEndian.Uint64(blob[blobOffExpiry:]))
+}
+
+func blobPrefetchEligible(blob []byte) bool {
+	return blob[blobOffMetaFlags]&blobMetaPrefetchEligible != 0
+}
+
+// blobMessage returns the packed message, which aliases the blob.
+func blobMessage(blob []byte) []byte {
+	return blob[blobHdrLen+int(blob[blobOffNetLen])+int(blob[blobOffNameLen]):]
+}
+
+// blobMatchesKey reports whether the blob was stored under key. Comparing a
+// byte slice against a string this way doesn't allocate.
+func blobMatchesKey(blob []byte, key lruKey) bool {
+	if len(blob) < blobHdrLen {
+		return false
+	}
+	var flags byte
+	if key.Do {
+		flags |= blobKeyDo
+	}
+	if key.CD {
+		flags |= blobKeyCD
+	}
+	netLen, nameLen := int(blob[blobOffNetLen]), int(blob[blobOffNameLen])
+	if len(blob) < blobHdrLen+netLen+nameLen ||
+		blob[blobOffKeyFlags] != flags ||
+		blob[blobOffECSMask] != key.ECSMask ||
+		netLen != len(key.Net) ||
+		nameLen != len(key.Question.Name) ||
+		binary.BigEndian.Uint16(blob[blobOffQtype:]) != key.Question.Qtype ||
+		binary.BigEndian.Uint16(blob[blobOffQclass:]) != key.Question.Qclass {
+		return false
+	}
+	return string(blob[blobHdrLen:blobHdrLen+netLen]) == key.Net &&
+		string(blob[blobHdrLen+netLen:blobHdrLen+netLen+nameLen]) == key.Question.Name
+}
+
+// blobKey rebuilds the key a blob was stored under. Used when writing the
+// cache file, not on the query path.
+func blobKey(blob []byte) lruKey {
+	netLen, nameLen := int(blob[blobOffNetLen]), int(blob[blobOffNameLen])
+	return lruKey{
+		Question: dns.Question{
+			Name:   string(blob[blobHdrLen+netLen : blobHdrLen+netLen+nameLen]),
+			Qtype:  binary.BigEndian.Uint16(blob[blobOffQtype:]),
+			Qclass: binary.BigEndian.Uint16(blob[blobOffQclass:]),
+		},
+		Net:     string(blob[blobHdrLen : blobHdrLen+netLen]),
+		Do:      blob[blobOffKeyFlags]&blobKeyDo != 0,
+		CD:      blob[blobOffKeyFlags]&blobKeyCD != 0,
+		ECSMask: blob[blobOffECSMask],
+	}
 }
 
 type lruKey struct {
@@ -76,22 +239,20 @@ type cacheAnswerJSON struct {
 	Msg              []byte
 }
 
-// Builds the on-disk form of an item, packing its message to wire format.
+// Builds the on-disk form of an item. The stored blob already holds the
+// message in wire format, so the record borrows those bytes rather than
+// packing again.
 func newCacheItemJSON(item *cacheItem) (cacheItemJSON, error) {
-	if item.msg == nil {
-		return cacheItemJSON{}, errors.New("cache item has no message")
-	}
-	msg, err := item.msg.Pack()
-	if err != nil {
-		return cacheItemJSON{}, err
+	if len(item.blob) < blobHdrLen {
+		return cacheItemJSON{}, errors.New("cache item is malformed")
 	}
 	return cacheItemJSON{
-		Key: item.key,
+		Key: blobKey(item.blob),
 		Answer: cacheAnswerJSON{
-			Timestamp:        nanoTime(item.timestamp),
-			Expiry:           nanoTime(item.expiry),
-			PrefetchEligible: item.prefetchEligible,
-			Msg:              msg,
+			Timestamp:        nanoTime(blobTimestamp(item.blob)),
+			Expiry:           nanoTime(blobExpiry(item.blob)),
+			PrefetchEligible: blobPrefetchEligible(item.blob),
+			Msg:              blobMessage(item.blob),
 		},
 	}, nil
 }
@@ -114,23 +275,26 @@ func nanoTime(n int64) time.Time {
 	return time.Unix(0, n).UTC()
 }
 
-// Rebuilds a cache item from its on-disk form, unpacking the wire-format
-// message. Returns false for a record that can't be used, which includes ones
-// written by a version that stored different fields.
-func (r cacheItemJSON) toCacheItem() (lruKey, *cacheAnswer, bool) {
+// Rebuilds a stored item from its on-disk form. Returns false for a record
+// that can't be used, which includes ones written by a version that stored
+// different fields.
+//
+// The file already holds the message in wire format, so it goes into the blob
+// as-is. It is still unpacked once here to reject a corrupt record at load
+// time rather than on every lookup that finds it.
+func (r cacheItemJSON) toCacheItem() (lruKey, []byte, bool) {
 	if r.Key.Question.Name == "" || len(r.Answer.Msg) == 0 {
 		return lruKey{}, nil, false
 	}
-	msg := new(dns.Msg)
-	if err := msg.Unpack(r.Answer.Msg); err != nil {
+	if err := new(dns.Msg).Unpack(r.Answer.Msg); err != nil {
 		return lruKey{}, nil, false
 	}
-	return r.Key, &cacheAnswer{
-		Timestamp:        r.Answer.Timestamp,
-		Expiry:           r.Answer.Expiry,
-		PrefetchEligible: r.Answer.PrefetchEligible,
-		Msg:              msg,
-	}, true
+	blob, err := encodeCacheItem(r.Key, unixNano(r.Answer.Timestamp), unixNano(r.Answer.Expiry),
+		r.Answer.PrefetchEligible, r.Answer.Msg)
+	if err != nil {
+		return lruKey{}, nil, false
+	}
+	return r.Key, blob, true
 }
 
 func newLRUCache(capacity int) *lruCache {
@@ -148,39 +312,35 @@ func newLRUCache(capacity int) *lruCache {
 	}
 }
 
-func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) {
+// add packs an answer and stores it under the query's key. Packing is done by
+// the caller's goroutine before the cache is locked; see memoryBackend.Store.
+func (c *lruCache) add(query *dns.Msg, answer *cacheAnswer) error {
 	key := lruKeyFromQuery(query)
-	c.addKey(key, answer)
+	blob, err := encodeCacheAnswerBlob(key, answer)
+	if err != nil {
+		return err
+	}
+	c.addKey(key, blob)
+	return nil
 }
 
-func (c *lruCache) addKey(key lruKey, answer *cacheAnswer) {
+func (c *lruCache) addKey(key lruKey, blob []byte) {
 	item := c.touch(key)
 	if item != nil {
-		// Update the item, it's already at the top of the list
-		// so we can just change the value
-		item.setAnswer(answer)
+		// Already at the top of the list, so only the blob changes. The old
+		// one is left for the collector; a reader may still be decoding it.
+		item.blob = blob
 		return
 	}
-	item = &cacheItem{key: key}
-	item.setAnswer(answer)
-	c.insert(item)
-}
-
-// Copies an answer into the item. The cacheAnswer itself is not retained.
-func (i *cacheItem) setAnswer(a *cacheAnswer) {
-	i.msg = a.Msg
-	i.timestamp = unixNano(a.Timestamp)
-	i.expiry = unixNano(a.Expiry)
-	i.prefetchEligible = a.PrefetchEligible
+	c.insert(&cacheItem{hash: c.hash(key), blob: blob})
 }
 
 // Link a new item into the index and the top of the linked list.
 func (c *lruCache) insert(item *cacheItem) {
-	h := c.hash(item.key)
-	if existing := c.items[h]; existing != nil {
+	if existing := c.items[item.hash]; existing != nil {
 		c.unlink(existing)
 	}
-	c.items[h] = item
+	c.items[item.hash] = item
 
 	item.next = c.head.next
 	item.prev = c.head
@@ -194,7 +354,7 @@ func (c *lruCache) insert(item *cacheItem) {
 func (c *lruCache) unlink(item *cacheItem) {
 	item.prev.next = item.next
 	item.next.prev = item.prev
-	delete(c.items, c.hash(item.key))
+	delete(c.items, item.hash)
 }
 
 func (c *lruCache) hash(key lruKey) uint64 {
@@ -204,7 +364,7 @@ func (c *lruCache) hash(key lruKey) uint64 {
 // Find an item by key without changing its position in the queue.
 func (c *lruCache) find(key lruKey) *cacheItem {
 	item := c.items[c.hash(key)]
-	if item == nil || item.key != key {
+	if item == nil || !blobMatchesKey(item.blob, key) {
 		return nil
 	}
 	return item
@@ -299,11 +459,11 @@ func (c *lruCache) deserialize(r io.Reader) error {
 			return err
 		}
 		// Skip bad (or incompatible) records
-		key, answer, ok := record.toCacheItem()
+		key, blob, ok := record.toCacheItem()
 		if !ok {
 			continue
 		}
-		c.addKey(key, answer)
+		c.addKey(key, blob)
 	}
 	return nil
 }

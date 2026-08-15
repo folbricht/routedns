@@ -78,6 +78,9 @@ type CacheOptions struct {
 }
 
 type CacheBackend interface {
+	// Store a response. The query and the message belong to the caller and may
+	// be modified once Store returns, so a backend has to encode or copy what
+	// it needs before then rather than holding on to them.
 	Store(query *dns.Msg, item *cacheAnswer)
 
 	// Lookup a cached response
@@ -205,9 +208,10 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return a, nil
 	}
 
-	// Put the upstream response into the cache and return it. Need to store
-	// a copy since other elements might modify the response, like the replacer.
-	r.storeInCache(q, a.Copy())
+	// Put the upstream response into the cache and return it. Backends encode
+	// the message during Store and don't retain it, so the copy other elements
+	// like the replacer would otherwise need isn't made here.
+	r.storeInCache(q, a)
 	return a, nil
 }
 
