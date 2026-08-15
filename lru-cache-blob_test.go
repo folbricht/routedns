@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -112,11 +113,46 @@ func TestBlobRoundTripWithoutECS(t *testing.T) {
 	require.True(t, blobMatchesKey(blob, key))
 }
 
-// Both lengths live in one byte each, so a name that can't be represented has
-// to be refused rather than silently truncated into a key that collides.
+// A question name arrives in presentation form, where every unprintable octet
+// escapes to \DDD. A single 63-octet binary label is perfectly legal on the
+// wire and lands well past 255 characters, so the length fields have to hold
+// more than a byte. Getting this wrong doesn't corrupt anything: it makes the
+// entry uncacheable and logs a warning on every query for it, which any client
+// can trigger at will.
+func TestBlobLongPresentationName(t *testing.T) {
+	name := strings.Repeat(`\001`, 63) + ".com."
+	require.Greater(t, len(name), 255, "the presentation form must exceed a uint8")
+
+	q := new(dns.Msg)
+	q.SetQuestion(name, dns.TypeA)
+	a := new(dns.Msg)
+	a.SetReply(q)
+	rr, err := dns.NewRR(name + " 300 IN A 192.0.2.1")
+	require.NoError(t, err)
+	a.Answer = []dns.RR{rr}
+
+	// It has to survive the wire, which is the whole point: the name is legal.
+	wire, err := a.Pack()
+	require.NoError(t, err)
+	require.Less(t, len(wire), 255, "the wire form is well within the protocol limit")
+
+	b := NewMemoryBackend(MemoryBackendOptions{GCPeriod: time.Hour})
+	defer b.Close()
+	now := time.Now()
+	b.Store(q, &cacheAnswer{Msg: a, Timestamp: now, Expiry: now.Add(time.Hour)})
+
+	got, _, ok := b.Lookup(q)
+	require.True(t, ok, "a name this long must still cache")
+	require.Equal(t, name, got.Question[0].Name)
+	require.Len(t, got.Answer, 1)
+}
+
+// The length fields still have a ceiling, so the encoding stays total rather
+// than silently truncating into a key that collides with another name.
 func TestBlobRejectsOversizedName(t *testing.T) {
-	long := strings.Repeat("a", 250) + "." + strings.Repeat("b", 10) + "."
-	key := lruKey{Question: dns.Question{Name: long, Qtype: dns.TypeA, Qclass: dns.ClassINET}}
+	key := lruKey{
+		Question: dns.Question{Name: strings.Repeat("a", math.MaxUint16+1), Qtype: dns.TypeA, Qclass: dns.ClassINET},
+	}
 	msg := new(dns.Msg)
 	msg.SetQuestion("short.example.com.", dns.TypeA)
 

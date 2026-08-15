@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"io"
+	"math"
 	"strings"
 	"time"
 
@@ -54,9 +55,9 @@ type cacheItem struct {
 //	19..20 qtype
 //	21..22 qclass
 //	23     ECS source prefix length
-//	24     length of the ECS address
-//	25     length of the question name
-//	26..   ECS address, then question name
+//	24..25 length of the ECS address
+//	26..27 length of the question name
+//	28..   ECS address, then question name
 //	       <- key region ends, packed message follows
 //
 // The key fields are contiguous so a lookup can compare them as one span, and
@@ -72,8 +73,8 @@ const (
 	blobOffQclass    = 21
 	blobOffECSMask   = 23
 	blobOffNetLen    = 24
-	blobOffNameLen   = 25
-	blobHdrLen       = 26
+	blobOffNameLen   = 26
+	blobHdrLen       = 28
 )
 
 const (
@@ -86,13 +87,14 @@ const (
 // encodeCacheItem builds the stored form of an entry in one exact-size
 // allocation. wire must already hold the packed message.
 func encodeCacheItem(key lruKey, timestamp, expiry int64, prefetchEligible bool, wire []byte) ([]byte, error) {
-	// Both lengths are held in a single byte. A question name is capped at 255
-	// by the protocol and an address string is far shorter, so this only trips
-	// on a synthesised query.
-	if len(key.Question.Name) > 255 {
+	// The protocol caps a name at 255 octets on the wire, but this is the
+	// presentation form, where an unprintable octet escapes to \DDD and a
+	// legal name can run four times that. Both lengths get a uint16, which no
+	// name can outgrow; the checks are here so the encoding stays total.
+	if len(key.Question.Name) > math.MaxUint16 {
 		return nil, fmt.Errorf("question name too long to cache: %d bytes", len(key.Question.Name))
 	}
-	if len(key.Net) > 255 {
+	if len(key.Net) > math.MaxUint16 {
 		return nil, fmt.Errorf("ECS address too long to cache: %d bytes", len(key.Net))
 	}
 
@@ -112,8 +114,8 @@ func encodeCacheItem(key lruKey, timestamp, expiry int64, prefetchEligible bool,
 	binary.BigEndian.PutUint16(blob[blobOffQtype:], key.Question.Qtype)
 	binary.BigEndian.PutUint16(blob[blobOffQclass:], key.Question.Qclass)
 	blob[blobOffECSMask] = key.ECSMask
-	blob[blobOffNetLen] = byte(len(key.Net))
-	blob[blobOffNameLen] = byte(len(key.Question.Name))
+	binary.BigEndian.PutUint16(blob[blobOffNetLen:], uint16(len(key.Net)))
+	binary.BigEndian.PutUint16(blob[blobOffNameLen:], uint16(len(key.Question.Name)))
 
 	n := blobHdrLen
 	n += copy(blob[n:], key.Net)
@@ -158,7 +160,15 @@ func blobPrefetchEligible(blob []byte) bool {
 
 // blobMessage returns the packed message, which aliases the blob.
 func blobMessage(blob []byte) []byte {
-	return blob[blobHdrLen+int(blob[blobOffNetLen])+int(blob[blobOffNameLen]):]
+	return blob[blobHdrLen+blobNetLen(blob)+blobNameLen(blob):]
+}
+
+func blobNetLen(blob []byte) int {
+	return int(binary.BigEndian.Uint16(blob[blobOffNetLen:]))
+}
+
+func blobNameLen(blob []byte) int {
+	return int(binary.BigEndian.Uint16(blob[blobOffNameLen:]))
 }
 
 // blobMatchesKey reports whether the blob was stored under key. Comparing a
@@ -174,7 +184,7 @@ func blobMatchesKey(blob []byte, key lruKey) bool {
 	if key.CD {
 		flags |= blobKeyCD
 	}
-	netLen, nameLen := int(blob[blobOffNetLen]), int(blob[blobOffNameLen])
+	netLen, nameLen := blobNetLen(blob), blobNameLen(blob)
 	if len(blob) < blobHdrLen+netLen+nameLen ||
 		blob[blobOffKeyFlags] != flags ||
 		blob[blobOffECSMask] != key.ECSMask ||
@@ -191,7 +201,7 @@ func blobMatchesKey(blob []byte, key lruKey) bool {
 // blobKey rebuilds the key a blob was stored under. Used when writing the
 // cache file, not on the query path.
 func blobKey(blob []byte) lruKey {
-	netLen, nameLen := int(blob[blobOffNetLen]), int(blob[blobOffNameLen])
+	netLen, nameLen := blobNetLen(blob), blobNameLen(blob)
 	return lruKey{
 		Question: dns.Question{
 			Name:   string(blob[blobHdrLen+netLen : blobHdrLen+netLen+nameLen]),

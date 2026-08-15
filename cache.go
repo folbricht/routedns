@@ -81,6 +81,11 @@ type CacheBackend interface {
 	// Store a response. The query and the message belong to the caller and may
 	// be modified once Store returns, so a backend has to encode or copy what
 	// it needs before then rather than holding on to them.
+	//
+	// Packing a message is not read-only: dns.Msg.Pack writes the extended
+	// rcode into an OPT record in Extra, if there is one. A backend encodes
+	// during Store, so the caller must not hand over a message whose records
+	// another goroutine is reading at the same time.
 	Store(query *dns.Msg, item *cacheAnswer)
 
 	// Lookup a cached response
