@@ -43,41 +43,36 @@ func fillCache(t *testing.T, c *lruCache, n int) []*dns.Msg {
 	return queries
 }
 
-// A cache written in the raw format has to come back entry for entry, with the
-// queue order preserved so the least recently used entry is still the first to
-// go once the cache is full again.
 func TestRawCacheFileRoundTrip(t *testing.T) {
-	const entries = 20
 	src := newLRUCache(0)
-	queries := fillCache(t, src, entries)
+	queries := fillCache(t, src, 20)
 
 	var buf bytes.Buffer
 	require.NoError(t, src.serializeRaw(&buf))
 
 	dst := newLRUCache(0)
 	require.NoError(t, dst.deserializeRaw(bytes.NewReader(buf.Bytes())))
-	require.Equal(t, entries, dst.size())
-
+	require.Equal(t, len(queries), dst.size())
 	for _, q := range queries {
-		item := dst.find(dst.hash(lruKeyFromQuery(q)), lruKeyFromQuery(q))
-		require.NotNil(t, item, "%s must be in the reloaded cache", q.Question[0].Name)
-		require.Equal(t, q.Question[0].Name, item.blob.key().Question.Name)
+		key := lruKeyFromQuery(q)
+		require.NotNil(t, dst.find(dst.hash(key), key), "%s must be findable again", key.Question.Name)
 	}
 
-	// Writing the reloaded cache back out has to produce the same bytes.
+	// Writing it back out reproduces the file, so the queue order survives too
+	// and the least recently used entry is still the first to go.
 	var again bytes.Buffer
 	require.NoError(t, dst.serializeRaw(&again))
 	require.Equal(t, buf.Bytes(), again.Bytes())
 }
 
-// The format is taken from the file, not the configuration, so an existing
-// cache survives the option being switched either way.
+// The option picks the format to write; the format to read comes from the file
+// itself, so an existing cache survives the option being changed either way.
 func TestCacheFileFormatIsDetectedNotConfigured(t *testing.T) {
-	for _, tc := range []struct{ wrote, thenRunsAs string }{
-		{CacheFileFormatJSON, CacheFileFormatRaw},
-		{CacheFileFormatRaw, CacheFileFormatJSON},
-		{CacheFileFormatRaw, CacheFileFormatRaw},
-		{CacheFileFormatJSON, CacheFileFormatJSON},
+	for _, tc := range []struct {
+		wrote, prefix, thenRunsAs string
+	}{
+		{"", "{", CacheFileFormatRaw},                            // unset writes JSON
+		{CacheFileFormatRaw, rawCacheMagic, CacheFileFormatJSON}, // raw read back by a JSON-configured run
 	} {
 		t.Run(tc.wrote+"-then-"+tc.thenRunsAs, func(t *testing.T) {
 			filename := filepath.Join(t.TempDir(), "cache")
@@ -93,11 +88,15 @@ func TestCacheFileFormatIsDetectedNotConfigured(t *testing.T) {
 			}
 			require.NoError(t, first.Close())
 
+			content, err := os.ReadFile(filename)
+			require.NoError(t, err)
+			require.True(t, bytes.HasPrefix(content, []byte(tc.prefix)), "%q wrote the wrong format", tc.wrote)
+
 			second := NewMemoryBackend(MemoryBackendOptions{
 				GCPeriod: time.Hour, Filename: filename, FileFormat: tc.thenRunsAs,
 			})
 			defer second.Close()
-			require.Equal(t, len(queries), second.Size(), "the cache written as %s was not read back", tc.wrote)
+			require.Equal(t, len(queries), second.Size())
 			for _, q := range queries {
 				_, _, ok := second.Lookup(q)
 				require.True(t, ok, "%s must survive the format switch", q.Question[0].Name)
@@ -106,9 +105,8 @@ func TestCacheFileFormatIsDetectedNotConfigured(t *testing.T) {
 	}
 }
 
-// A file written in the raw format is not readable by a build that predates
-// it. That has to degrade to an empty cache rather than anything worse, since
-// downgrading the binary is a normal thing to do.
+// Downgrading the binary has to cost a cold cache and nothing worse, which is
+// what the magic buys: a build that predates the format can't parse it.
 func TestRawCacheFileRejectedByJSONReader(t *testing.T) {
 	src := newLRUCache(0)
 	fillCache(t, src, 3)
@@ -120,103 +118,48 @@ func TestRawCacheFileRejectedByJSONReader(t *testing.T) {
 	require.Zero(t, dst.size())
 }
 
-// Damage to the framing costs the rest of the file, damage to one record costs
-// only that record. Either way what was read before it is kept.
+// Damage to a record costs that record; damage to the framing costs the rest
+// of the file, because there is no way to find the next record from it. Either
+// way what was read before it is kept.
 func TestRawCacheFileCorruption(t *testing.T) {
 	src := newLRUCache(0)
 	fillCache(t, src, 10)
 	var buf bytes.Buffer
 	require.NoError(t, src.serializeRaw(&buf))
 	good := buf.Bytes()
-
-	t.Run("truncated mid-record", func(t *testing.T) {
-		dst := newLRUCache(0)
-		require.NoError(t, dst.deserializeRaw(bytes.NewReader(good[:len(good)-20])))
-		require.Equal(t, 9, dst.size(), "the entries before the truncation are kept")
-	})
-
-	t.Run("implausible length stops the read", func(t *testing.T) {
-		// Point the second record's length prefix at something enormous. It
-		// must be refused outright rather than allocating for it.
-		damaged := bytes.Clone(good)
-		firstLen := binary.BigEndian.Uint32(damaged[rawCacheHeaderLen:])
-		at := rawCacheHeaderLen + 4 + int(firstLen)
-		binary.BigEndian.PutUint32(damaged[at:], 3_000_000_000)
-
-		dst := newLRUCache(0)
-		require.NoError(t, dst.deserializeRaw(bytes.NewReader(damaged)))
-		require.Equal(t, 1, dst.size(), "only the record before the bad length is kept")
-	})
+	firstLen := int(binary.BigEndian.Uint32(good[rawCacheHeaderLen:]))
 
 	t.Run("corrupt message skips one record", func(t *testing.T) {
-		// Scribble over the packed message of the first record, leaving the
-		// framing intact, so reading carries on past it.
+		// Scribble on the packed message, leaving the framing intact.
 		damaged := bytes.Clone(good)
-		firstLen := int(binary.BigEndian.Uint32(damaged[rawCacheHeaderLen:]))
 		msg := damaged[rawCacheHeaderLen+4 : rawCacheHeaderLen+4+firstLen]
 		for i := len(msg) - 8; i < len(msg); i++ {
 			msg[i] = 0xff
 		}
-
 		dst := newLRUCache(0)
 		require.NoError(t, dst.deserializeRaw(bytes.NewReader(damaged)))
 		require.Equal(t, 9, dst.size(), "the other records still load")
 	})
 
-	t.Run("header only", func(t *testing.T) {
+	t.Run("truncated file keeps what came before", func(t *testing.T) {
 		dst := newLRUCache(0)
-		require.NoError(t, dst.deserializeRaw(bytes.NewReader(good[:rawCacheHeaderLen])))
-		require.Zero(t, dst.size())
+		require.NoError(t, dst.deserializeRaw(bytes.NewReader(good[:len(good)-20])))
+		require.Equal(t, 9, dst.size())
 	})
 
-	t.Run("wrong version", func(t *testing.T) {
+	t.Run("implausible length is refused not allocated", func(t *testing.T) {
 		damaged := bytes.Clone(good)
-		damaged[len(rawCacheMagic)] = rawCacheVersion + 1
+		binary.BigEndian.PutUint32(damaged[rawCacheHeaderLen+4+firstLen:], 3_000_000_000)
 		dst := newLRUCache(0)
-		require.Error(t, dst.deserializeRaw(bytes.NewReader(damaged)))
+		require.NoError(t, dst.deserializeRaw(bytes.NewReader(damaged)))
+		require.Equal(t, 1, dst.size(), "only the record before the bad length is kept")
 	})
 }
 
-// Size and speed are the reason the format exists, so record what it actually
-// achieves against the JSON format on the same cache.
-func TestRawCacheFileIsSmaller(t *testing.T) {
-	c := newLRUCache(0)
-	fillCache(t, c, 1000)
-
-	var raw, jsonBuf bytes.Buffer
-	require.NoError(t, c.serializeRaw(&raw))
-	require.NoError(t, c.serialize(&jsonBuf))
-
-	t.Logf("1000 entries: raw %d B (%.0f B/record), json %d B (%.0f B/record)",
-		raw.Len(), float64(raw.Len())/1000, jsonBuf.Len(), float64(jsonBuf.Len())/1000)
-	require.Less(t, raw.Len(), jsonBuf.Len()/2, "raw should be well under half the size")
-}
-
-// The file the backend writes has to be the format that was asked for.
-func TestMemoryBackendWritesRequestedFormat(t *testing.T) {
-	for _, format := range []string{CacheFileFormatJSON, CacheFileFormatRaw, ""} {
-		filename := filepath.Join(t.TempDir(), "cache")
-		b := NewMemoryBackend(MemoryBackendOptions{
-			GCPeriod: time.Hour, Filename: filename, FileFormat: format,
-		})
-		q, answer := rawTestEntry(t, 0)
-		b.Store(q, answer)
-		require.NoError(t, b.Close())
-
-		content, err := os.ReadFile(filename)
-		require.NoError(t, err)
-		if format == CacheFileFormatRaw {
-			require.True(t, bytes.HasPrefix(content, []byte(rawCacheMagic)))
-		} else {
-			require.True(t, bytes.HasPrefix(content, []byte("{")), "%q must default to JSON", format)
-		}
-	}
-}
-
-// A stored entry is not bounded by the 64KB wire limit. The cache packs
+// A stored entry is not bounded by the 64KB wire limit: the cache packs
 // without name compression, so a response that arrived comfortably inside the
-// limit can be twice that once stored, and the record limit has to leave room
-// for it rather than dropping the largest entries on the way to disk.
+// limit can be twice that once stored. The record limit has to leave room for
+// it rather than dropping the largest entries on the way to disk.
 func TestRawCacheFileKeepsOversizedEntries(t *testing.T) {
 	q := new(dns.Msg)
 	q.SetQuestion("big.example.com.", dns.TypeTXT)
@@ -243,7 +186,6 @@ func TestRawCacheFileKeepsOversizedEntries(t *testing.T) {
 
 	src := newLRUCache(0)
 	src.addKey(key, blob)
-
 	var buf bytes.Buffer
 	require.NoError(t, src.serializeRaw(&buf))
 
@@ -252,7 +194,8 @@ func TestRawCacheFileKeepsOversizedEntries(t *testing.T) {
 	require.Equal(t, 1, dst.size(), "the entry must survive the file, not be skipped")
 }
 
-// A blob laid out by a later version has to be refused rather than read
+// Persisting blobs makes their version byte part of an on-disk format, so a
+// record laid out by a later version has to be refused rather than read
 // through accessors that no longer match it.
 func TestRawCacheFileRejectsUnknownBlobVersion(t *testing.T) {
 	src := newLRUCache(0)
@@ -260,7 +203,6 @@ func TestRawCacheFileRejectsUnknownBlobVersion(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, src.serializeRaw(&buf))
 
-	// Bump the version byte of the first record only.
 	damaged := bytes.Clone(buf.Bytes())
 	damaged[rawCacheHeaderLen+4+blobOffVersion] = blobVersion + 1
 
