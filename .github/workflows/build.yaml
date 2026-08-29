@@ -22,7 +22,61 @@ jobs:
         go-version-file: go.mod
 
     - name: Build
-      run: go build -v .
+      run: go build -v ./...
+
+    - name: Vet
+      run: go vet ./...
 
     - name: Test
       run: go test -race ./...
+
+  # Compile every target that .goreleaser.yaml ships. The library carries
+  # per-platform files (netns_*, sockopts_*, xsocket_*) that the linux/amd64
+  # build above never touches, so without this a break in one of them only
+  # turns up when a release is cut. Keep this list in sync with the build
+  # targets in .goreleaser.yaml.
+  cross-build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}${{ matrix.gomips && format(' {0}', matrix.gomips) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Targets packaged as deb/rpm/apk/archlinux, plus the plain binaries.
+          - {goos: linux, goarch: amd64}
+          - {goos: linux, goarch: arm64}
+          - {goos: linux, goarch: arm, goarm: "7"}
+          - {goos: darwin, goarch: amd64}
+          - {goos: darwin, goarch: arm64}
+          - {goos: windows, goarch: amd64}
+          - {goos: freebsd, goarch: amd64}
+          # Binary-only targets for small/embedded devices. armv6 covers older
+          # Raspberry Pis, mips/mipsle softfloat cover OpenWrt routers. These
+          # are the only 32-bit targets, so they also guard against word-size
+          # assumptions in the library.
+          - {goos: linux, goarch: arm, goarm: "6"}
+          - {goos: linux, goarch: mips, gomips: softfloat}
+          - {goos: linux, goarch: mipsle, gomips: softfloat}
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOARM: ${{ matrix.goarm }}
+      GOMIPS: ${{ matrix.gomips }}
+      CGO_ENABLED: "0"
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Build
+      run: go build -v ./...
+
+    # Type-checks and runs the analyzers against this platform's build tags,
+    # which catches more than compiling alone.
+    - name: Vet
+      run: go vet ./...
