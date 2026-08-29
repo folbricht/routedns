@@ -4,6 +4,7 @@
 
 - [Overview](#overview)
   - [Split Configuration](#split-configuration)
+  - [Validating a Configuration](#validating-a-configuration)
   - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
 - [Listeners](#listeners)
   - [Plain DNS](#plain-dns)
@@ -119,6 +120,19 @@ routedns example-config/split-config/*.toml
 The same constraints on unique identifiers apply in a split configuration. The individual files are effectively concatenated prior to being loaded.
 
 Example [split-config](../cmd/routedns/example-config/split-config).
+
+### Validating a Configuration
+
+The `--check` option loads a configuration, builds everything it defines, and exits without serving any queries. It exits non-zero if anything failed, so it can be used in CI or before restarting a service.
+
+```text
+routedns --check config.toml
+routedns --check example-config/split-config/*.toml
+```
+
+Building the configuration is what validates it, so `--check` does the same work startup does, short of binding sockets and answering queries. That means it reads certificates and cache files, loads blocklists from their sources (including over HTTP), and connects to Redis. Problems that only appear at that point, such as an unreadable certificate or a blocklist URL that no longer resolves, are reported.
+
+It does not bind any listener address and does not write the cache file, so it is safe to run against the configuration of an instance that is currently serving.
 
 ## Listeners
 
@@ -816,7 +830,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
    {format = "regexp", source = "/path/to/local/regexp.list"},
 ]
 ```
@@ -829,7 +843,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
 ]
 ```
 
@@ -841,8 +855,8 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
-   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list"},
 ]
 allowlist-resolver = "trusted-resolver" # Send anything on the allowlist to a different upstream resolver (optional)
 allowlist-refresh = 86400

@@ -156,6 +156,12 @@ Save as `config.toml` and run:
 routedns config.toml
 ```
 
+To check a configuration without serving queries, use `--check`. It builds everything the config defines and exits non-zero if anything failed, without binding any listener address:
+
+```text
+routedns --check config.toml
+```
+
 An example systemd service file is provided [here](cmd/routedns/routedns.service).
 
 ## Use Cases

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -26,6 +27,7 @@ import (
 type options struct {
 	logLevel uint32
 	version  bool
+	check    bool
 }
 
 func main() {
@@ -47,9 +49,14 @@ or upstream resolvers.
 Configuration can be split over multiple files with listeners,
 groups and routers defined in different files and provided as
 arguments.
+
+Use --check to validate a configuration without serving any
+queries. It builds everything the config defines and exits,
+non-zero if anything failed.
 `,
-		Example: `  routedns config.toml`,
-		Args:    cobra.MinimumNArgs(0),
+		Example: `  routedns config.toml
+  routedns --check config.toml`,
+		Args: cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return start(opt, args)
 		},
@@ -58,6 +65,7 @@ arguments.
 
 	cmd.Flags().Uint32VarP(&opt.logLevel, "log-level", "l", 4, "log level; 1=None,2=Error,3=Warn,4=Info,5=Debug,6=Trace")
 	cmd.Flags().BoolVarP(&opt.version, "version", "v", false, "Prints code version string")
+	cmd.Flags().BoolVar(&opt.check, "check", false, "Validate the configuration and exit without serving queries")
 
 	cmd.AddCommand(fdServerCommand())
 
@@ -171,6 +179,42 @@ func (n Node) ID() string {
 // Functions to call on shutdown
 var onClose []func()
 
+// uniqueIDs returns the ids with blanks and duplicates removed. One node can
+// legitimately reference the same resolver through more than one option, such
+// as a blocklist that sends allowlist matches to the upstream it already
+// forwards to, but the DAG rejects an edge it already has. Sorting is what
+// makes slices.Compact see every duplicate, not just adjacent ones; the order
+// is otherwise irrelevant since these only become graph edges.
+func uniqueIDs(ids []string) []string {
+	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" })
+	slices.Sort(ids)
+	return slices.Compact(ids)
+}
+
+type pendingListener struct {
+	id     string
+	nsName string // empty unless the listener is bound to a netns
+	build  func() (rdns.Listener, error)
+	ln     rdns.Listener // pre-built for non-netns listeners
+}
+
+// buildDeferredListeners builds the listeners that were left unbuilt because
+// they are bound to a netns and get built lazily by the supervisor once the
+// namespace shows up. Used by --check to validate their options too. The
+// listener constructors don't bind sockets, so this doesn't need the
+// namespace to exist.
+func buildDeferredListeners(listeners []pendingListener) error {
+	for _, pl := range listeners {
+		if pl.ln != nil {
+			continue
+		}
+		if _, err := pl.build(); err != nil {
+			return fmt.Errorf("listener '%s': %w", pl.id, err)
+		}
+	}
+	return nil
+}
+
 func start(opt options, args []string) error {
 	// Set the log level in the library package
 	level, err := slogLevel(opt.logLevel)
@@ -188,6 +232,14 @@ func start(opt options, args []string) error {
 	}
 	rdns.Log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	return run(opt, args)
+}
+
+// run builds everything the config defines and, unless --check was given,
+// starts it and blocks until told to stop. Kept separate from start() so it
+// can be called without reassigning the library logger, which components
+// already running read from.
+func run(opt options, args []string) error {
 	config, err := loadConfig(args...)
 	if err != nil {
 		return err
@@ -223,7 +275,9 @@ func start(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
-		edges[id] = append(v.Resolvers, v.AllowListResolver, v.BlockListResolver, v.LimitResolver, v.RetryResolver)
+		ids := append([]string{}, v.Resolvers...)
+		ids = append(ids, v.AllowListResolver, v.BlockListResolver, v.LimitResolver, v.RetryResolver)
+		edges[id] = uniqueIDs(ids)
 	}
 	for id, v := range config.Routers {
 		node := &Node{id, v}
@@ -231,22 +285,15 @@ func start(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
-		// One router can have multiple edges to the same resolver.
-		// Dedup them before adding to the list of edges.
-		dep := make(map[string]struct{})
+		ids := make([]string, 0, len(v.Routes))
 		for _, route := range v.Routes {
-			dep[route.Resolver] = struct{}{}
+			ids = append(ids, route.Resolver)
 		}
-		for r := range dep {
-			edges[id] = append(edges[id], r)
-		}
+		edges[id] = uniqueIDs(ids)
 	}
-	// Add the edges to the DAG. This will fail if there are duplicate edges, recursion or missing nodes
+	// Add the edges to the DAG. This will fail if there is recursion or missing nodes.
 	for id, es := range edges {
 		for _, e := range es {
-			if e == "" {
-				continue
-			}
 			if err := graph.AddEdge(id, e); err != nil {
 				return err
 			}
@@ -280,12 +327,6 @@ func start(opt options, args []string) error {
 	}
 
 	// Build the Listeners last as they can point to routers, groups or resolvers directly.
-	type pendingListener struct {
-		id     string
-		nsName string // empty unless the listener is bound to a netns
-		build  func() (rdns.Listener, error)
-		ln     rdns.Listener // pre-built for non-netns listeners
-	}
 	var listeners []pendingListener
 	for id, l := range config.Listeners {
 		resolver, ok := resolvers[l.Resolver]
@@ -439,6 +480,25 @@ func start(opt options, args []string) error {
 			}
 		}
 		listeners = append(listeners, pl)
+	}
+
+	// In check mode everything the config defines has been built by now, which
+	// is the validation. Report and exit without starting anything.
+	//
+	// Note this returns before the onClose handlers rather than running them.
+	// A memory cache backend writes its content to file on close, so running
+	// them here would flush an empty cache over the file of an instance that
+	// is actually serving.
+	if opt.check {
+		if err := buildDeferredListeners(listeners); err != nil {
+			return err
+		}
+		rdns.Log.Info("configuration is valid",
+			"listeners", len(listeners),
+			"resolvers", len(config.Resolvers),
+			"groups", len(config.Groups),
+			"routers", len(config.Routers))
+		return nil
 	}
 
 	// Start the listeners. Listeners bound to a netns are run through a

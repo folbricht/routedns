@@ -43,8 +43,8 @@ type = "blocklist-v2"
 resolvers = ["blocklist-response"]
 blocklist-refresh = 86400
 blocklist-source = [
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/easylist/routedns.blocklist.domain.list"},
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
 ]
 
 # Block responses that include certain names. Also loaded via HTTP and refreshed daily
@@ -53,8 +53,8 @@ type = "response-blocklist-name"
 resolvers = ["blocklist-ip"]
 blocklist-refresh = 86400
 blocklist-source = [
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/cloak/routedns.blocklist.domain.list"},
-	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-dom/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/anti-track/routedns.blocklist.domain.list"},
+	{format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
 ]
 
 # Block responses by IP ranges
@@ -63,8 +63,8 @@ type = "response-blocklist-ip"
 resolvers = ["cloudflare"]
 blocklist-refresh = 86400
 blocklist-source = [
-	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-ip/plain.black.ip4cidr.list"},
-	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/malicious-ip/plain.black.ip6cidr.list"},
+	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-ip/plain.black.ip4cidr.list"},
+	{format = "cidr", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-ip/plain.black.ip6cidr.list"},
 ]
 
 # Resolver group that uses 2 cloudflare upstream resolvers, additional ones can be added
