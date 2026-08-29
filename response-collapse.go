@@ -18,7 +18,7 @@ type ResponseCollapseOptions struct {
 
 var _ Resolver = &ResponseCollapse{}
 
-// NewResponseMinimize returns a new instance of a response minimizer.
+// NewResponseCollapse returns a new instance of a response collapser.
 func NewResponseCollapse(id string, resolver Resolver, opt ResponseCollapseOptions) *ResponseCollapse {
 	return &ResponseCollapse{id: id, resolver: resolver, ResponseCollapseOptions: opt}
 }

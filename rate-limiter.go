@@ -41,7 +41,7 @@ type RateLimiterMetrics struct {
 	drop *expvar.Int
 }
 
-// NewRateLimiterIP returns a new instance of a query rate limiter.
+// NewRateLimiter returns a new instance of a query rate limiter.
 func NewRateLimiter(id string, resolver Resolver, opt RateLimiterOptions) *RateLimiter {
 	if opt.Window == 0 {
 		opt.Window = 60

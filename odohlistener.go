@@ -263,7 +263,7 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", ODOH_CONTENT_TYPE)
-	w.Write(obliviousResponse.Marshal())
+	_, _ = w.Write(obliviousResponse.Marshal())
 }
 
 func (s *ODoHListener) String() string {
@@ -271,7 +271,7 @@ func (s *ODoHListener) String() string {
 }
 
 func (s *ODoHListener) configHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write(s.config)
+	_, _ = w.Write(s.config)
 }
 
 func getKeyPair(opt ODoHListenerOptions) (odoh.ObliviousDoHKeyPair, error) {

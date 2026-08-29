@@ -49,7 +49,7 @@ func NewMemoryBackend(opt MemoryBackendOptions) *memoryBackend {
 	if opt.Filename != "" {
 		// Clean up temp files left behind by a run that was killed mid-write.
 		removeStaleTempFiles(filepath.Dir(opt.Filename))
-		b.loadFromFile(opt.Filename)
+		_ = b.loadFromFile(opt.Filename)
 	}
 	go b.startGC(opt.GCPeriod)
 	go b.intervalSave()
@@ -216,6 +216,6 @@ func (b *memoryBackend) intervalSave() {
 	}
 	for {
 		time.Sleep(b.opt.SaveInterval)
-		b.writeToFile(b.opt.Filename)
+		_ = b.writeToFile(b.opt.Filename)
 	}
 }
