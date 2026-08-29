@@ -72,12 +72,26 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The build context excludes .git, so the version stamp has to be passed
+      # into the image build rather than derived from VCS as it is for the
+      # goreleaser builds. Read the commit from the checkout so it matches the
+      # tag being released, not whatever triggered the workflow.
+      - name: Build metadata
+        id: meta
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push images
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
+          build-args: |
+            VERSION=${{ inputs.tag || github.ref_name }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            DATE=${{ steps.meta.outputs.date }}
           tags: |
             folbricht/routedns:latest
             folbricht/routedns:${{ inputs.tag || github.ref_name }}

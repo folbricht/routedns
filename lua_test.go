@@ -1074,7 +1074,7 @@ end`,
 	txt, ok := answer.Answer[0].(*dns.TXT)
 	require.True(t, ok)
 	require.Equal(t, uint16(dns.ClassCHAOS), txt.Hdr.Class)
-	require.Equal(t, []string{BuildVersion}, txt.Txt)
+	require.Equal(t, []string{CurrentBuild().Version}, txt.Txt)
 }
 
 func TestLuaAuthoritativeField(t *testing.T) {

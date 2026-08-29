@@ -6,12 +6,24 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
+# Version stamping. The build context excludes .git (see .dockerignore), so the
+# toolchain can't derive these from VCS the way a normal build does and they
+# have to be passed in. The release workflow supplies them; a plain
+# "docker build" leaves them empty and the binary reports "(devel)".
+ARG VERSION
+ARG COMMIT
+ARG DATE
+
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} CGO_ENABLED=0 \
-	go build -trimpath -ldflags="-s -w" -o /routedns ./cmd/routedns
+	go build -trimpath -ldflags="-s -w \
+	-X github.com/folbricht/routedns.BuildVersion=$VERSION \
+	-X github.com/folbricht/routedns.BuildCommit=$COMMIT \
+	-X github.com/folbricht/routedns.BuildTime=$DATE" \
+	-o /routedns ./cmd/routedns
 
 # Distroless static base: no shell, package manager, or userland — only the
 # static binary plus CA certs, tzdata, and /etc/passwd. The :latest tag runs as
