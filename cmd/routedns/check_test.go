@@ -34,6 +34,30 @@ resolver = "router"
 `))
 }
 
+// A group can reach the same resolver through more than one option. Both
+// references produce the same DAG edge, which the DAG rejects as a duplicate
+// unless they are deduplicated first.
+func TestCheckGroupReferencesResolverTwice(t *testing.T) {
+	require.NoError(t, check(t, `
+[resolvers.upstream]
+address = "127.0.0.1:5399"
+protocol = "udp"
+
+[groups.blocked]
+type = "blocklist-v2"
+resolvers = ["upstream"]
+allowlist-resolver = "upstream"
+blocklist-format = "domain"
+blocklist = ["evil.com"]
+allowlist = ["good.com"]
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "blocked"
+`))
+}
+
 func TestCheckInvalidConfig(t *testing.T) {
 	err := check(t, `
 [listeners.local-udp]

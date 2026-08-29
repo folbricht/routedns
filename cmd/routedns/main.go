@@ -178,6 +178,26 @@ func (n Node) ID() string {
 // Functions to call on shutdown
 var onClose []func()
 
+// uniqueIDs returns the non-blank ids in the order given, without duplicates.
+// One node can legitimately reference the same resolver through more than one
+// option, such as a blocklist that sends allowlist matches to the upstream it
+// already forwards to, but the DAG rejects an edge it already has.
+func uniqueIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 type pendingListener struct {
 	id     string
 	nsName string // empty unless the listener is bound to a netns
@@ -262,7 +282,9 @@ func run(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
-		edges[id] = append(v.Resolvers, v.AllowListResolver, v.BlockListResolver, v.LimitResolver, v.RetryResolver)
+		ids := append([]string{}, v.Resolvers...)
+		ids = append(ids, v.AllowListResolver, v.BlockListResolver, v.LimitResolver, v.RetryResolver)
+		edges[id] = uniqueIDs(ids)
 	}
 	for id, v := range config.Routers {
 		node := &Node{id, v}
@@ -270,22 +292,15 @@ func run(opt options, args []string) error {
 		if err != nil {
 			return err
 		}
-		// One router can have multiple edges to the same resolver.
-		// Dedup them before adding to the list of edges.
-		dep := make(map[string]struct{})
+		ids := make([]string, 0, len(v.Routes))
 		for _, route := range v.Routes {
-			dep[route.Resolver] = struct{}{}
+			ids = append(ids, route.Resolver)
 		}
-		for r := range dep {
-			edges[id] = append(edges[id], r)
-		}
+		edges[id] = uniqueIDs(ids)
 	}
-	// Add the edges to the DAG. This will fail if there are duplicate edges, recursion or missing nodes
+	// Add the edges to the DAG. This will fail if there is recursion or missing nodes.
 	for id, es := range edges {
 		for _, e := range es {
-			if e == "" {
-				continue
-			}
 			if err := graph.AddEdge(id, e); err != nil {
 				return err
 			}
