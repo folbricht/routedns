@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	ErrNoSignature        = errors.New("dnssec: no RRSIG for RRset")
-	ErrNoKey              = errors.New("dnssec: no matching DNSKEY")
-	ErrSignatureInvalid   = errors.New("dnssec: signature verification failed")
-	ErrSignatureExpired   = errors.New("dnssec: RRSIG outside its validity period")
-	ErrDSMismatch         = errors.New("dnssec: DNSKEY doesn't match DS")
+	ErrNoSignature          = errors.New("dnssec: no RRSIG for RRset")
+	ErrNoKey                = errors.New("dnssec: no matching DNSKEY")
+	ErrSignatureInvalid     = errors.New("dnssec: signature verification failed")
+	ErrSignatureExpired     = errors.New("dnssec: RRSIG outside its validity period")
+	ErrDSMismatch           = errors.New("dnssec: DNSKEY doesn't match DS")
 	ErrNoTrustAnchor        = errors.New("dnssec: no trust anchor")
 	ErrInsecureDelegation   = errors.New("dnssec: insecure delegation")
 	ErrSignerOutOfBailiwick = errors.New("dnssec: RRSIG signer name out of bailiwick")
