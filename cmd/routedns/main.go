@@ -462,13 +462,34 @@ func start(opt options, args []string) error {
 	// Graceful shutdown
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	<-sig
+	waitForShutdownSignal(sig)
 	rdns.Log.Info("stopping")
 	for _, f := range onClose {
 		f()
 	}
 
 	return nil
+}
+
+// waitForShutdownSignal blocks until a signal arrives that should terminate
+// RouteDNS, and returns it.
+//
+// SIGHUP is logged and ignored. It conventionally asks a daemon to reload,
+// and RouteDNS has no reload support, so the useful choice is between exiting
+// and doing nothing. Exiting takes name resolution down for everything behind
+// the resolver, which is the worse outcome by far when an operator only meant
+// to refresh blocklists. Note that ignoring it requires catching it: the Go
+// runtime terminates the process for an un-notified SIGHUP, so leaving it out
+// of signal.Notify would not help.
+func waitForShutdownSignal(sig <-chan os.Signal) os.Signal {
+	for {
+		s := <-sig
+		if s != syscall.SIGHUP {
+			return s
+		}
+		rdns.Log.Warn("ignoring signal, RouteDNS cannot reload; restart it to apply config changes",
+			"signal", s.String())
+	}
 }
 
 // Instantiate a group object based on configuration and add to the map of resolvers by ID.
