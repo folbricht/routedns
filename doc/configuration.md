@@ -830,7 +830,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
+   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
    {format = "regexp", source = "/path/to/local/regexp.list"},
 ]
 ```
@@ -843,7 +843,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list", cache-dir = "/var/tmp", allow-failure = true},
 ]
 ```
 
@@ -855,8 +855,8 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list"},
-   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list"},
 ]
 allowlist-resolver = "trusted-resolver" # Send anything on the allowlist to a different upstream resolver (optional)
 allowlist-refresh = 86400

@@ -1,6 +1,6 @@
 # Config with a remote blocklist that is refreshed once a day and also a remote
-# allowlist that overrides any blocking rules. Multiple block and allow-lists
-# with different formats can be specified, but the refresh-period is the same.
+# allowlist that overrides any blocking rules. Multiple block and allow-lists can
+# be specified, each with its own format, but the refresh-period is the same.
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"
@@ -10,13 +10,13 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.domain.list", allow-failure = true},
-   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.blocklist.regexp.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list", allow-failure = true},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list"},
 ]
 allowlist-refresh = 86400
 allowlist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.allowlist.domain.list", allow-failure = true},
-   {format = "regexp", source = "https://raw.githubusercontent.com/cbuijs/accomplist/master/deugniets/routedns.allowlist.regexp.list"},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.allowlist.domain.list", allow-failure = true},
+   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.allowlist.domain.list"},
 ]
 
 [listeners.local-udp]
