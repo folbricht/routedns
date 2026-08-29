@@ -74,7 +74,13 @@ jobs:
           # UPDATE
           perl -0777 -i -pe "s/BuildVersion.*string = \".*\"/BuildVersion string = \"$CHANGE_BUILD_VERSION\"/g" version.go
           perl -0777 -i -pe "s/BuildTime.*string = \".*\"/BuildTime    string = \"$CURRENT_BUILD_TIME\"/g" version.go
-          perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber     string = \"$CHANGE_BUILD_NUMBER\"/g" version.go
+          perl -0777 -i -pe "s/BuildNumber.*string = \".*\"/BuildNumber  string = \"$CHANGE_BUILD_NUMBER\"/g" version.go
+
+          # The padding above matches what gofmt wants for the current field
+          # names, but it is hardcoded and would go stale if a field is added
+          # or renamed. Run gofmt so the committed file is formatted either
+          # way; CI checks formatting and would otherwise fail on every bump.
+          gofmt -w version.go
 
           # GIT
           git add .
