@@ -17,15 +17,25 @@ func check(t *testing.T, content string) error {
 	return run(options{check: true}, []string{name})
 }
 
-// Routers are the one part of the pipeline the test below doesn't build.
+// Routers are the one part of the pipeline the test below doesn't build. The
+// default route here points back at the resolver the first route uses, so the
+// duplicate ids are not adjacent.
 func TestCheckValidConfig(t *testing.T) {
 	require.NoError(t, check(t, `
 [resolvers.upstream]
 address = "127.0.0.1:5399"
 protocol = "udp"
 
+[resolvers.other]
+address = "127.0.0.1:5398"
+protocol = "udp"
+
 [routers.router]
-routes = [{type = "A", resolver = "upstream"}, {resolver = "upstream"}]
+routes = [
+  {type = "A", resolver = "upstream"},
+  {type = "AAAA", resolver = "other"},
+  {resolver = "upstream"},
+]
 
 [listeners.local-udp]
 address = "127.0.0.1:5399"

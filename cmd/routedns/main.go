@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -55,7 +56,7 @@ non-zero if anything failed.
 `,
 		Example: `  routedns config.toml
   routedns --check config.toml`,
-		Args:    cobra.MinimumNArgs(0),
+		Args: cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return start(opt, args)
 		},
@@ -178,24 +179,16 @@ func (n Node) ID() string {
 // Functions to call on shutdown
 var onClose []func()
 
-// uniqueIDs returns the non-blank ids in the order given, without duplicates.
-// One node can legitimately reference the same resolver through more than one
-// option, such as a blocklist that sends allowlist matches to the upstream it
-// already forwards to, but the DAG rejects an edge it already has.
+// uniqueIDs returns the ids with blanks and duplicates removed. One node can
+// legitimately reference the same resolver through more than one option, such
+// as a blocklist that sends allowlist matches to the upstream it already
+// forwards to, but the DAG rejects an edge it already has. Sorting is what
+// makes slices.Compact see every duplicate, not just adjacent ones; the order
+// is otherwise irrelevant since these only become graph edges.
 func uniqueIDs(ids []string) []string {
-	seen := make(map[string]struct{}, len(ids))
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
+	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" })
+	slices.Sort(ids)
+	return slices.Compact(ids)
 }
 
 type pendingListener struct {
