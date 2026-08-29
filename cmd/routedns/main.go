@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"syscall"
@@ -1420,7 +1421,14 @@ func buildNetNS(name, xsocket string) (*rdns.NetNS, error) {
 }
 
 func printVersion() {
-	fmt.Println("Build: ", rdns.BuildNumber)
-	fmt.Println("Build Time: ", rdns.BuildTime)
-	fmt.Println("Version: ", rdns.BuildVersion)
+	b := rdns.CurrentBuild()
+	fmt.Println("Version: ", b.Version)
+	if b.Commit != "" {
+		fmt.Println("Commit:  ", b.Commit)
+	}
+	if b.Date != "" {
+		fmt.Println("Built:   ", b.Date)
+	}
+	fmt.Println("Go:      ", runtime.Version())
+	fmt.Println("OS/Arch: ", runtime.GOOS+"/"+runtime.GOARCH)
 }

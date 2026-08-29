@@ -9,7 +9,7 @@ func (s *LuaScript) RegisterConstants() {
 	L := s.L
 
 	// Register build version
-	L.SetGlobal("BuildVersion", lua.LString(BuildVersion))
+	L.SetGlobal("BuildVersion", lua.LString(CurrentBuild().Version))
 
 	// Register TypeA, TypeAAAA, etc
 	for value, name := range dns.TypeToString {
