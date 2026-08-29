@@ -4,6 +4,7 @@
 
 - [Overview](#overview)
   - [Split Configuration](#split-configuration)
+  - [Validating a Configuration](#validating-a-configuration)
   - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
 - [Listeners](#listeners)
   - [Plain DNS](#plain-dns)
@@ -119,6 +120,19 @@ routedns example-config/split-config/*.toml
 The same constraints on unique identifiers apply in a split configuration. The individual files are effectively concatenated prior to being loaded.
 
 Example [split-config](../cmd/routedns/example-config/split-config).
+
+### Validating a Configuration
+
+The `--check` option loads a configuration, builds everything it defines, and exits without serving any queries. It exits non-zero if anything failed, so it can be used in CI or before restarting a service.
+
+```text
+routedns --check config.toml
+routedns --check example-config/split-config/*.toml
+```
+
+Building the configuration is what validates it, so `--check` does the same work startup does, short of binding sockets and answering queries. That means it reads certificates and cache files, loads blocklists from their sources (including over HTTP), and connects to Redis. Problems that only appear at that point, such as an unreadable certificate or a blocklist URL that no longer resolves, are reported.
+
+It does not bind any listener address and does not write the cache file, so it is safe to run against the configuration of an instance that is currently serving.
 
 ## Listeners
 

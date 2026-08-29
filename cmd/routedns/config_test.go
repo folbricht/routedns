@@ -1,26 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	rdns "github.com/folbricht/routedns"
 	"github.com/stretchr/testify/require"
 )
-
-// captureLog redirects the library logger into a buffer for the duration of
-// the test and returns it.
-func captureLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	b := new(bytes.Buffer)
-	old := rdns.Log
-	rdns.Log = slog.New(slog.NewTextHandler(b, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	t.Cleanup(func() { rdns.Log = old })
-	return b
-}
 
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
