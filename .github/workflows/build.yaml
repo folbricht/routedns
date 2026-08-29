@@ -30,6 +30,27 @@ jobs:
     - name: Test
       run: go test -race ./...
 
+  # golangci-lint's standard linter set plus gofmt, configured in
+  # .golangci.yml. "run" reports formatting problems too, so this is the
+  # gofmt gate as well; nothing caught them before.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: v2.12.2
+
   # Compile every target that .goreleaser.yaml ships. The library carries
   # per-platform files (netns_*, sockopts_*, xsocket_*) that the linux/amd64
   # build above never touches, so without this a break in one of them only

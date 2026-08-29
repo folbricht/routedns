@@ -29,7 +29,7 @@ type DoQClient struct {
 	log      *slog.Logger
 	metrics  *ListenerMetrics
 
-	connection  *quicConnection
+	connection   *quicConnection
 	connectionV4 *quicConnection // IPv4-specific connection, used in dual-stack mode
 	connectionV6 *quicConnection // IPv6-specific connection, used in dual-stack mode
 }

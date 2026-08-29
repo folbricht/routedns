@@ -166,10 +166,10 @@ func TestDomainDBOverlap(t *testing.T) {
 
 func TestDomainSubdomainDB(t *testing.T) {
 	loader := NewStaticLoader([]string{
-		"domain1.com",     // bare entry: apex + subdomains
-		".domain2.com",    // explicit dot: apex + subdomains (unchanged)
-		"*.domain3.com",   // explicit wildcard: subdomains-only opt-out
-		"DOMAIN4.com",     // capitalized bare entry
+		"domain1.com",   // bare entry: apex + subdomains
+		".domain2.com",  // explicit dot: apex + subdomains (unchanged)
+		"*.domain3.com", // explicit wildcard: subdomains-only opt-out
+		"DOMAIN4.com",   // capitalized bare entry
 		"trailing.dot.com.",
 	})
 

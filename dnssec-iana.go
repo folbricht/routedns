@@ -14,8 +14,8 @@ const IANARootAnchorsURL = "https://data.iana.org/root-anchors/root-anchors.xml"
 
 // XML types for unmarshalling the IANA root-anchors.xml format.
 type ianaTrustAnchor struct {
-	XMLName    xml.Name         `xml:"TrustAnchor"`
-	KeyDigests []ianaKeyDigest  `xml:"KeyDigest"`
+	XMLName    xml.Name        `xml:"TrustAnchor"`
+	KeyDigests []ianaKeyDigest `xml:"KeyDigest"`
 }
 
 type ianaKeyDigest struct {

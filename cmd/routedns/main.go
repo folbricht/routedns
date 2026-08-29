@@ -140,7 +140,7 @@ func runFDServer(opt fdServerOptions, path string) error {
 	go func() {
 		<-sig
 		rdns.Log.Info("stopping")
-		srv.Stop()
+		_ = srv.Stop()
 	}()
 	rdns.Log.Info("starting xsocket fd-server", "socket", path)
 	return srv.Start()

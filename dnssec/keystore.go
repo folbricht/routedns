@@ -91,8 +91,8 @@ func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
 	}
 	keyset := &dnskeySet{
 		expiresAt: s.now().Add(time.Duration(ttl) * time.Second),
-		zsk:    zsk,
-		ksk:    ksk,
+		zsk:       zsk,
+		ksk:       ksk,
 	}
 	item := s.getItem(name)
 	item.setDNSKEY(keyset)
