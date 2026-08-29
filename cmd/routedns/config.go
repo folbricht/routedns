@@ -260,7 +260,9 @@ type route struct {
 	TLSServerName string `toml:"servername"` // TLS servername
 }
 
-// LoadConfig reads a config file and returns the decoded structure.
+// LoadConfig reads a config file and returns the decoded structure. Options in
+// the config that don't map to anything are logged as warnings. They are
+// typically typos and would otherwise be ignored silently.
 func loadConfig(name ...string) (config, error) {
 	b := new(bytes.Buffer)
 	var c config
@@ -270,8 +272,14 @@ func loadConfig(name ...string) (config, error) {
 		}
 		b.WriteString("\n")
 	}
-	_, err := toml.NewDecoder(b).Decode(&c)
-	return c, err
+	md, err := toml.NewDecoder(b).Decode(&c)
+	if err != nil {
+		return c, err
+	}
+	for _, key := range md.Undecoded() {
+		rdns.Log.Warn("unknown option in config, ignoring", "option", key.String())
+	}
+	return c, nil
 }
 
 func loadFile(w io.Writer, name string) error {
