@@ -1,3 +1,7 @@
+# The "domain" blocklist format. Entries match an exact name ('evil.com'), a
+# name and all of its sub-domains ('.facebook.com'), or the sub-domains only
+# ('*.twitter.com').
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

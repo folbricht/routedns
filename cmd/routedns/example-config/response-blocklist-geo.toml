@@ -1,3 +1,7 @@
+# Blocks responses by the geo location of the answer IP. With filter = true only
+# the matching records are removed rather than the whole response being replaced
+# with NXDOMAIN. Requires a local MaxMind GeoLite2 City database.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

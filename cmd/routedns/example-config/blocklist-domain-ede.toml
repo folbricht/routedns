@@ -1,3 +1,7 @@
+# Domain blocklist that attaches an EDNS0 Extended DNS Error to blocked
+# responses, telling the client why it was blocked. The text is a template
+# populated with data from the query and the rule that matched.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

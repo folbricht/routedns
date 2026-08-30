@@ -1,3 +1,6 @@
+# Blocks responses whose answer IP belongs to one of the listed ASNs. Requires a
+# local MaxMind GeoLite2 ASN database.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

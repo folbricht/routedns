@@ -1,3 +1,7 @@
+# A blocklist in front of a router that splits the remaining queries: a couple of
+# domains go to a cached resolver, everything else goes to a second resolver
+# without a cache.
+
 title = "RouteDNS configuration for split DNS"
 
 [resolvers.cloudflare-dot]

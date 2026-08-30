@@ -1,3 +1,6 @@
+# Strips any EDNS Client Subnet option from queries before they go upstream, so
+# the client's network is not passed on.
+
 [resolvers.google-dot]
 address = "8.8.8.8:853"
 protocol = "dot"

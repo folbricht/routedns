@@ -1,3 +1,6 @@
+# Logs every query and the response it received, in text or JSON format, to
+# STDOUT or to a file.
+
 [listeners.local-udp]
 address = "127.0.0.1:53"
 protocol = "udp"

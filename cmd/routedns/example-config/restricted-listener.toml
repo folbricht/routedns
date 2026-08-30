@@ -1,3 +1,6 @@
+# A listener that only answers clients in the networks given in allowed-net.
+# Queries from anywhere else are ignored.
+
 title = "RouteDNS configuration with a listener only allowing some client networks"
 
 [resolvers.cloudflare-dot]

@@ -1,3 +1,7 @@
+# The "hosts" blocklist format, which uses the syntax of /etc/hosts. Entries can
+# block a name outright or spoof it to a given address, with the IPv4 and IPv6
+# answers set independently.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

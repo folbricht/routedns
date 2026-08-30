@@ -1,3 +1,7 @@
+# Oblivious DoH client. Queries are encrypted for the target and sent through a
+# proxy, so neither one sees the query content and the client address at the
+# same time. Without an address set, the target is contacted directly.
+
 [resolvers.cloudflare-odoh]
 # Address of the odoh proxy server. If empty, the target is used directly.
 # address = "https://odoh-proxy.example.com/proxy"

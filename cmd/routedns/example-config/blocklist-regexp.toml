@@ -1,3 +1,6 @@
+# The "regexp" blocklist format, which is the default. Patterns are matched
+# against the fully qualified name including the trailing dot.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

@@ -1,3 +1,7 @@
+# Truncates EDNS Client Subnet to a coarser prefix instead of removing it. The
+# upstream resolver keeps enough location to answer well, without seeing the
+# client's address.
+
 [resolvers.google-dot]
 address = "8.8.8.8:853"
 protocol = "dot"
