@@ -9,7 +9,9 @@ type = "cache"
 resolvers = ["cloudflare-dot"]
 cache-negative-ttl = 10         # Optional, TTL to apply to responses without a SOA
 cache-answer-shuffle = "round-robin" # Optional, rotate the order of cached responses
-backend = {type = "memory", size = 1000, filename = "/tmp/cache.json", save-interval = 60}
+# The cache is persisted to disk. Under the systemd unit shipped with the packages
+# this has to be a path below /var/cache/routedns, see doc/configuration.md#writable-paths.
+backend = {type = "memory", size = 1000, filename = "/var/cache/routedns/cache.json", save-interval = 60}
 
 [listeners.local-udp]
 address = "127.0.0.1:53"

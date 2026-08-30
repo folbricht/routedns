@@ -6,7 +6,10 @@ resolver = "query-log"
 [groups.query-log]
 type   = "query-log"
 resolvers = ["cloudflare-dot"]
-# output-file = "/tmp/query.log" # Logs are written to STDOUT if blank, uncomment to write to file
+# Logs are written to STDOUT if blank, uncomment to write to a file instead. Under the
+# systemd unit shipped with the packages this has to be a path below /var/log/routedns,
+# see doc/configuration.md#writable-paths.
+# output-file = "/var/log/routedns/query.log"
 output-format = "text" # or "json"
 
 [resolvers.cloudflare-dot]
