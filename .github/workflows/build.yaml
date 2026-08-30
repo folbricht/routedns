@@ -30,6 +30,40 @@ jobs:
     - name: Test
       run: go test -race ./...
 
+  # Consistency checks on the docs: links and anchors resolve, no two sections
+  # render to the same anchor, every toml option in config.go is mentioned in
+  # the guide, and every example config is described and indexed. Each of these
+  # has caught a real defect, see #623 and #624.
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Check docs
+      run: .github/scripts/check-docs.sh
+
+  # Loads every example config with --check. This reaches the network, since
+  # --check loads remote blocklists, which is what caught the dead cbuijs URLs
+  # in #619. A third-party outage will therefore show up as a failure here.
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Check example configs
+      run: .github/scripts/check-examples.sh
+
   # golangci-lint's standard linter set plus gofmt, configured in
   # .golangci.yml. "run" reports formatting problems too, so this is the
   # gofmt gate as well; nothing caught them before.
