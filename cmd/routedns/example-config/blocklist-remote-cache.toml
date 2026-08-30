@@ -11,7 +11,7 @@ type = "blocklist-v2"
 resolvers = ["cloudflare-dot"]
 blocklist-refresh = 86400
 # Under the systemd unit shipped with the packages, cache-dir has to be a path
-# below /var/cache/routedns, see doc/configuration.md#writable-paths.
+# below /var/cache/routedns, see doc/overview.md#writable-paths.
 blocklist-source = [
    {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list", cache-dir = "/var/cache/routedns"},
    {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list", cache-dir = "/var/cache/routedns"},

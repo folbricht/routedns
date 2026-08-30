@@ -12,7 +12,8 @@ cd "$(dirname "$0")/../.."
 
 GUIDE=doc/configuration.md
 EXAMPLES=cmd/routedns/example-config
-DOCS=(README.md "$GUIDE" "$EXAMPLES/README.md")
+# The guide is doc/configuration.md (an index) plus one page per topic.
+DOCS=(README.md "$EXAMPLES/README.md" doc/*.md)
 
 fail=0
 report() {
@@ -23,7 +24,7 @@ report() {
 # GitHub derives a heading id by lowercasing, dropping anything that is not a
 # letter, digit, space or dash, and turning spaces into dashes.
 anchors_of() {
-	grep '^#\{2,4\} ' "$1" |
+	grep '^#\{1,4\} ' "$1" |
 		sed 's/^#* //' |
 		tr 'A-Z' 'a-z' |
 		sed 's/[^a-z0-9 -]//g' |
@@ -58,22 +59,24 @@ done | grep . && report "anchors above match no heading"
 # (Configuration, Examples) are expected and nothing links to them.
 echo "==> no duplicate section anchors"
 for f in "${DOCS[@]}"; do
-	grep '^#\{2,3\} ' "$f" |
-		sed 's/^#* //' |
-		tr 'A-Z' 'a-z' |
-		sed 's/[^a-z0-9 -]//g' |
-		tr ' ' '-' |
+	anchors_of "$f" |
+		grep -vxE 'configuration|examples' |
 		sort | uniq -d |
 		sed "s|^|  $f -> |"
 done | grep . && report "headings above render to the same anchor"
+
+echo "==> nothing links to the exempted structural anchors"
+grep -rn '](#configuration)\|](#examples)' README.md doc/ "$EXAMPLES/README.md" |
+	sed 's/^/  /' | grep . &&
+	report "the duplicate-anchor check exempts these two anchors, so nothing may link to them"
 
 echo "==> every config option is documented"
 grep -oE 'toml:"[a-z0-9-]+"' cmd/routedns/config.go |
 	sed 's/toml:"//; s/"//' |
 	sort -u |
 	while read -r opt; do
-		grep -q "\b$opt\b" "$GUIDE" || echo "  $opt"
-	done | grep . && report "options above appear in config.go but not in $GUIDE"
+		grep -qr "\b$opt\b" doc/ || echo "  $opt"
+	done | grep . && report "options above appear in config.go but not in doc/"
 
 echo "==> every example is indexed and described"
 for f in "$EXAMPLES"/*.toml; do

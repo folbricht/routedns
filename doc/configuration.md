@@ -1,2642 +1,353 @@
 # RouteDNS Configuration Guide
 
-## Table of contents
+The guide is split by topic. Every section below links to the page that now holds it; the anchors on this page are unchanged, so existing links into the guide still work.
 
-- [Overview](#overview)
-  - [Split Configuration](#split-configuration)
-  - [Validating a Configuration](#validating-a-configuration)
-  - [Writable Paths](#writable-paths)
-  - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
-- [Listeners](#listeners)
-  - [Plain DNS](#plain-dns)
-  - [DNS-over-TLS](#dns-over-tls)
-  - [DNS-over-HTTPS](#dns-over-https)
-  - [Oblivious DNS (ODoH)](#oblivious-dns-odoh)
-  - [DNS-over-DTLS](#dns-over-dtls)
-  - [DNS-over-QUIC](#dns-over-quic)
-  - [Admin](#admin)
-- [Modifiers, Groups and Routers](#modifiers-groups-and-routers)
-  - [Cache](#cache)
-  - [Prefetch](#prefetch)
-  - [TTL Modifier](#ttl-modifier)
-  - [Round-Robin group](#round-robin-group)
-  - [Fail-Rotate group](#fail-rotate-group)
-  - [Fail-Back group](#fail-back-group)
-  - [Random group](#random-group)
-  - [Load-Balance group](#load-balance-group)
-  - [Fastest group](#fastest-group)
-  - [Replace](#replace)
-  - [Query Blocklist](#query-blocklist)
-  - [Response Blocklist](#response-blocklist)
-  - [Client Blocklist](#client-blocklist)
-  - [EDNS0 Client Subnet modifier](#edns0-client-subnet-modifier)
-  - [EDNS0 modifier](#edns0-modifier)
-  - [Static Responder](#static-responder)
-  - [Static Template Responder](#static-template-responder)
-  - [Drop](#drop)
-  - [Response Minimizer](#response-minimizer)
-  - [Response Collapse](#response-collapse)
-  - [Router](#router)
-  - [ECS Source Routing](#ecs-source-routing)
-  - [Rate Limiter](#rate-limiter)
-  - [Fastest TCP Probe](#fastest-tcp-probe)
-  - [Retrying Truncated Responses](#retrying-truncated-responses)
-  - [Request Deduplication](#request-deduplication)
-  - [Syslog](#syslog)
-  - [Query Log](#query-log)
-  - [Lua](#lua)
-  - [DNSSEC Validator](#dnssec-validator)
-  - [DNS64](#dns64)
-- [Resolvers](#resolvers)
-  - [Plain DNS](#plain-dns-resolver)
-  - [DNS-over-TLS](#dns-over-tls-resolver)
-  - [DNS-over-HTTPS](#dns-over-https-resolver)
-  - [Oblivious DNS (ODoH)](#oblivious-dns-odoh-resolver)
-  - [DNS-over-DTLS](#dns-over-dtls-resolver)
-  - [DNS-over-QUIC](#dns-over-quic-resolver)
-  - [Bootstrap Resolver](#bootstrap-resolver)
-  - [SOCKS5 Proxy Support](#socks5-proxy-support)
-  - [Network Namespace Support](#network-namespace-support)
-  - [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
-- [Templates](#templates)
+[Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Overview
 
-RouteDNS uses a config file in [TOML](https://github.com/toml-lang/toml) format which is passed to the tool as argument on the command line. The configuration is broken up into sections, each of which can contain objects. Each element has a unique identifier (name) which is used to reference it from other objects in order to build a processing pipeline. A configuration can define elements in the following sections, in any order.
-
-- `listeners` - [Listeners](#listeners) are effectively DNS servers that receive queries from clients and form the starting point of a pipeline. Listeners are available for several different DNS protocols.
-- `routers` - [Routers](#router) can split a pipeline into multiple processing paths based on query properties such as name, type, or client information.
-- `groups` - [Groups](#modifiers-groups-and-routers) contain a range of failover and load-balancing algorithms as well as elements that modify queries or responses.
-- `resolvers` - [Resolvers](#resolvers) forward queries to upstream resolvers. They are in effect DNS client implementations that connect to other servers using a variety of protocols.
-
-Not all of these are required to make a working configuration. The most basic configuration could contain a listener (receiver) and a resolver (sender) which would be a simple proxy. The listener and the resolver could use different protocols, making this proxy also a converter.
-
-A more complex configuration could contain multiple listeners in different protocols, a router, several modifiers, and passing queries to multiple resolvers upstream, forming a pipeline like UDP listener -> router -> cache -> DoT resolver. A single configuration can hold more than one independent pipeline.
-
-Below an example configuration that provides two local listeners, one for plain UDP, one for plain TCP. Each query passes through a router which splits the processing into 2 paths. One path for the client 192.168.1.123, and one for the rest. Queries from 192.168.1.123 are sent through a blocklist that filters out undesirable content before getting passed to the cleanbrowsing resolver using DNS-over-TLS while everyone else will get queries answered by Cloudflare unfiltered (also using DNS-over-TLS).
-
-```toml
-[resolvers.cleanbrowsing-dot]
-address = "family-filter-dns.cleanbrowsing.org:853"
-protocol = "dot"
-
-[resolvers.cloudflare-dot]
-address = "1.1.1.1:853"
-protocol = "dot"
-
-[groups.cleanbrowsing-filtered]
-type = "blocklist-v2"
-resolvers = ["cleanbrowsing-dot"]
-blocklist = [
-  '.evil.com',
-  '.no-good.com',
-]
-
-[routers.router1]
-routes = [
-  { source = "192.168.1.123/32", resolver="cleanbrowsing-filtered" },
-  { resolver="cloudflare-dot" },
-]
-
-[listeners.local-udp]
-address = ":53"
-protocol = "udp"
-resolver = "router1"
-
-[listeners.local-tcp]
-address = ":53"
-protocol = "tcp"
-resolver = "router1"
-```
-
-More modifiers, groups or routers can be added to the pipeline (in any order). Objects reference each other by their identifiers which have to be unique in a given configuration.
-
-Every feature described in this guide has a working example under [example-config](../cmd/routedns/example-config/), indexed by topic in the README there.
+RouteDNS uses a config file in [TOML](https://github.com/toml-lang/toml) format which is passed to the tool as argument on the command line. See **[Overview](overview.md)**.
 
 ### Split Configuration
 
-Configuration can be broken up into individual files to support large or generated configurations. Split configuration files are passed as arguments to the application:
+Configuration can be broken up into individual files to support large or generated configurations.
 
-```text
-routedns example-config/split-config/*.toml
-```
-
-The same constraints on unique identifiers apply in a split configuration. The individual files are effectively concatenated prior to being loaded.
-
-Example [split-config](../cmd/routedns/example-config/split-config).
+-> [Overview](overview.md#split-configuration)
 
 ### Validating a Configuration
 
-The `--check` option loads a configuration, builds everything it defines, and exits without serving any queries. It exits non-zero if anything failed, so it can be used in CI or before restarting a service.
+The `--check` option loads a configuration, builds everything it defines, and exits without serving any queries.
 
-```text
-routedns --check config.toml
-routedns --check example-config/split-config/*.toml
-```
-
-Building the configuration is what validates it, so `--check` does the same work startup does, short of binding sockets and answering queries. That means it reads certificates and cache files, loads blocklists from their sources (including over HTTP), and connects to Redis. Problems that only appear at that point, such as an unreadable certificate or a blocklist URL that no longer resolves, are reported.
-
-It does not bind any listener address and does not write the cache file, so it is safe to run against the configuration of an instance that is currently serving.
+-> [Overview](overview.md#validating-a-configuration)
 
 ### Writable Paths
 
 Three options write to disk: the cache `filename`, the blocklist `cache-dir`, and the query log `output-file`.
 
-Running RouteDNS directly, these can point anywhere the user can write. Under the systemd unit shipped with the deb, rpm and apk packages, they cannot. That unit uses `DynamicUser=true`, which implies `ProtectSystem=strict` and `PrivateTmp=true`, so the filesystem is read-only apart from a private `/tmp` that systemd discards when the service stops. A path under `/tmp` or `/var/tmp` is therefore worse than one that fails outright: writes succeed and the data is gone on the next restart, with nothing logged to say so.
-
-The unit declares two directories for this:
-
-| Path | Use |
-| --- | --- |
-| `/var/cache/routedns` | cache `filename`, blocklist `cache-dir` |
-| `/var/log/routedns` | query log `output-file` |
-
-```toml
-[groups.cached]
-type = "cache"
-resolvers = ["upstream"]
-backend = {type = "memory", filename = "/var/cache/routedns/cache.json", save-interval = 300}
-```
-
-systemd creates both on start and preserves their contents across restarts, which matters here because `DynamicUser` allocates a different UID each time.
-
-To write somewhere else, add the location to the unit with `ReadWritePaths=`, or drop `DynamicUser=true` and run as a fixed user that owns the directory.
+-> [Overview](overview.md#writable-paths)
 
 ## Listeners
 
-Listeners are query receivers that form the start of a query pipeline. Queries received by a listener are then forwarded to routers, groups, or to resolvers directly. Several DNS protocols are supported.
-
-While nothing in the configuration references a listener (since it's the first element in a pipeline), it still requires a name that is defined like so `[listeners.NAME]`.
-
-Common options for all listeners:
-
-- `address` - Listen address.
-- `protocol` - The DNS protocol used to receive queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls`, `odoh` or `admin`.
-- `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both. Only applies to the plain DNS and DoT listeners; the protocol sections below say which.
-- `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
-- `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
-- `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
-- `xsocket` - Path to an `xsocket-server` Unix socket. The listening socket is created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. Not supported for `dtls` listeners (use `netns` instead). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
-- `fwmark` - Linux firewall mark (`SO_MARK`) to set on the listening socket. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
-- `bind-if` - Bind the listening socket to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or restricting a listener to one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
-
-Secure listeners, such as DNS-over-TLS, DNS-over-HTTPS, DNS-over-DTLS, DNS-over-QUIC and Admin support additional options to configure certificates, keys and peer validation.
-
-- `server-crt` - Server certificate file. Required.
-- `server-key` - Server key file. Required.
-- `ca` - CA to validate client certificates. Optional, but required when `mutual-tls` is enabled.
-- `mutual-tls` - Requires clients to send valid (as per `ca` option) certificates before establishing a connection. Optional. When enabled, `ca` must be set; the listener will refuse to start otherwise (to avoid silently trusting the operating system's CA store for client authentication).
-
-The DNS-over-HTTPS listener also accepts the client IP address from trusted reverse proxies in a particular subnet. X-Forwarded-For headers are only used if they are provided from this subnet.
-
-- `trusted-proxy` - CIDR address of trusted reverse proxy. Optional.
+Listeners are query receivers that form the start of a query pipeline. See **[Listeners](listeners.md)**.
 
 ### Plain DNS
 
-Regular (insecure) DNS protocol over port 53, UDP and TCP. Setting `protocol` to `udp` will start a UDP listener, and `tcp` starts a TCP listener. In many cases both are present in a configuration if RouteDNS is used to provide DNS to local services over the loopback device.
+Regular (insecure) DNS protocol over port 53, UDP and TCP.
 
-#### Configuration
-
-Plain DNS listeners are instantiated with `protocol = "udp"` or `protocol = "tcp"` in the listeners section. The port defaults to `53` when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners).
-- `ip-version` - Restrict the listener to IPv4 (`4`) or IPv6 (`6`). Optional, defaults to both.
-
-The TLS options do not apply, this protocol is un-encrypted.
-
-#### Examples
-
-```toml
-[listeners.local-udp]
-address = "127.0.0.1:53"
-protocol = "udp"
-resolver = "router1"
-
-[listeners.local-tcp]
-address = "127.0.0.1:53"
-protocol = "tcp"
-resolver = "router1"
-```
+-> [Listeners](listeners.md#plain-dns)
 
 ### DNS-over-TLS
 
 DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
-#### Configuration
-
-DoT listeners are instantiated with `protocol = "dot"` in the listeners section. The port defaults to `853` when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners).
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
-- `ip-version` - Restrict the listener to IPv4 (`4`) or IPv6 (`6`). Optional, defaults to both.
-
-#### Examples
-
-DoT listener accepting any client. Does not require client certificates and does not validate client certificates with a CA.
-
-```toml
-[listeners.local-dot]
-address = ":853"
-protocol = "dot"
-resolver = "cloudflare-dot"
-server-crt = "/path/to/server.crt"
-server-key = "/path/to/server.key"
-```
-
-DoT listener enforcing mTLS and verifying client certificates with a CA.
-
-```toml
-[listeners.local-dot]
-address = ":853"
-protocol = "dot"
-resolver = "cloudflare-dot"
-server-crt = "/path/to/server.crt"
-server-key = "/path/to/server.key"
-ca = "/path/to/ca.crt"
-mutual-tls = true
-```
-
-Example config files: [mutual-tls-dot-server.toml](../cmd/routedns/example-config/mutual-tls-dot-server.toml)
+-> [Listeners](listeners.md#dns-over-tls)
 
 ### DNS-over-HTTPS
 
 DNS using the HTTPS protocol as per [RFC8484](https://tools.ietf.org/html/rfc8484).
 
-#### Configuration
-
-DoH listeners are instantiated with `protocol = "doh"` in the listeners section. The port defaults to `443`, or `1443` with QUIC transport, when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners).
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. Required unless `no-tls` is set.
-- `transport` - `"tcp"` (default) for HTTP/2 over TCP, or `"quic"` to run DoH over QUIC.
-- `no-tls` - Serve plain HTTP rather than HTTPS. For testing, or behind a reverse proxy that terminates TLS already. Not supported with `transport = "quic"`, the listener refuses to start. Optional, defaults to false.
-- `trusted-proxy` - CIDR of a reverse proxy whose `X-Forwarded-For` header is trusted to carry the real client address. Given under a `frontend` key, see the example below. Optional.
-
-`ip-version` has no effect on this listener.
-
-#### Examples
-
-DoH listener accepting queries from any client.
-
-```toml
-[listeners.local-doh]
-address = ":443"
-protocol = "doh"
-resolver = "cloudflare-dot"
-server-crt = "/path/to/server.crt"
-server-key = "/path/to/server.key"
-```
-
-DoH over QUIC listener.
-
-```toml
-[listeners.local-doh-quic]
-address = ":1443"
-protocol = "doh"
-transport = "quic"
-resolver = "cloudflare-dot"
-server-crt = "example-config/server.crt"
-server-key = "example-config/server.key"
-```
-
-DoH behind a reverse proxy. Clients are expected to connect to a reverse proxy in this subnet, which will provide their IP address in the X-Forwarded-For header. RouteDNS will trust this header from proxies in the subnet listed in `trusted-proxy`
-
-```toml
-[listeners.local-doh]
-address = ":443"
-protocol = "doh"
-resolver = "cloudflare-dot"
-server-crt = "/path/to/server.crt"
-server-key = "/path/to/server.key"
-frontend = { trusted-proxy = "192.168.1.0/24" }
-```
-
-Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-config/mutual-tls-doh-server.toml), [doh-quic-server.toml](../cmd/routedns/example-config/doh-quic-server.toml), [doh-behind-proxy.toml](../cmd/routedns/example-config/doh-behind-proxy.toml), [doh-no-tls.toml](../cmd/routedns/example-config/doh-no-tls.toml)
+-> [Listeners](listeners.md#dns-over-https)
 
 ### Oblivious DNS (ODoH)
 
-ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) improves the privacy of **clients** by encrypting queries for a **target** DNS server and sending them through a **proxy**, so that neither the target nor the proxy sees the query content and the source IP of the client at the same time. Listeners are configured with `protocol = "odoh"` and can act as the target, the proxy, or both. See the [ODoH resolver](#oblivious-dns-odoh-resolver) for the client side.
+ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) improves the privacy of **clients** by encrypting queries for a **target** DNS server and sending them through a **proxy**, so that neither the target nor the proxy sees the query content and the source IP of the client at the same time.
 
-By default the ODoH listener listens on `/proxy` and `/dns-query`. Additionally, it will host its HPKE config under `/.well-known/odohconfigs`. If `odoh-mode = "proxy"` is set, it will only listen and handle ODoH proxy requests on `/proxy`. If set to target the listener will only handle the ODoH queries on `/dns-query`.
-
-#### Configuration
-
-ODoH listeners are instantiated with `protocol = "odoh"` in the listeners section. The port defaults to `443` when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners).
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
-- `key-seed` - 16 byte hex seed the HPKE keypair is generated from, for example from `openssl rand -hex 16`. Not needed in proxy mode. In target mode, a new random key is generated on every launch if this is not set, which invalidates any config clients have cached.
-- `odoh-mode` - `"target"` (default), `"proxy"` or `"dual"`. Determines which of the two paths the listener serves.
-- `allow-doh` - Also answer plain DoH queries on `/dns-query` using the same resolver. Ignored in proxy mode. Optional, defaults to false.
-
-`ip-version` has no effect on this listener.
-
-#### Examples
-
-```toml
-[listeners.local-odoh]
-address = ":443"
-protocol = "odoh"
-resolver = "cloudflare-dot"
-
-# The key seed is used to generate the HPKE keypair.
-key-seed = "414dd55667a0cdff72dfbbd8515a9e0a"
-# odoh-mode allowed values are "dual", "proxy" or "target". If not set (default), target mode is enabled and proxy requests are not handled.
-odoh-mode  = "target"
-
-# If enabled, the listener will also respond to regular DoH queries using the same resolver. When not set or false, DoH queries are ignored. Has no effect if odoh-mode is set to proxy
-allow-doh = true
-
-# TLS information
-server-crt = "example-config/server.crt"
-server-key = "example-config/server.key"
-```
-
-Example config files: [odoh-listener.toml](../cmd/routedns/example-config/odoh-listener.toml)
+-> [Listeners](listeners.md#oblivious-dns-odoh)
 
 ### DNS-over-DTLS
 
 Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
-#### Configuration
-
-DTLS listeners are instantiated with `protocol = "dtls"` in the listeners section. The port defaults to `853` when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners), except `xsocket` which is not supported for this protocol. Use `netns` instead.
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required. An EC certificate is normally used here.
-
-`ip-version` has no effect on this listener.
-
-#### Examples
-
-DTLS listener.
-
-```toml
-[listeners.local-dtls]
-address = ":853"
-protocol = "dtls"
-resolver = "cloudflare-dot"
-server-crt = "example-config/server-ec.crt"
-server-key = "example-config/server-ec.key"
-```
-
-Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-server.toml)
+-> [Listeners](listeners.md#dns-over-dtls)
 
 ### DNS-over-QUIC
 
-Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#dns-over-https) for how to configure this.
+Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/).
 
-Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
-
-#### Configuration
-
-DoQ listeners are instantiated with `protocol = "doq"` in the listeners section. The port defaults to `8853` when the address does not carry one.
-
-Options:
-
-- All [common listener options](#listeners).
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
-
-`ip-version` has no effect on this listener.
-
-#### Examples
-
-DoQ listener accepting queries from all clients.
-
-```toml
-[listeners.local-doq]
-address = ":8853"
-protocol = "doq"
-resolver = "cloudflare-dot"
-server-crt = "example-config/server.crt"
-server-key = "example-config/server.key"
-```
-
-Example config files: [doq-listener.toml](../cmd/routedns/example-config/doq-listener.toml)
+-> [Listeners](listeners.md#dns-over-quic)
 
 ### Admin
 
-The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format. These metrics can be exported to be usable by Prometheus using [prometheus-expvar-exporter](https://github.com/albertito/prometheus-expvar-exporter).
+The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format.
 
-#### Configuration
-
-The admin listener is instantiated with `protocol = "admin"` in the listeners section. It serves metrics rather than answering queries, so it is the one listener that takes no `resolver`, and no default port is applied to its address.
-
-Options:
-
-- All [common listener options](#listeners), except `resolver`, which is not used.
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation.
-- `transport` - `"tcp"` (default) or `"quic"`.
-
-`ip-version` has no effect on this listener.
-
-#### Examples
-
-```toml
-[listeners.local-admin]
-address = "127.0.0.7:443"
-protocol = "admin"
-server-crt = "example-config/server.crt"
-server-key = "example-config/server.key"
-```
-
-Example config files: [admin.toml](../cmd/routedns/example-config/admin.toml), [prometheus-exporter](../cmd/routedns/example-config/prometheus-exporter/)
+-> [Listeners](listeners.md#admin)
 
 ## Modifiers, Groups and Routers
 
+The processing pipeline: everything between a listener and a resolver. Split across several pages by what the component does.
+
 ### Cache
 
-A cache will store the responses to queries in memory and respond to further identical queries with the same response. To determine how long an item is kept in memory, the cache uses the lowest TTL of the RRs in the response. Responses served from the cache have their TTL updated according to the time the records spent in memory. If a query has an [ECS Subnet](https://tools.ietf.org/html/rfc7871) option, the subnet address forms part of the key to support subnet-specific answers.
+A cache will store the responses to queries in memory and respond to further identical queries with the same response.
 
-Caches can be combined with a [TTL Modifier](#ttl-modifier) to avoid too many cache-misses due to excessively low TTL values.
-
-It is possible to pre-define a query name that will flush the cache if received from a client.
-
-The content of memory caches can be persisted to and loaded from disk.
-
-#### Configuration
-
-Caches are instantiated with `type = "cache"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `cache-size` - Max number of responses to cache. Defaults to 0 which means no limit. Deprecated, set limit in the backend instead.
-- `gc-period` - How often (in seconds) expired items are swept out of the cache. Deprecated, set it in the backend instead.
-- `cache-negative-ttl` - TTL (in seconds) to apply to responses without a SOA. Default: 60. Optional
-- `cache-rcode-max-ttl` - Map of RCODE to max TTL (in seconds) to use for records based on the status code regardless of SOA. Response codes are given in their numerical form: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3) for a more complete list. For example `{1 = 60, 3 = 60}` would set a limit on how long FORMERR or NXDOMAIN responses can be cached.
-- `cache-answer-shuffle` - Specifies a method for changing the order of cached A/AAAA answer records. Possible values `random` or `round-robin`. Defaults to static responses if not set.
-- `cache-harden-below-nxdomain` - Return NXDOMAIN for domain queries if the parent domain has a cached NXDOMAIN. See [RFC8020](https://tools.ietf.org/html/rfc8020).
-- `cache-flush-query` - A query name (FQDN with trailing `.`) that if received from a client will trigger a cache flush (reset). Inactive if not set. Simple way to support flushing the cache by sending a pre-defined query name of any type. If successful, the response will be empty. The query will not be forwarded upstream by the cache.
-- `cache-prefetch-trigger`- If a query is received for a record with less than `cache-prefetch-trigger` TTL left, the cache will send another, independent query to upstream with the goal of automatically refreshing the record in the cache with the response.
-- `cache-prefetch-eligible` - Only records with at least `prefetch-eligible` seconds TTL are eligible to be prefetched.
-- `backend` - Define what kind of storage is used for the cache. Contains multiple keys depending on type that can configure the behavior. Defaults to `memory` backend if not configured.
-
-Backends:
-
-**Memory backend**
-
-The memory backend will keep all cache items in memory. It can be configured to write the content of the cache to disk on shutdown. Memory backend config has the following options:
-
-- `type="memory"`
-- `size` - Max number of responses to cache. Defaults to 0 which means no limit.
-- `gc-period` - How often (in seconds) expired items are swept out of the cache. Defaults to 60. Optional.
-- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs. A new file is created with mode `0600`, since it records what has been looked up; an existing file keeps whatever mode it already has. When running under the systemd unit shipped with the packages, use a path under `/var/cache/routedns`; see [Writable Paths](#writable-paths).
-- `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
-
-**Redis backend**
-
-The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. The following options are supported:
-
-- `type="redis"`
-- `redis-network` - The network type, either `tcp` or `unix`. Defaults to `tcp`.
-- `redis-address` - Address of redis database, host:port
-- `redis-username` - Redis username
-- `redis-password` - Redis password
-- `redis-db` - Redis database to be selected
-- `redis-key-prefix` - Prefixes the key of every record with this string. This can be used to share a database with other clients and avoid key conflicts.
-- `redis-max-retries` - Maximum number of retries before giving up. Default is 3 retries; -1 (not 0) disables retries.
-- `redis-min-retry-backoff` - Minimum back-off between each retry in milliseconds. Default is 8 milliseconds; -1 disables back-off.
-- `redis-max-retry-backoff` - Maximum back-off between each retry in milliseconds. Default is 512 milliseconds; -1 disables back-off.
-- `redis-sync-set` - When true, performs Redis SET operations synchronously. Default is false (async writes), meaning the response is returned immediately while the cache entry is written in the background. Note: With async mode, there is a brief window where a second identical query may also result in a miss until the background write completes.
-
-#### Examples
-
-Simple cache without size-limit:
-
-```toml
-[groups.cloudflare-cached]
-type = "cache"
-resolvers = ["cloudflare-dot"]
-backend = {type = "memory"}
-```
-
-Cache that only stores up to 1000 records in memory and keeps negative responses for 1h. Responses are randomized for cached responses.
-
-```toml
-[groups.cloudflare-cached]
-type = "cache"
-resolvers = ["cloudflare-dot"]
-cache-negative-ttl = 3600
-cache-answer-shuffle = "random"
-backend = {type = "memory", size = 1000}
-```
-
-Cache that is flushed if a query for `flush.cache.` is received. Also persists the cache to disk.
-
-```toml
-[groups.cloudflare-cached]
-type = "cache"
-resolvers = ["cloudflare-dot"]
-cache-flush-query = "flush.cache."
-backend = {type = "memory", filename = "/var/cache/routedns/cache.json"}
-```
-
-Cache that uses Redis as backend.
-
-```toml
-[groups.cloudflare-cached]
-type = "cache"
-resolvers = ["cloudflare-dot"]
-cache-flush-query = "flush.cache."
-backend = {type = "redis", redis-address = "127.0.0.1:6379", redis-key-prefix = "routedns-"}
-```
-
-Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [cache-flush.toml](../cmd/routedns/example-config/cache-flush.toml), [cache-with-prefetch.toml](../cmd/routedns/example-config/cache-with-prefetch.toml), [cache-rcode.toml](../cmd/routedns/example-config/cache-rcode.toml), [cache-redis.toml](../cmd/routedns/example-config/cache-redis.toml)
+-> [Caching and Performance](caching.md#cache)
 
 ### Prefetch
 
-While [Cache](#cache) has built-in prefetch capabilities, the dedicated `prefetch` group may be more appropriate for some use cases. It tracks the number of queries made within a time window and actively prefetches frequently requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
+While [Cache](#cache) has built-in prefetch capabilities, the dedicated `prefetch` group may be more appropriate for some use cases.
 
-On multi-core systems the internal tracking caches are automatically sharded (based on `GOMAXPROCS`) to reduce lock contention under concurrent query load. This is an internal optimization only; it does not change behavior or measurably affect end-to-end query latency.
-
-#### Configuration
-
-Prefetch groups are instantiated with `type = "prefetch"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `prefetch-window` - Minimum time between queries to remain eligible for prefetching. Supports time units `s`, `m`, and `h`. Default: 1h.
-- `prefetch-threshold` - Minimum number of queries required for a name to enable prefetch. Default: 5.
-- `prefetch-cache-size` - Maximum number of queries to track for prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0. Default: `prefetch-max-items * 3`.
-- `prefetch-max-items` - Maximum number of items to prefetch. Values that are too large can cause memory issues. Prefetch is disabled if 0 or not set.
-
-#### Examples
-
-Simple cache without size-limit:
-
-```toml
-[groups.cloudflare-cached]
-type = "cache"
-resolvers = ["cloudflare-dot"]
-
-[groups.cloudflare-prefetch]
-type = "prefetch"
-resolvers = ["cloudflare-cached"]
-prefetch-window = "15m"
-prefetch-threshold = 3
-prefetch-cache-size = 150
-prefetch-max-items = 50
-```
-
-Example config files: [prefetch.toml](../cmd/routedns/example-config/prefetch.toml)
+-> [Caching and Performance](caching.md#prefetch)
 
 ### TTL modifier
 
-A TTL modifier is used to adjust the time-to-live (TTL) of DNS responses. This is used to avoid frequently making the same queries to upstream because many responses have a value that is unreasonably low as outlined in this [blog](https://blog.apnic.net/2019/11/12/stop-using-ridiculously-low-dns-ttls). It's also possible to restrict very high TTL values that might be used in DNS poisoning attacks.
+A TTL modifier is used to adjust the time-to-live (TTL) of DNS responses.
 
-The limits are applied to all RRs in a response.
-
-#### Configuration
-
-TTL modifiers are instantiated with `type = "ttl-modifier"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `ttl-select` - Optional TTL selection function. Possible values "lowest", "highest", "average", "first", "last".
-  - `lowest` - Lowest TTL of all response records.
-  - `highest` - Highest TTL of all response records.
-  - `average` - Average TTL of all response records.
-  - `first` - First TTL.
-  - `last` - Last TTL.
-  - `random` - Random TTL between `ttl-min` and `ttl-max`. Note that not setting `ttl-max` will result in very high TTL values.
-- `ttl-min` - TTL minimum (in seconds) to apply to responses.
-- `ttl-max` - TTL maximum (in seconds) to apply to responses.
-
-`ttl-min` and `ttl-max` are optional, but if configured define a floor/ceiling regardless of what `ttl-select` function is given.
-
-#### Examples
-
-TTL modifier that returns responses with TTL of between 1h and one day:
-
-```toml
-[groups.cloudflare-updated-ttl]
-type = "ttl-modifier"
-resolvers = ["cloudflare-dot"]
-ttl-min = 3600
-ttl-max = 86400
-```
-
-TTL modifier returning the average TTL of all records, with a max of 1 day.
-
-```toml
-[groups.cloudflare-updated-ttl]
-type = "ttl-modifier"
-resolvers = ["cloudflare-dot"]
-ttl-select = "average"
-ttl-max = 86400
-```
-
-Example config files: [ttl-modifier.toml](../cmd/routedns/example-config/ttl-modifier.toml), [ttl-modifier-average.toml](../cmd/routedns/example-config/ttl-modifier-average.toml)
+-> [Caching and Performance](caching.md#ttl-modifier)
 
 ### Round-Robin group
 
-A Round-Robin balancer groups multiple upstream resolvers and sends every received query to the next resolver. It effectively balances the query load evenly over a number of upstream resolvers or modifiers.
+A Round-Robin balancer groups multiple upstream resolvers and sends every received query to the next resolver.
 
-#### Configuration
-
-Round-Robin groups are instantiated with `type = "round-robin"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers.
-
-#### Examples
-
-```toml
-[groups.google-udp]
-resolvers = ["google-udp-8-8-8-8", "google-udp-8-8-4-4"]
-type = "round-robin"
-```
+-> [Failover and Load Balancing](groups.md#round-robin-group)
 
 ### Fail-Rotate group
 
-In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and receives all queries. If the active resolver fails, i.e. no response or returns SERVFAIL, the next becomes active and the request is retried. If the last resolver fails the first becomes the active again. There's no time-based automatic fail-back.
+In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and receives all queries.
 
-#### Configuration
-
-Fail-Rotate groups are instantiated with `type = "fail-rotate"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers.
-- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a switch to the next resolver. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
-
-#### Examples
-
-```toml
-[groups.google-udp]
-resolvers = ["google-udp-8-8-8-8", "google-udp-8-8-4-4"]
-type = "fail-rotate"
-```
+-> [Failover and Load Balancing](groups.md#fail-rotate-group)
 
 ### Fail-Back group
 
-Similar to [fail-rotate](#fail-rotate-group) but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute. Failure means either no response or it returns SERVFAIL.
+Similar to [fail-rotate](#fail-rotate-group) but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute.
 
-#### Configuration
-
-Fail-Back groups are instantiated with `type = "fail-back"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers. The first in the array is the preferred resolver.
-- `reset-after` - Non-zero time in seconds before switching from an alternative resolver back to the preferred resolver (first in the list), or a negative number to switch back immediately, default 60. Note: This is not a timeout argument. After a failure of the preferred resolver, this defines the amount of time to use alternative/failover resolvers before switching back to the preferred. You can have as many resolvers in the array as the time limit allows.
-- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a failover. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
-
-#### Examples
-
-```toml
-[groups.my-failback-group]
-resolvers = ["company-dns", "cloudflare-dot"]
-type = "fail-back"
-```
+-> [Failover and Load Balancing](groups.md#fail-back-group)
 
 ### Random group
 
-This group will pick a resolver from its list of upstream resolvers at random. Resolvers that fail will be deactivated for an amount of time before being re-tried.
+This group will pick a resolver from its list of upstream resolvers at random.
 
-#### Configuration
-
-Random groups are instantiated with `type = "random"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers.
-- `reset-after` - Non-zero time in seconds to disable a failed resolver, or a negative number to disable only for a single request, default 60.
-- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure which will take the resolver temporarily out of the group. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a switch to the next resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
-
-#### Examples
-
-```toml
-[groups.random]
-type   = "random"
-resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
-```
-
-Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
+-> [Failover and Load Balancing](groups.md#random-group)
 
 ### Load-Balance group
 
-This group distributes queries across all configured resolvers using weighted random selection based on measured response times. Resolvers with lower average response times receive proportionally more traffic. If the selected resolver fails, the query is retried with another resolver until one succeeds or all have been tried.
+This group distributes queries across all configured resolvers using weighted random selection based on measured response times.
 
-Compared to [Fail-Rotate](#fail-rotate-group) and [Fail-Back](#fail-back-group), load is spread across all resolvers at all times rather than concentrating on one until it fails. Compared to [Random](#random-group), selection is weighted by measured response time so faster resolvers naturally receive more traffic; resolvers are never removed from the pool — on failure their EMA is only allowed to move upward (preventing fast-failing resolvers from appearing artificially fast), and the optional `failure-penalty` accelerates suppression after persistent failures. Compared to [Fastest](#fastest-group), each query goes to a single resolver rather than all of them simultaneously.
-
-On startup all resolvers have equal weight. Weights adjust automatically as response-time data accumulates. To keep the pool healthy, weighting is bounded and self-correcting: a small share of queries (~5%) is sent to a uniformly-chosen resolver regardless of weight, so even penalized or slow resolvers keep being re-measured and can recover rather than being starved; the response time used for weighting is floored at 1ms, so an exceptionally fast resolver cannot completely crowd out slower ones; and once a previously-penalized resolver succeeds again its average is re-seeded to the freshly measured time instead of slowly decaying, allowing it to regain traffic quickly.
-
-The current per-resolver response-time average (in microseconds) is exported via expvar as `routedns.router.<id>.rtt`, keyed by resolver, alongside the usual `route`, `failure`, `available`, and `failover` metrics.
-
-#### Configuration
-
-Load-Balance groups are instantiated with `type = "load-balance"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers.
-- `failure-penalty` - Penalty in seconds injected into a failed resolver's response-time average after 2 consecutive failures, accelerating its suppression beyond the baseline upward-only EMA clamp. A single transient failure is absorbed without penalty. Default `0` (disabled).
-- `servfail-error` - If `true`, a SERVFAIL response from an upstream resolver is considered a failure triggering a retry with another resolver. This can happen when DNSSEC validation fails for example. Default `false`.
-- `empty-error` - If `true`, an empty response (including NXDOMAIN) from an upstream resolver is considered a failure triggering a retry with another resolver. Responses with EDE codes Blocked/Censored/Filtered are still considered successful. Default `false`.
-
-#### Examples
-
-```toml
-[groups.load-balanced]
-type = "load-balance"
-resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
-failure-penalty = 5
-```
-
-Example config files: [load-balance.toml](../cmd/routedns/example-config/load-balance.toml)
+-> [Failover and Load Balancing](groups.md#load-balance-group)
 
 ### Fastest group
 
-This group will send every query to all configured resolvers but only use the fastest (successful) response. Slower responses are discarded. Use sparingly as this increases the overall query load on upstream resolvers.
+This group will send every query to all configured resolvers but only use the fastest (successful) response.
 
-#### Configuration
-
-Fastest groups are instantiated with `type = "fastest"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - An array of upstream resolvers or modifiers.
-
-#### Examples
-
-```toml
-[groups.fastest]
-type   = "fastest"
-resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
-```
-
-Example config files: [fastest.toml](../cmd/routedns/example-config/fastest.toml)
+-> [Failover and Load Balancing](groups.md#fastest-group)
 
 ### Replace
 
-The replace modifier applies regular expressions to query strings and replaces them before forwarding the query to the upstream resolver or modifier. The response is then mapped back to the original query, similar to NAT in a network. This can be useful to map hostnames to different domains on-the-fly or to append domain names to short hostname queries. In lab environments, one can replace a query for a production host with the equivalent lab host.
+The replace modifier applies regular expressions to query strings and replaces them before forwarding the query to the upstream resolver or modifier.
 
-#### Configuration
-
-Replace groups are instantiated with `type = "replace"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `replace` - Array of maps with `from` and `to` to represent the mapping.
-  - `from` - Regular expression that is applied to the query name. Can contain regexp groups `(...)` which can be used in the `to` expression.
-  - `to` - Expression to replace any matches in `from` with. Can reference regexp groups with `${1}`.
-
-#### Examples
-
-This replacer could be used where the company has multiple environment behind VPNs, each with their own DNS perhaps. Queries for hostnames like `nam-host-1`, `eu-host-5` or `ap-host-7` would have the appropriate full domain appended, and then possibly routed to the correct DNS (behind different VPNs). The router is not shown in this example.
-
-```toml
-[groups.internal-append-domain]
-  type = "replace"
-  resolvers = ["route-vpn"]
-  replace = [
-    { from = '^(nam-\d+\.)$', to = '${1}nam.internal.company.test.' },
-    { from = '^(eu-\d+\.)$', to = '${1}eu.internal.company.test.' },
-    { from = '^(ap-\d+\.)$', to = '${1}ap.internal.company.test.' },
-  ]
-```
+-> [Modifiers](modifiers.md#replace)
 
 ### Query Blocklist
 
-Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist. A blocklist can have multiple rule-sets, with different formats. In its simplest form, the blocklist has just one upstream resolver and forwards anything that does not match its rules. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP, depending on what blocklist format is used.
+Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist.
 
-The blocklist group supports 5 types of blocklist formats:
-
-- `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details on what is supported.
-- `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
-  - `domain.com` matches just domain.com and no sub-domains.
-  - `.domain.com` matches domain.com and all sub-domains.
-  - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
-- `domain-subdomain` - Like `domain`, but bare entries (e.g. `domain.com`) match the apex *and* all sub-domains. `.domain.com` is unchanged. `*.domain.com` still matches sub-domains only and can be used as a per-entry opt-out. Designed for blocklists such as hagezi's "Wildcard Domains" lists where every line is meant to block apex + sub-domains.
-- `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
-- `mac` - A blocklist of MAC addresses in the form `01:23:34:ab:bc:de` representing the MAC address of a client. The query is expected to contain the value of the client's MAC in EDNS0 option 65001.
-
-In addition to reading the blocklist rules from the configuration file, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `blocklist-source` property of the blocklist to provide a list of blocklists of different formats, either local files or URLs. The `blocklist-refresh` property can be used to specify a reload-period (in seconds). If no `blocklist-refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
-
-To override the blocklist filtering behavior, the properties `allowlist`, `allowlist-format`, `allowlist-source` and `allowlist-refresh` can be used to define inverse filters. They are used just like the equivalent blocklist-options, but are effectively inverting its behavior. A query matching a rule on the allowlist will be passing through the blocklist and not be blocked.
-
-#### Configuration
-
-Query blocklists are instantiated with `type = "blocklist-v2"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `blocklist-resolver` - Alternative resolver for queries matching the blocklist, rather than responding with NXDOMAIN. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to `regexp`.
-- `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `name`.
-- `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
-- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to `regexp`.
-- `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
-- `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
-
-When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup). As with the cache `filename` option, a new file is created with mode `0600` and an existing one keeps whatever mode it already has. When running under the systemd unit shipped with the packages, use a path under `/var/cache/routedns`; see [Writable Paths](#writable-paths).
-
-To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
-
-#### Examples
-
-Simple blocklist with static regexp rules defined in the configuration:
-
-```toml
-[groups.my-blocklist]
-type             = "blocklist-v2"
-resolvers        = ["upstream-resolver"] # Anything that passes the filter is sent on to this resolver
-blocklist-format ="regexp"               # "domain", "hosts" or "regexp", defaults to "regexp"
-blocklist        = [                     # Define the names to be blocked
-  '(?i)(^|\.)evil\.com\.$',
-  '(^|\.)unsafe[123]\.org\.$',
-]
-```
-
-Simple blocklist with static `domain`-format rule in the configuration. This will respond with an extended error code and a message containing the question name.
-
-```toml
-[groups.my-blocklist]
-type             = "blocklist-v2"
-resolvers        = ["upstream-resolver"]
-blocklist-format = "domain"
-edns0-ede        = {code = 15, text = "Blocked {{ .Question }} because rule {{ .BlocklistRule }} on {{ .Blocklist}}"}
-blocklist = [
-  'domain1.com',               # Exact match
-  '.domain2.com',              # Exact match and all sub-domains
-  '*.domain3.com',             # Only match sub-domains
-]
-```
-
-Blocklist using the `domain-subdomain` format. Bare entries match the apex *and* all sub-domains, so a single line such as `evil.com` blocks `evil.com`, `www.evil.com`, etc. A `*.opt-out.com` entry can still be used to block sub-domains only and leave the apex resolvable. Useful for lists like hagezi's "Wildcard Domains" where every line is meant to apply to apex + sub-domains.
-
-```toml
-[groups.my-blocklist]
-type             = "blocklist-v2"
-resolvers        = ["upstream-resolver"]
-blocklist-format = "domain-subdomain"
-blocklist = [
-  'evil.com',         # Blocks evil.com and all sub-domains
-  'facebook.com',     # Blocks facebook.com and all sub-domains
-  '*.opt-out.com',    # Blocks sub-domains only; apex still resolves
-]
-```
-
-A blocklist of type `hosts` can be used to spoof IP addresses:
-
-```toml
-[groups.my-blocklist]
-type             = "blocklist-v2"
-resolvers        = ["upstream-resolver"]
-blocklist-format = "hosts"
-blocklist = [
-  '127.0.0.1 www.domain1.com',  # Spoofed
-  '0.0.0.0   www.domain2.com',  # NXDOMAIN if matched
-]
-```
-
-Blocklist that loads two rule-sets. One from an HTTP server, the other from a file on disk. Both are reloaded once a day. A `name` can be provided which will be used in logs instead of `source`.
-
-```toml
-[groups.cloudflare-blocklist]
-type = "blocklist-v2"
-resolvers = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source = [
-   {name = "cbuijs/blocklist", format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
-   {format = "regexp", source = "/path/to/local/regexp.list"},
-]
-```
-
-Remote blocklist that is cached to local disk (`cache-dir="/var/cache/routedns"`) and loaded from it at startup. It also ignores failures to load the remote blocklist and does not prevent startup.
-
-```toml
-[groups.cloudflare-blocklist]
-type = "blocklist-v2"
-resolvers = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list", cache-dir = "/var/cache/routedns", allow-failure = true},
-]
-```
-
-Blocklist that loads 2 remote blocklists daily, and also defines a local allowlist which overrides the blocklist rules. Anything matching a rule on the allowlist is forwarded to an alternative resolver or modifier, `"trusted-resolver"` in this case (not shown in the example).
-
-```toml
-[groups.cloudflare-blocklist]
-type = "blocklist-v2"
-resolvers = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source = [
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/malicious-dom/routedns.blocklist.domain.list"},
-   {format = "domain", source = "https://raw.githubusercontent.com/cbuijs/accomplist/main/easylist/routedns.blocklist.domain.list"},
-]
-allowlist-resolver = "trusted-resolver" # Send anything on the allowlist to a different upstream resolver (optional)
-allowlist-refresh = 86400
-allowlist-source = [
-   {format = "domain", source = "/path/to/trustworthy.list"},
-]
-```
-
-Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blocklist-regexp.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [blocklist-domain.toml](../cmd/routedns/example-config/blocklist-domain.toml), [blocklist-hosts.toml](../cmd/routedns/example-config/blocklist-hosts.toml), [blocklist-local.toml](../cmd/routedns/example-config/blocklist-local.toml), [blocklist-remote.toml](../cmd/routedns/example-config/blocklist-remote.toml), [blocklist-allow.toml](../cmd/routedns/example-config/blocklist-allow.toml), [blocklist-resolver.toml](../cmd/routedns/example-config/blocklist-resolver.toml), [blocklist-domain-ede.toml](../cmd/routedns/example-config/blocklist-domain-ede.toml), [blocklist-mac.toml](../cmd/routedns/example-config/blocklist-mac.toml)
+-> [Blocklists](blocklists.md#query-blocklist)
 
 ### Response Blocklist
 
-Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-ip` and `response-blocklist-name`.
+Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule.
 
-- `response-blocklist-ip` blocks based on IP addresses in the response, by network IP (in CIDR notation) or geographical location.
-- `response-blocklist-name` filters based on domain names in CNAME, MX, NS, PTR and SRV records.
-
-#### Configuration
-
-The configuration options of response blocklists are very similar to that of [query blocklists](#query-blocklist) with the exception of the `allowlists-*` options which are not supported in response blocklists.
-
-Response blocklists are instantiated with `type = "response-blocklist-ip"` or `type = "response-blocklist-name"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided.
-  - For `response-blocklist-ip`, the value can be `cidr`, or `location`. Defaults to `cidr`.
-  - For `response-blocklist-name`, the value can be `regexp`, `domain`, or `hosts`. Defaults to `regexp`.
-- `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `cache-dir` (see notes for [Query Blocklist](#query-blocklist)) as well as `name` which assigns a name to the list used in logs (defaults to `source`).
-- `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned unless an alternative `blocklist-resolver` is defined.
-- `inverted` - Inverts the behavior of the blocklist. If set to `true`, only IPs that are on the blocklist are allowed and responses containing an IP not on the blocklist are blocked. Can be combined with `filter` to remove any IPs not on the blocklist from the response.
-- `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID. Only `response-blocklist-ip` acts on this option; it is ignored by `response-blocklist-name`.
-
-Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP responses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
-
-#### Examples
-
-Simple response blocklists with static rules in the configuration file.
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "response-blocklist-ip"
-resolvers           = ["cloudflare-dot"]
-blocklist           = [
-  '127.0.0.0/24',
-  '157.240.0.0/16',
-]
-```
-
-```toml
-[groups.cloudflare-blocklist]
-type             = "response-blocklist-name"
-resolvers        = ["cloudflare-dot"]
-blocklist-format = "domain"
-blocklist        = [
-  'ns.evil.com',
-  '*.acme.test',
-]
-```
-
-Response blocklists that use local or remote rule-sets with periodic refresh.
-
-```toml
-[groups.cloudflare-blocklist]
-type              = "response-blocklist-ip"
-resolvers         = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source  = [
-  {source = "./example-config/cidr.txt"},
-  {source = "https://host/block.cidr.txt"},
-]
-```
-
-```toml
-[groups.cloudflare-blocklist]
-type              = "response-blocklist-name"
-resolvers         = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source  = [
-  {format = "domain", source = "./example-config/domains.txt"},
-]
-```
-
-Response blocklist that is cached on local disk for faster startup. By default, logs will contain the source (in this case the URL) of a match, but different name can be specified with `name`.
-
-```toml
-[groups.cloudflare-blocklist]
-type              = "response-blocklist-ip"
-resolvers         = ["cloudflare-dot"]
-blocklist-refresh = 86400
-blocklist-source  = [
-  {name = "my-block-list", source = "https://host/block.cidr.txt", cache-dir="/var/cache/routedns"},
-]
-```
-
-Response blocklist based on IP geo-location. Remote and multiple blocklists are supported as well.
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "response-blocklist-ip"
-resolvers           = ["cloudflare-dot"]
-blocklist-format    = "location"
-blocklist           = [
-  "6255148", # Europe
-  "2017370", # Russia
-  "7839805", # Melbourne
-]
-```
-
-Response blocklist based on ASN of the IP. The ASNs of the organizations to be blocked must be provided as an array of string.
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "response-blocklist-ip"
-resolvers           = ["cloudflare-dot"]
-blocklist-format    = "asn"
-blocklist           = [
-  "15169", # Google
-]
-```
-
-Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml), [response-blocklist-asn.toml](../cmd/routedns/example-config/response-blocklist-asn.toml)
+-> [Blocklists](blocklists.md#response-blocklist)
 
 ### Client Blocklist
 
-Client blocklists match the IP of the client instead of responses. By default, a client on the blocklist will receive a REFUSED, though other responses can be configured by combining it with a `static-responder`. The same options as with [response-blocklist-ip](#response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
+Client blocklists match the IP of the client instead of responses.
 
-#### Configuration
-
-The configuration options of client blocklists are very similar to that of [response blocklists](#response-blocklist) with the exception of the `filter` option.
-
-Client blocklists are instantiated with `type = "client-blocklist"`.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `blocklist-resolver` - Alternative resolver for responses matching a rule, the query will be re-sent to this resolver. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Values can be `cidr`, or `location`. Defaults to `cidr`.
-- `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
-- `blocklist-source` - An array of blocklists, each with `format` and `source` and optionally `name`.
-- `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
-- `use-ecs` - If set to true, will use the IP address in the client's ECS record instead of the real IP. Can be used to simulate queries from other source IPs. The address should be set to the IP, not a subnet for this to work. Uses the client's real IP if no ECS record is found in the query.
-
-#### Examples
-
-Simple client blocklists that responds with DROP to all queries from one network source
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "client-blocklist"
-resolvers           = ["cloudflare-dot"]
-blocklist           = [
-  '157.240.0.0/16',
-]
-```
-
-This client blocklist uses the `blocklist-resolver` option to send queries from matching clients to a resolver that drops the query.
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "client-blocklist"
-resolvers           = ["cloudflare-dot"]
-blocklist-resolver  = "drop-all"
-blocklist           = [
-  '157.240.0.0/16',
-]
-
-[groups.drop-all]
-type = "drop"
-```
-
-Example config files: [client-blocklist.toml](../cmd/routedns/example-config/client-blocklist.toml), [client-blocklist-refused.toml](../cmd/routedns/example-config/client-blocklist-refused.toml), [client-blocklist-geo.toml](../cmd/routedns/example-config/client-blocklist-geo.toml)
+-> [Blocklists](blocklists.md#client-blocklist)
 
 ### EDNS0 Client Subnet Modifier
 
-A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address. The following operation are supported by the subnet modifier:
+A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address.
 
-- `add` - Add an ECS option to a query. If there is one already it is replaced. If no `ecs-address` is provided, the address of the client is used (with `ecs-prefix4` or `ecs-prefix6` applied).
-- `add-if-missing` - Add an ECS option to a query if none was provided by the client. If no `ecs-address` is provided, the address of the client is used (with `ecs-prefix4` or `ecs-prefix6` applied).
-- `delete` - Remove the ECS option completely from the EDNS0 record.
-- `privacy` - Restrict the number of bits in the address to the number in `ecs-prefix4`/`ecs-prefix6`.
-
-#### Configuration
-
-Client Subnet modifiers are instantiated with `type = "ecs-modifier"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `ecs-op` - Operation to be performed on query options. Either `add`, `add-if-missing`, `delete`, or `privacy`. Does nothing if not specified.
-- `ecs-address` - The address to use in the option. Only used for add operations. If given, will set the address to a fixed value. If missing, the address of the client is used (with the appropriate `ecs-prefix` applied).
-- `ecs-prefix4` and `ecs-prefix6` - Source prefix length. Mask for the address. Only used for add and privacy operations.
-
-#### Examples
-
-Remove ECS options from all queries.
-
-```toml
-[groups.google-ecs]
-type = "ecs-modifier"
-resolvers = ["google-dot"]
-ecs-op = "delete" # "add", "delete", "privacy". Defaults to "" which does nothing.
-```
-
-Add/replace ECS options in all queries with a fixed network address. Without `ecs-address`, this will use the client's IP address.
-
-```toml
-[groups.google-ecs]
-type = "ecs-modifier"
-resolvers = ["google-dot"]
-ecs-op = "add"
-ecs-address = "1.2.3.4"
-ecs-prefix4 = 24
-```
-
-Restrict the number of bits in the address in queries to upstream resolvers.
-
-```toml
-[groups.google-ecs]
-type = "ecs-modifier"
-resolvers = ["google-dot"]
-ecs-op = "privacy"
-ecs-prefix4 = 8
-ecs-prefix6 = 64
-```
-
-Example config files: [ecs-modifier-add.toml](../cmd/routedns/example-config/ecs-modifier-add.toml), [ecs-modifier-delete.toml](../cmd/routedns/example-config/ecs-modifier-delete.toml), [ecs-modifier-privacy.toml](../cmd/routedns/example-config/ecs-modifier-privacy.toml)
-
-**Related Feature**: If you want to route queries based on ECS data, see [ECS Source Routing](#ecs-source-routing). While `EDNS0 Client Subnet Modifier` focuses on modifying ECS data before forwarding it upstream, `ECS Source Routing` enables routing decisions based on the original client's IP address in ECS data.
+-> [Modifiers](modifiers.md#edns0-client-subnet-modifier)
 
 ### EDNS0 Modifier
 
-EDNS0 Modifier allows low-level operations on the EDNS0 option records in queries. It can be used to add or remove custom option codes with arbitrary data.
+EDNS0 Modifier allows low-level operations on the EDNS0 option records in queries.
 
-- `add` - Add an EDNS0 option to a query. If there is one already it is replaced.
-- `delete` - Remove the specified option from the EDNS0 options.
-
-#### Configuration
-
-EDNS0 Subnet modifiers are instantiated with `type = "edns0-modifier"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `edns0-op` - Operation to be performed on query options. Either `add`, `delete`. Note that `add` replaces options with the same code if present.
-- `edns0-code` - EDNS0 option code to apply the modification to.
-- `edns0-data` - Raw data for the option expressed in an array of (decimal!) byte values. Only used for `add` operations.
-
-#### Examples
-
-Add the MAC address 52:54:00:b6:49:60 to an EDNS0 option (code 65001) for identification with the upstream resolver.
-
-```toml
-[groups.opendns-mac]
-type = "edns0-modifier"
-resolvers = ["opendns"]
-edns0-op = "add" # "add" or "delete". Defaults to "" which does nothing.
-edns0-code = 65001
-edns0-data = [82, 84, 0, 182, 73, 96]
-```
-
-Example config files: [edns0-modifier.toml](../cmd/routedns/example-config/edns0-modifier.toml)
+-> [Modifiers](modifiers.md#edns0-modifier)
 
 ### Static responder
 
-A static responder can be used to terminate every query made to it with a fixed answer. The answer can contain Answer, NS, and Extra records with a configurable RCode. Static responders are useful in combination with routers to build walled-gardens or blocklists providing more control over the response. The individual records in the response are defined in zone-file format. The default TTL is 1h unless given in the record.
+A static responder can be used to terminate every query made to it with a fixed answer.
 
-#### Configuration
-
-Static responders are instantiated with `type = "static-responder"` in the groups section of the configuration.
-
-Options:
-
-- `rcode` - Response code: 0 = NOERROR, 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3) for a more complete list. Defaults to 0 (No Error).
-- `answer` - Array of strings, each one representing a line in zone-file format. Forms the content of the Answer records in the response. The name in all answer records is replaced with the name in the query to create a match.
-- `ns` - Array of strings, each one representing a line in zone-file format. Forms the content of the Authority records in the response.
-- `extra` - Array of strings, each one representing a line in zone-file format.  Forms the content of the Additional records in the response.
-- `truncate` - when true, TC Bit is set in response. Default is false.
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
-
-Note:
-
-The default TTL of all records is 3600 unless provided in the configuration. To set the TTL in the answer, provide a placeholder for the name like so: `". 86400 IN A 1.2.3.4"`. Starting the line with the TTL value will not work.
-
-#### Examples
-
-A fixed responder that will return a full answer with NS and Extra records with different TTL. The name string in answer records gets updated dynamically to match the query, while NS and Extra records are return unmodified.
-
-```toml
-[groups.static-a]
-type   = "static-responder"
-answer = ["IN A 1.2.3.4"]
-ns = [
-    "domain.com. 18000 IN NS ns1.domain.com.",
-    "domain.com. 18000 IN NS ns2.domain.com.",
-]
-extra = [
-    "ns1.domain.com. 1800 IN A 127.0.0.1",
-    "ns1.domain.com. 1800 IN AAAA ::1",
-    "ns2.domain.com. 1800 IN A 127.0.0.1",
-    "ns2.domain.com. 1800 IN AAAA ::1",
-]
-```
-
-Simple responder that'll reply with SERVFAIL to every query routed to it.
-
-```toml
-[groups.static-servfail]
-type  = "static-responder"
-rcode = 2 # SERVFAIL
-```
-
-Blocks requests for QTYPE ANY RRs by using a router and a static responder. The router sends all ANY queries to the static responder which replies with an HINFO RR.
-
-```toml
-[groups.static-rfc8482]
-type   = "static-responder"
-answer = ["IN HINFO RFC8482 ANY obsoleted!"]
-
-[routers.my-router]
-routes = [
-  { type = "ANY", resolver="static-rfc8482" }, # Send queries of type ANY to a static responder
-  { resolver = "cloudflare-dot" },             # All other queries are forwarded
-]
-```
-
-Return an empty answer with TC (Truncate) bit set so the DNS client is instructed to retry the query using TCP instead of UDP.
-
-```toml
-[groups.static-truncate]
-type     = "static-responder"
-rcode    = 0 # NOERROR
-truncate = True
-```
-
-Return an extended error code explaining why a query was blocked.
-
-```toml
-[groups.static]
-type  = "static-responder"
-edns0-ede = {code = 15, text = "Blocked because reasons"}
-```
-
-Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [rfc8482.toml](../cmd/routedns/example-config/rfc8482.toml), [static-extended-error.toml](../cmd/routedns/example-config/static-extended-error.toml)
+-> [Responders](responders.md#static-responder)
 
 ### Static Template Responder
 
-A static template responder operates similarly to a [Static Responder](#static-responder) with the main difference being that the records configured are templates, meaning they can contain placeholders which can refer to data in the query, such as the question. Based on the values in the question, the template can manipulate the response. Templates can contain more complex operations such as string splitting, replacing etc.
+A static template responder operates similarly to a [Static Responder](#static-responder) with the main difference being that the records configured are templates, meaning they can contain placeholders which can refer to data in the query, such as the question.
 
-#### Configuration
-
-A static template responder is instantiated with `type = "static-template"` in the groups section of the configuration.
-
-Options:
-
-- The same options as the [Static Responder](#static-responder). The difference is that `answer`, `ns` and `extra` are treated as [templates](#templates).
-
-#### Examples
-
-A fixed responder that can respond to queries like `192.168.1.12.rebind.` by stripping the `.rebind.` suffix and treating the remaining string as IP. Note that the template in this case has to produce a valid IP or it will fail. To ensure the queries reaching this responder are always valid it may be best to combine with a router or blocklist in front of it.
-
-```toml
-[groups.static]
-type   = "static-template"
-answer = [
-    '{{ .Question }} IN A {{ trimSuffix .Question ".rebind."}}'
-]
-```
-
-Same as above but converts `192-168-1-12.rebind` into an IP.
-
-```toml
-[groups.static]
-type   = "static-template"
-answer = [
-  '{{ .Question }} {{ .QuestionClass }} {{ .QuestionType }} {{ replaceAll ( index ( split .Question "." ) 0 ) "-" "." }}'
-]
-```
-
-Return an extended error code explaining why a query was blocked.
-
-```toml
-[groups.static]
-type   = "static-template"
-edns0-ede = {code = 15, text = '{{ .Question }} is banned!'}
-```
-
-Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml), [static-template-error.toml](../cmd/routedns/example-config/static-template-error.toml)
+-> [Responders](responders.md#static-template-responder)
 
 ### Drop
 
-Terminates a pipeline by dropping the request. Typically used with blocklists to abort queries that match block rules. UDP and TCP listeners close the connection without replying, while HTTP listeners will reply with an HTTP error.
+Terminates a pipeline by dropping the request.
 
-#### Configuration
-
-A drop group is instantiated with `type = "drop"` in the groups section of the configuration.
-
-Options:
-
-- None. A drop group terminates the pipeline, so it takes no `resolvers` either.
-
-#### Examples
-
-Client blocklist that drops requests from clients on the blocklist.
-
-```toml
-[groups.cloudflare-blocklist]
-type                = "client-blocklist"
-resolvers           = ["cloudflare-dot"]
-blocklist-resolver  = "drop" # Any match is sent to a resolver that drops the query
-blocklist           = [
-  '157.240.0.0/16',
-]
-
-[groups.drop]
-type = "drop"
-
-```
-
-Example config files: [client-blocklist-drop.toml](../cmd/routedns/example-config/client-blocklist-drop.toml)
+-> [Responders](responders.md#drop)
 
 ### Response Minimizer
 
 This element passes all queries to its upstream resolver and strips all Extra and NS records from the response, making responses smaller.
 
-#### Configuration
-
-A response minimizer is instantiated with `type = "response-minimize"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-
-#### Examples
-
-```toml
-[groups.minimize]
-type = "response-minimize"
-resolvers = ["google-dot"]
-```
-
-Example config files: [response-minimize.toml](../cmd/routedns/example-config/response-minimize.toml)
+-> [Modifiers](modifiers.md#response-minimizer)
 
 ### Response Collapse
 
 This element passes all queries to its upstream resolver and collapses response chains in the answer records to just the query name and the queried type.
 
-A response chain like this:
-
-```text
-www.paypal.com. 2964 IN CNAME www.glb.paypal.com.
-www.glb.paypal.com. 251 IN CNAME www.paypal.com-a.edgekey.net.
-www.paypal.com-a.edgekey.net. 7199 IN CNAME e5308.x.akamaiedge.net.
-e5308.x.akamaiedge.net. 18 IN A 95.100.196.60
-```
-
-Becomes:
-
-```text
-www.paypal.com. 18 IN A 95.100.196.60
-```
-
-#### Configuration
-
-A response collapse element is instantiated with `type = "response-collapse"` in the groups section of the configuration.
-
-Options:
-
-- `null-rcode` - Response code if after collapsing there are no answer records left: 0 = NOERROR (default), 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3)
-
-#### Examples
-
-```toml
-[groups.collapse]
-type = "response-collapse"
-resolvers = ["google-dot"]
-```
-
-Example config files: [response-collapse.toml](../cmd/routedns/example-config/response-collapse.toml)
+-> [Modifiers](modifiers.md#response-collapse)
 
 ### Router
 
-Routers are used to direct queries to specific upstream resolvers, modifiers, or to other routers based on the query type, name, time of day, or client information. Each router contains at least one route. Routes are evaluated in the order they are defined and the first match will be used. Routes that match on the query name are regular expressions. Typically the last route should not have a class, type or name, making it the default route.
+Routers are used to direct queries to specific upstream resolvers, modifiers, or to other routers based on the query type, name, time of day, or client information.
 
-#### Configuration
-
-Routers groups are instantiated with `routers.NAME` with NAME being a unique identifier for this router.
-
-Options:
-
-- `routes` - Array of routes. Routes are processed in order and processing stops after the first match.
-
-A route has the following fields:
-
-- `type` - If defined, only matches queries of this type, `A`, `AAAA`, `MX`, etc. Optional.
-- `types` - List of types. If defined, only matches queries whose type is in this list. Optional.
-- `class` - If defined, only matches queries of this class (`IN`, `CH`, `HS`, `NONE`, `ANY`). Optional.
-- `name` - A regular expression that is applied to the query name. Note that dots in domain names need to be escaped. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details. Optional.
-- `source` - Network in CIDR notation. Used to route based on client IP. Optional.
-- `ecs-source` - Network in CIDR notation. Used to route based on the IP address in the EDNS Client Subnet (ECS) option. Optional.
-- `weekdays` - List of weekdays this route should match on. Possible values: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. Uses local time, not UTC.
-- `after` - Time of day in the format HH:mm after which the rule matches. Uses 24h format. For example `09:00`. Note that together with the `before` parameter it is possible to accidentally write routes that can never trigger. For example `after=12:00 before=11:00` can never match as both conditions have to be met for the route to be used.
-- `before` - Time of day in the format HH:mm before which the rule matches. Uses 24h format. For example `17:30`.
-- `invert` - Invert the result of the matching if set to `true`. Optional.
-- `doh-path` - Regexp that matches on the DoH query path the client used.
-- `listener` - Regexp that matches on the ID of the listener that first received.
-- `servername` - Regexp that matches on the TLS server name used in the TLS handshake with the listener.
-- `resolver` - The identifier of a resolver, group, or another router. Required.
-
-For all regular expressions, see [Syntax](https://github.com/google/re2/wiki/Syntax) on what is supported. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`.
-
-#### Examples
-
-Sends all queries for the MX record of `google.com` and all its sub-domains to a group consisting of Google's DNS servers. Anything else is sent to a DNS-over-TLS resolver.
-
-```toml
-[routers.router1]
-routes = [
-  { name = '(^|\.)google\.com\.$', type = "MX", resolver="google-udp" },
-  { resolver="cloudflare-dot" }, # default route
-]
-```
-
-Send all queries for A, AAAA, and MX records under `google.com` to a non-default resolver. Note the plural in `types` which expects a list.
-
-```toml
-[routers.router1]
-routes = [
-  { name = '(^|\.)google\.com\.$', types = ["A", "AAAA", "MX"], resolver="google-udp" },
-  { resolver="cloudflare-dot" }, # default route
-]
-```
-
-Route queries from a specific IP to a different resolver.
-
-```toml
-[routers.router1]
-routes = [
-  { source = "192.168.1.123/32", resolver="cleanbrowsing-filtered" },
-  { resolver="cloudflare-dot" },
-]
-```
-
-Disallow all queries for records that are not of type A, AAAA, or MX by responding with NXDOMAIN.
-
-```toml
-[routers.router1]
-routes = [
-  { invert = true, types = ["A", "AAAA", "MX"], resolver="static-nxdomain" },
-  { resolver="cloudflare-dot" },
-]
-
-[groups.static-nxdomain]
-type  = "static-responder"
-rcode = 3
-```
-
-Use a different upstream resolver on weekends between 9am and 5pm.
-
-```toml
-[routers.router1]
-routes = [
-  { weekdays = ["sat", "sun"], after = "09:00", before = "17:00", resolver="google-dot" },
-  { resolver="cloudflare-dot" },
-]
-```
-
-Example config files: [split-dns.toml](../cmd/routedns/example-config/split-dns.toml), [block-split-cache.toml](../cmd/routedns/example-config/block-split-cache.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [walled-garden.toml](../cmd/routedns/example-config/walled-garden.toml), [router.toml](../cmd/routedns/example-config/router.toml), [router-time.toml](../cmd/routedns/example-config/router-time.toml)
+-> [Routing](routing.md#router)
 
 ### ECS Source Routing
 
-The `ecs-source` field allows routing based on the IP address provided in the EDNS Client Subnet (ECS) option ([RFC 7871](https://tools.ietf.org/html/rfc7871)). This is useful when RouteDNS is behind a resolver or proxy that forwards the original client IP using ECS, such as Dnsmasq with `add-subnet=32`. Since all queries arrive at RouteDNS from the same source IP (the proxy), standard `source` routing cannot differentiate between clients.
+The `ecs-source` field allows routing based on the IP address provided in the EDNS Client Subnet (ECS) option ([RFC 7871](https://tools.ietf.org/html/rfc7871)).
 
-**Important:** To prevent leaking ECS data to upstream resolvers, use an `ecs-modifier` with `ecs-op = "delete"` before forwarding queries. ECS data contains information about the original client's IP address, which may compromise privacy if shared with upstream resolvers. Removing ECS data ensures that upstream resolvers only see the proxy's IP address.
-
-**Security note — ECS is client-controlled:** Unlike `source`, which is derived from the transport connection and cannot be forged, `ecs-source` matches on the ECS option carried in the query itself. Any client that can reach RouteDNS directly can put an arbitrary address in that option and steer routing — bypassing security-relevant policies such as parental controls or per-network filtering. `ecs-source` is only safe for policy decisions when the ECS value is written by a component you trust:
-
-- RouteDNS must **not** be directly reachable by untrusted clients. Place it behind the trusted forwarder/proxy that adds the ECS option and firewall off direct access.
-- Constrain the route with `source` so the ECS value is only honored when the query actually arrives from the trusted proxy, for example `{ source = "10.0.0.1/32", ecs-source = "192.168.1.10/32", resolver = "..." }`. Both conditions must match (logical AND), so a query from any other source IP will not match the ECS route regardless of its ECS contents.
-- Prefer a forwarder that **replaces** the client's ECS option rather than appending to it. RouteDNS evaluates the *last* ECS option in the query, so a proxy that appends its own option after a client-supplied one will take precedence; a proxy that appends but leaves the client's option untouched is still safe, but one that does not normalize at all is not.
-
-Note also that the router runs *before* groups in the pipeline, so an `ecs-modifier` group cannot normalize ECS ahead of the routing decision unless it is placed between the listener and the router (`listener → ecs-modifier → router`).
+-> [Routing](routing.md#ecs-source-routing)
 
 #### Route Evaluation Order
 
-Routes are evaluated sequentially, and the first matching route is used. **Order matters** when defining routes:
-- More specific routes (e.g., `192.168.1.10/32`) should be placed **before** broader routes (e.g., `192.168.1.0/24`).
-- If a broader route is placed first, it will match all queries within that subnet, and the more specific route will never be evaluated.
-
-#### Examples
-
-Route queries based on ECS data:
-
-```toml
-[routers.ecs-router]
-routes = [
-  # Route 1: Queries with an ECS source of 192.168.1.10/32 are sent to the adblocker.
-  { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
-
-  # Route 2: Queries with an ECS source of 192.168.1.0/24 are sent to the unfiltered resolver.
-  { ecs-source = "192.168.1.0/24", resolver = "unfiltered-resolver" },
-
-  # Route 3 (Default): All other queries (including those without ECS) go to the unfiltered resolver.
-  { resolver = "unfiltered-resolver" },
-]
-```
-
-Combine ECS routing with ECS removal:
-
-```toml
-[routers.ecs-router]
-routes = [
-  { ecs-source = "192.168.1.10/32", resolver = "adblock-resolver" },
-  { resolver = "remove-ecs" },
-]
-
-[groups.remove-ecs]
-type = "ecs-modifier"
-resolvers = ["upstream-resolver"]
-ecs-op = "delete"
-```
-
-**Related Feature**: If you want to control what ECS data is sent to upstream resolvers, see [EDNS0 Client Subnet modifier](#edns0-client-subnet-modifier). While `ECS Source Routing` focuses on routing decisions based on ECS data, `EDNS0 Client Subnet Modifier` allows you to add, remove, or restrict ECS data for privacy or compatibility.
+-> [Routing](routing.md#route-evaluation-order)
 
 ### Rate Limiter
 
-This element is used to limit the number of queries a client or network is allowed to make in a given time period. It uses a fixed window algorithm and by default drops any queries that exceed the configured maximum. Alternatively, a `limit-resolver` can be configured to route such queries to other elements such as [static responders](#static-responder) or other resolvers.
+This element is used to limit the number of queries a client or network is allowed to make in a given time period.
 
-#### Configuration
-
-A rate limiter element is instantiated with `type = "rate-limiter"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `limit-resolver` - Upstream element to route rate-limited requests to. Optional, default behavior is to drop such queries.
-- `requests` - Number of requests allowed per time period.
-- `window` - Number of seconds in the time period, default 60.
-- `prefix4` - Prefix length for identifying an IPv4 client, default 24
-- `prefix6` - Prefix length for identifying an IPv6 client, default 56
-
-#### Examples
-
-Simple rate-limiter allowing 200 requests per minute from the same /24 (or /56) networks.
-
-```toml
-[groups.rrl]
-type = "rate-limiter"
-resolvers = ["cloudflare-dot"]
-requests = 200
-```
-
-Rate-limiter allowing 100 queries from a /24 (or /56) network per 2 minutes. Queries that exceed the limit will be answered with REFUSED.
-
-```toml
-[groups.rrl]
-type = "rate-limiter"
-resolvers = ["cloudflare-dot"]
-limit-resolver = "static-refused"
-requests = 100
-window = 120
-prefix4 = 24
-prefix6 = 56
-
-[groups.static-refused]
-type  = "static-responder"
-rcode = 5 # REFUSED
-```
-
-Example config files: [rate-limiter.toml](../cmd/routedns/example-config/rate-limiter.toml)
+-> [DNSSEC and Rate Limiting](security.md#rate-limiter)
 
 ### Fastest TCP Probe
 
-The `fastest-tcp` element will first perform a lookup, then send TCP probes to all A or AAAA records in the response. It can then either return just the A/AAAA record for the fastest response, or all A/AAAA sorted by response time (fastest first). Since probing multiple servers can be slow, it is typically used behind a [cache](#cache) to avoid making too many probes repeatedly. Each instance can only probe one port and if different ports are to be probed depending on the query name, a router should be used in front of it as well.
+The `fastest-tcp` element will first perform a lookup, then send TCP probes to all A or AAAA records in the response.
 
-#### Configuration
-
-A Fastest TCP Probe element is instantiated with `type = "fastest-tcp"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `port` - TCP port number to probe. Default: `443`.
-- `wait-all` - Instead of just returning the fastest response, wait for all probes and return them sorted by response time (fastest first). This will generally be slower as the slowest TCP probe determines the query response time. Default: `false`
-- `success-ttl-min` - Minimum TTL of successful probes (in seconds). Default: 0. Similar to the `ttl-min` option of [TTL Modifier](#ttl-modifier). Typically used to cache the response for longer given how resource-intensive and slow probing can be.
-
-#### Examples
-
-TCP probe for the HTTPS port. Successful probes are cached for 30min.
-
-```toml
-[groups.fastest-cached]
-type = "cache"
-resolvers = ["tcp-probe"]
-
-[groups.tcp-probe]
-type = "fastest-tcp"
-port = 443
-success-ttl-min = 1800
-resolvers = ["cloudflare-dot"]
-```
-
-Example config files: [fastest-tcp.toml](../cmd/routedns/example-config/fastest-tcp.toml)
+-> [Caching and Performance](caching.md#fastest-tcp-probe)
 
 ### Retrying Truncated Responses
 
-The `truncated-retry` element will first perform a lookup using its primary resolver. If the response from the primary is truncated, the same query is retried with the secondary `retry-resolver`. This element is only useful if the primary resolver uses either plain UDP or DTLS as those apply limits to the size of the response. In addition, it is typically used behind a [cache](#cache) which can then store the full response and respond faster to clients which too may have to retry the query if using a UDP or DTLS listener.
+The `truncated-retry` element will first perform a lookup using its primary resolver.
 
-#### Configuration
-
-To support switching to streaming resolvers on truncation, add an element with `type = "truncate-retry"` in the groups section of the configuration, right before the resolver.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `retry-resolver` - Must be referencing another resolver, typically using a stream-protocol such as TCP, DoH, or DoT.
-
-#### Examples
-
-TCP probe for the HTTPS port. Successful probes are cached for 30min.
-
-```toml
-# Primary resolver (UDP)
-[resolvers.cloudflare-udp]
-address = "1.1.1.1:53"
-protocol = "udp"
-edns0-udp-size = 1232
-
-# TCP Fallback resolver if UDP responses are truncated
-[resolvers.cloudflare-tcp]
-address = "1.1.1.1:53"
-protocol = "tcp"
-
-# Try UDP first, if truncated use the alternative (TCP)
-[groups.retry]
-type = "truncate-retry"
-resolvers = ["cloudflare-udp"]
-retry-resolver = "cloudflare-tcp"
-
-[groups.cache]
-type = "cache"
-resolvers = ["retry"]
-
-[listeners.local-udp]
-address = "127.0.0.1:53"
-protocol = "udp"
-resolver = "cache"
-
-[listeners.local-tcp]
-address = "127.0.0.1:53"
-protocol = "tcp"
-resolver = "cache"
-```
-
-Example config files: [truncate-retry.toml](../cmd/routedns/example-config/truncate-retry.toml)
+-> [Caching and Performance](caching.md#retrying-truncated-responses)
 
 ### Request Deduplication
 
-The `request-dedup` element passes individual queries to its upstream resolver. While the first query is being processed, further queries for the same name will be blocked. Once the first query has been answered, all waiting queries are completed with the same answer. This element can be used to reduce load on upstream servers when queried by clients sending the same query multiple times.
+The `request-dedup` element passes individual queries to its upstream resolver.
 
-#### Configuration
-
-To deduplicate queries, add an element with `type = "request-dedup"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-
-#### Examples
-
-```toml
-[listeners.local-udp]
-address = "127.0.0.1:53"
-protocol = "udp"
-resolver = "cache"
-
-[groups.cache]
-type = "cache"
-resolvers = ["dedup"]
-
-[groups.dedup]
-type = "request-dedup"
-resolvers = ["cloudflare-udp"]
-
-[resolvers.cloudflare-udp]
-address = "1.1.1.1:53"
-protocol = "udp"
-```
-
-Example config files: [request-dedup.toml](../cmd/routedns/example-config/request-dedup.toml)
+-> [Caching and Performance](caching.md#request-deduplication)
 
 ### Syslog
 
-The `syslog` element can be used to log requests and/or responses to local or remote syslog servers. It forwards queries un-modified to the configured resolver. It is possible to configure multiple syslog loggers in different places. For example a logger could be configured to log and forward queries for domains on a blocklist, or behind a router.
+The `syslog` element can be used to log requests and/or responses to local or remote syslog servers.
 
-#### Configuration
-
-To enable syslog, add an element with `type = "syslog"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers, only one is supported.
-- `network` - Network protocol. `udp`, `tcp` or `unix`. Defaults to `unix`.
-- `address` - Remote syslog server address and port. For example `192.168.0.1:514`
-- `priority` - Syslog priority. Possible values: `emergency`, `alert`, `critical`, `error`, `warning`, `notice`, `info`, `debug`
-- `tag` - Syslog tag. Defaults to the program name.
-- `log-request` - Enable logging of requests. Default `false`.
-- `log-response` - Enable logging of responses. Default `false`.
-- `verbose` - Log all answers, not just the types that match the query. Default `false`.
-
-#### Examples
-
-```toml
-[groups.cloudflare-logged]
-type = "syslog"
-resolvers = ["cloudflare-dot"]
-network = "udp"
-address = "192.168.0.1:514"
-priority = "info"
-tag = "routedns"
-log-request = true
-log-response = true
-```
-
-Example config files: [syslog.toml](../cmd/routedns/example-config/syslog.toml)
+-> [Logging](observability.md#syslog)
 
 ### Query Log
 
-The `query-log` element logs all DNS query details, including time, client IP, DNS question name, class and type. Logs can be written to a file or STDOUT.
+The `query-log` element logs all DNS query details, including time, client IP, DNS question name, class and type.
 
-#### Configuration
-
-To enable query-logging, add an element with `type = "query-log"` in the groups section of the configuration.
-
-Options:
-
-- `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation. When running under the systemd unit shipped with the packages, use a path under `/var/log/routedns`; see [Writable Paths](#writable-paths).
-- `output-format` - Output format. Defaults to "text".
-
-#### Examples
-
-```toml
-[groups.query-log]
-type   = "query-log"
-resolvers = ["cloudflare-dot"]
-output-file = "/var/log/routedns/query.log"
-output-format = "text"
-```
-
-Example config files: [syslog.toml](../cmd/routedns/example-config/query-log.toml)
+-> [Logging](observability.md#query-log)
 
 ### Lua
 
-Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers.
+Lua groups allow writing custom query handling logic using Lua scripts.
 
-#### Configuration
-
-To enable a Lua group, add an element with `type = "lua"` in the groups section of the configuration. Either `lua-script` or `lua-script-source` must be provided.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers accessible in the script as `Resolvers[1]`, `Resolvers[2]`, etc.
-- `lua-script` - Inline Lua script (multi-line string in TOML using `"""`).
-- `lua-script-source` - Path to an external `.lua` file. Alternative to `lua-script`.
-- `lua-concurrency` - Number of concurrent Lua VM instances (pool size). Default `4`.
-- `lua-no-sandbox` - Disable the sandbox to allow `io`, `os`, `debug`, and dynamic code loading. Default `false`.
+-> [Lua Scripting](scripting.md#lua)
 
 #### Sandbox
 
-By default, scripts run in a sandbox that provides access to safe libraries: `base` (with dangerous functions removed), `string`, `math`, `table`, and `coroutine`. The following functions are blocked in sandbox mode: `dofile`, `loadfile`, `load`, `loadstring`, `module`, `require`. The `io`, `os`, `debug`, and `package` libraries are not loaded.
-
-Set `lua-no-sandbox = true` to disable the sandbox and allow full access to all Lua libraries. Only use this for trusted scripts.
+-> [Lua Scripting](scripting.md#sandbox)
 
 #### Lua API
 
-Scripts have access to the following types and globals:
-
-- **Message** - DNS message. Create with `Message.new()`. Fields: `id`, `response`, `rcode`, `authoritative`, `recursion_desired`, `recursion_available`, `authenticated_data`, `questions`, `answer`, `ns`, `extra`. Methods: `:set_reply(request)`, `:set_question(name, type)`, `:is_edns0()`, `:set_edns0(udpsize, do)`. Note: methods use Lua colon syntax (e.g. `msg:set_reply(request)`).
-- **Question** - DNS question. Create with `Question.new(name, qtype, qclass)`. Fields: `name`, `qtype`, `qclass`.
-- **RR** - Resource record. Create with `RR.new({rtype = TypeA, name = "example.com.", class = ClassIN, ttl = 300, a = "1.2.3.4"})`. Header fields: `name`, `rtype`, `class`, `ttl`, `rdlength`. Data fields are type-specific and use lowercase names (e.g., `a`, `aaaa`, `ns`, `cname`, `mx`, `preference`, `target`, etc.).
-- **OPT** - EDNS0 OPT pseudo-record. Create with `OPT.new(udp_size, do_bit)`. Fields: `udp_size`, `do_bit`, `version`, `extended_rcode`, `option` (array of EDNS0 options), `name`, `rtype`. Also returned by `Message:is_edns0()` and created implicitly by `Message:set_edns0(udp_size, do_bit)`.
-- **ClientInfo** - Client information passed as the second argument (`ci`) to `Resolve(msg, ci)`. Read-only fields: `source_ip` (string or nil), `doh_path` (string), `tls_server_name` (string), `listener` (string), `protocol` (string, the transport the query arrived on, one of `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls` or `odoh`), `listener_addr` (string, the address the receiving listener is bound to). The last two are empty for queries that were not produced by a listener, such as those from the `prefetch` component.
-- **Error** - Error value. Create with `Error.new("message")`. Methods: `error()`.
-- **Resolvers** - Table of upstream resolvers. Each resolver has a `:resolve(msg, ci)` method that returns `(response, error)` (e.g. `Resolvers[1]:resolve(msg, ci)`).
-- **DNS constants** - Type constants (`TypeA`, `TypeAAAA`, `TypeMX`, ...), class constants (`ClassIN`, `ClassCH`, ...), rcode constants (`RcodeNOERROR`, `RcodeNXDOMAIN`, ...).
-- **BuildVersion** - String constant containing the RouteDNS build version (e.g. `"v0.1.138"`).
-- **EDNS0 option constants** - `EDNS0SUBNET`, `EDNS0COOKIE`, `EDNS0EDE`, `EDNS0PADDING`, etc.
-- **EDNS0 types** - `EDNS0_SUBNET`, `EDNS0_COOKIE`, `EDNS0_EDE`, `EDNS0_PADDING`, `EDNS0_NSID`, `EDNS0_LOCAL`, and others. Each has a `new(...)` constructor and field accessors.
-
-#### Examples
-
-Simple passthrough to an upstream resolver:
-
-```toml
-[groups.lua-proxy]
-type = "lua"
-resolvers = ["cloudflare-dot"]
-lua-script = """
-function Resolve(msg, ci)
-    local answer, err = Resolvers[1]:resolve(msg, ci)
-    if err ~= nil then
-        return nil, err
-    end
-    return answer, nil
-end
-"""
-```
-
-Return a static A record for a specific domain, forwarding everything else upstream:
-
-```toml
-[groups.lua-static]
-type = "lua"
-resolvers = ["cloudflare-dot"]
-lua-script = """
-function Resolve(msg, ci)
-    local q = msg.questions[1]
-
-    -- Return a static A record for "example.com"
-    if q.name == "example.com." and q.qtype == TypeA then
-        local answer = Message.new()
-        answer:set_reply(msg)
-        local rr = RR.new({rtype = TypeA, name = q.name, class = ClassIN, ttl = 300, a = "192.168.1.1"})
-        answer.answer = { rr }
-        return answer, nil
-    end
-
-    -- Forward everything else upstream
-    return Resolvers[1]:resolve(msg, ci)
-end
-"""
-```
-
-Route queries to different resolvers based on name patterns:
-
-```toml
-[groups.lua-router]
-type = "lua"
-resolvers = ["cloudflare-dot", "google-dot"]
-lua-script = """
-function Resolve(msg, ci)
-    local q = msg.questions[1]
-    local name = q.name
-
-    -- Route .google.com queries to Google DNS
-    if string.find(name, "google%.com%.$") then
-        return Resolvers[2]:resolve(msg, ci)
-    end
-
-    -- Everything else goes to Cloudflare
-    return Resolvers[1]:resolve(msg, ci)
-end
-"""
-```
-
-Route queries based on client information (source IP, listener, TLS server name):
-
-```toml
-[groups.lua-client-routing]
-type = "lua"
-resolvers = ["internal-resolver", "external-resolver"]
-lua-script = """
-function Resolve(msg, ci)
-    -- Route queries from internal network to internal resolver
-    if ci.source_ip ~= nil and string.find(ci.source_ip, "^192%.168%.") then
-        return Resolvers[1]:resolve(msg, ci)
-    end
-
-    -- Route based on TLS server name
-    if ci.tls_server_name == "private.dns.example.com" then
-        return Resolvers[1]:resolve(msg, ci)
-    end
-
-    -- Treat anything that arrived over an encrypted transport as trusted
-    if ci.protocol == "dot" or ci.protocol == "doh" or ci.protocol == "doq" then
-        return Resolvers[1]:resolve(msg, ci)
-    end
-
-    -- Everything else goes to the external resolver
-    return Resolvers[2]:resolve(msg, ci)
-end
-"""
-```
-
-Load the script from an external file:
-
-```toml
-[groups.lua-custom]
-type = "lua"
-resolvers = ["cloudflare-dot"]
-lua-script-source = "/etc/routedns/custom.lua"
-```
-
-Block a domain with NXDOMAIN and attach an EDNS0 Extended DNS Error (EDE):
-
-```toml
-[groups.lua-ede-block]
-type = "lua"
-lua-script = """
-function Resolve(msg, ci)
-    local q = msg.questions[1]
-
-    if q.name == "blocked.example.com." then
-        local answer = Message.new()
-        answer:set_reply(msg)
-        answer.rcode = RcodeNXDOMAIN
-
-        -- Add EDNS0 OPT with an EDE option (info code 15 = Blocked)
-        answer:set_edns0(4096, false)
-        local opt = answer:is_edns0()
-        local ede = EDNS0_EDE.new(15, "domain blocked by policy")
-        opt.option = { ede }
-
-        return answer, nil
-    end
-
-    return Resolvers[1]:resolve(msg, ci)
-end
-"""
-resolvers = ["cloudflare-dot"]
-```
-
-Example config files: [lua-passthrough.toml](../cmd/routedns/example-config/lua-passthrough.toml), [lua-static-answer.toml](../cmd/routedns/example-config/lua-static-answer.toml), [lua-routing.toml](../cmd/routedns/example-config/lua-routing.toml), [lua-opt.toml](../cmd/routedns/example-config/lua-opt.toml)
+-> [Lua Scripting](scripting.md#lua-api)
 
 ### DNSSEC Validator
 
-Validates DNSSEC signatures on responses from upstream resolvers. The validator builds a chain of trust from configured root trust anchors down through DS and DNSKEY records to verify RRSIG signatures on the response. If validation fails, a SERVFAIL is returned to the client. Unsigned zones (insecure delegations) pass through without error. Only NOERROR and NXDOMAIN responses are validated.
+Validates DNSSEC signatures on responses from upstream resolvers.
 
-By default, the validator uses the built-in IANA root trust anchors (KSK-2017 and KSK-2024). Custom trust anchors can be provided to override the defaults, or the validator can fetch them from a URL at startup.
-
-#### Configuration
-
-A DNSSEC validator is instantiated with `type = "dnssec-validator"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers (only one supported).
-- `dnssec-log-only` - If `true`, validation failures are logged but responses are still returned to clients. Useful for monitoring before enforcing. Default: `false`.
-- `dnssec-trust-anchor-url` - Optional URL to fetch trust anchors from at startup. The URL should serve XML in IANA root-anchors.xml format. Expired entries (past their `validUntil` date) are automatically filtered out. If the fetch fails, falls back to built-in defaults. Ignored if `dnssec-trust-anchors` is set.
-- `dnssec-trust-anchors` - Optional array of trust anchors. If not provided, the built-in IANA root KSK-2017 and KSK-2024 are used. Each entry has the following fields:
-  - `owner` - Owner name of the trust anchor (e.g. `"."`).
-  - `key-tag` - Key tag of the DNSKEY.
-  - `algorithm` - DNSSEC algorithm number.
-  - `digest-type` - Digest type number.
-  - `digest` - Hex-encoded digest of the DNSKEY.
-
-#### Examples
-
-Simple DNSSEC validation with default trust anchors:
-
-```toml
-[groups.dnssec-validated]
-type = "dnssec-validator"
-resolvers = ["cloudflare-dot"]
-```
-
-Auto-fetch trust anchors from IANA:
-
-```toml
-[groups.dnssec-validated]
-type = "dnssec-validator"
-resolvers = ["cloudflare-dot"]
-dnssec-trust-anchor-url = "https://data.iana.org/root-anchors/root-anchors.xml"
-```
-
-Log-only mode with explicit trust anchors:
-
-```toml
-[groups.dnssec-validated]
-type = "dnssec-validator"
-resolvers = ["cloudflare-dot"]
-dnssec-log-only = true
-
-# KSK-2017
-[[groups.dnssec-validated.dnssec-trust-anchors]]
-owner = "."
-key-tag = 20326
-algorithm = 8
-digest-type = 2
-digest = "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
-
-# KSK-2024
-[[groups.dnssec-validated.dnssec-trust-anchors]]
-owner = "."
-key-tag = 38696
-algorithm = 8
-digest-type = 2
-digest = "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16"
-```
-
-Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dnssec-validator.toml), [dnssec-validator-trust-anchors.toml](../cmd/routedns/example-config/dnssec-validator-trust-anchors.toml), [dnssec-validator-iana.toml](../cmd/routedns/example-config/dnssec-validator-iana.toml)
+-> [DNSSEC and Rate Limiting](security.md#dnssec-validator)
 
 ### DNS64
 
-Synthesizes AAAA records from A records for IPv6-only clients using NAT64 ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)). When an AAAA query returns no AAAA answers from upstream, DNS64 falls back to an A query and embeds the IPv4 addresses into configurable IPv6 prefixes per [RFC 6052](https://datatracker.ietf.org/doc/html/rfc6052). Queries for non-AAAA types and responses that already contain AAAA records pass through unchanged.
+Synthesizes AAAA records from A records for IPv6-only clients using NAT64 ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)).
 
-#### Configuration
-
-A DNS64 group is instantiated with `type = "dns64"` in the groups section of the configuration.
-
-Options:
-
-- `resolvers` - Array of upstream resolvers (only one supported).
-- `dns64-prefix` - Array of IPv6 CIDR prefixes for address synthesis. Supported prefix lengths: `/32`, `/40`, `/48`, `/56`, `/64`, `/96`. Default: `["64:ff9b::/96"]` (well-known prefix from RFC 6052).
-
-#### Examples
-
-Using the well-known prefix (default):
-
-```toml
-[groups.dns64]
-type = "dns64"
-resolvers = ["upstream-udp"]
-```
-
-Custom prefix:
-
-```toml
-[groups.dns64]
-type = "dns64"
-resolvers = ["upstream-udp"]
-dns64-prefix = ["2001:db8::/96"]
-```
-
-Multiple prefixes:
-
-```toml
-[groups.dns64]
-type = "dns64"
-resolvers = ["upstream-udp"]
-dns64-prefix = ["64:ff9b::/96", "2001:db8::/32"]
-```
+-> [Modifiers](modifiers.md#dns64)
 
 ## Resolvers
 
-Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers require a unique identifier to reference them from other elements. The following protocols are supported:
-
-- udp - Plain (un-encrypted) DNS over UDP
-- tcp - Plain (un-encrypted) DNS over TCP
-- dot - DNS-over-TLS
-- doh - DNS-over-HTTP (including DoH over QUIC)
-- doq - DNS-over-QUIC
-- dtls - DNS-over-DTLS
-- odoh - Oblivious DNS-over-HTTPS
-
-Resolvers are defined in the configuration like so `[resolvers.NAME]` and have the following common options:
-
-- `address` - Remote server endpoint and port. Can be IP or hostname, or a full URL depending on the protocol. See the [Bootstrapping](#bootstrapping) on how to handle hostnames that can't be resolved.
-- `protocol` - The DNS protocol used to send queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls` or `odoh`.
-- `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server. Has no effect on plain DNS resolvers.
-- `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
-- `local-address-v4` - IPv4 address of the local interface to use when connecting to IPv4 targets. Takes priority over `local-address` for IPv4 connections.
-- `local-address-v6` - IPv6 address of the local interface to use when connecting to IPv6 targets. Takes priority over `local-address` for IPv6 connections. The address must be unbracketed (e.g. `fd00::1`, not `[fd00::1]`).
-- `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
-- `query-timeout` - Sets the query timeout to allow. In seconds.
-- `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
-- `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. For SOCKS5-proxied resolvers it is the connection to the proxy that is made in the target namespace. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
-- `fwmark` - Linux firewall mark (`SO_MARK`) to set on outbound connections. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
-- `bind-if` - Bind outbound connections to a specific network interface (`SO_BINDTODEVICE`). Useful for VRFs or forcing upstream traffic out of one interface. Optional, Linux only. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
-
-Secure resolvers such as DoT, DoH, or DoQ offer additional options to configure the TLS connections.
-
-- `client-crt` - Client certificate file.
-- `client-key` - Client certificate key file
-- `ca` - CA certificate to validate server certificates.
-- `server-name` - Name of the certificate presented by the server if it does not match the name in the endpoint address.
-
-Examples:
-
-A simple DoT resolver.
-
-```toml
-[resolvers.cloudflare-dot]
-address = "1.1.1.1:853"
-protocol = "dot"
-```
-
-DoT resolver supporting mutual-TLS, providing a certificate and key, plus validating the remote cert with a CA certificate.
-
-```toml
-[resolvers.my-mutual-tls]
-address = "myserver:853"
-protocol = "dot"
-ca = "/path/to/my-ca.pem"
-client-key = "/path/to/my-key.pem"
-client-crt = "/path/to/my-crt.pem"
-```
-
-UDP resolver with dual-stack local addresses. When the upstream resolves to an IPv4 address, `local-address-v4` is used as the source; when it resolves to IPv6, `local-address-v6` is used.
-
-```toml
-[resolvers.quad9]
-address = "9.9.9.9:53"
-protocol = "udp"
-local-address-v4 = "10.96.0.23"
-local-address-v6 = "fd54:20a4:d33b:b10c::1"
-```
-
-A list of well-known public DNS services can be found [here](../cmd/routedns/example-config/well-known.toml)
+Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. See **[Resolvers](resolvers.md)**.
 
 ### Bootstrapping
 
-When upstream services are configured using their hostnames, RouteDNS will first have to resolve the hostname of the service before establishing a secure connection with it. There are a couple of potential issues with this:
+When upstream services are configured using their hostnames, RouteDNS will first have to resolve the hostname of the service before establishing a secure connection with it.
 
-- The initial lookup is using the OS' resolver which could be using plain/un-encrypted DNS. This may not be desirable or even fail if no other DNS is available.
-- The service does not support querying it by IP directly and a hostname is needed. Google for example does not support DoH using `https://8.8.8.8/dns-query`. The endpoint has to be configured as `https://dns.google/dns-query`.
-
-To solve these issues, it is possible to add a bootstrap IP address to the resolver config or to use a [bootstrap resolver](#bootstrap-resolver). This will use the IP to connect to the service without first having to perform a lookup while still preserving the DoH URL or DoT hostname for the TLS handshake. The `bootstrap-address` option is available on both, DoT and DoH resolvers.
-
-```toml
-[resolvers.google-doh-post-bootstrap]
-address = "https://dns.google/dns-query"
-protocol = "doh"
-bootstrap-address = "8.8.8.8"
-```
+-> [Resolvers](resolvers.md#bootstrapping)
 
 ### Plain DNS Resolver
 
-Plain, un-encrypted DNS protocol clients for UDP or TCP. Note that UDP responses can be truncated so it is common to use it in combination with a [truncate-retry](#retrying-truncated-responses) group to define a fallback.
+Plain, un-encrypted DNS protocol clients for UDP or TCP.
 
-#### Configuration
-
-Plain DNS resolvers are instantiated with `protocol = "udp"` or `protocol = "tcp"` in the resolvers section. The port defaults to `53` when the address does not carry one.
-
-Options:
-
-- All [common resolver options](#resolvers) except `bootstrap-address`, which has no effect here since no TLS handshake needs a name.
-- `edns0-udp-size` - Set the EDNS0 UDP size in queries sent upstream. Optional, and only meaningful for `udp`.
-- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
-
-The TLS options do not apply, this protocol is un-encrypted.
-
-#### Examples
-
-```toml
-[resolvers.google-udp-8-8-8-8]
-address = "8.8.8.8:53"
-protocol = "udp"
-
-[resolvers.cloudflare-tcp]
-address = "1.1.1.1:53"
-protocol = "tcp"
-```
-
-Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [truncate-retry.toml](../cmd/routedns/example-config/truncate-retry.toml)
+-> [Resolvers](resolvers.md#plain-dns-resolver)
 
 ### DNS-over-TLS Resolver
 
 DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
-#### Configuration
-
-DoT resolvers are instantiated with `protocol = "dot"` in the resolvers section. The port defaults to `853` when the address does not carry one.
-
-Options:
-
-- All [common resolver options](#resolvers).
-- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
-- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
-
-`edns0-udp-size` does not apply to this protocol.
-
-#### Examples
-
-Simple DoT resolver using a well-known service.
-
-```toml
-[resolvers.cloudflare-dot-1-1-1-1]
-address = "1.1.1.1:853"
-protocol = "dot"
-```
-
-DoT resolver trusting only a specific CA.
-
-```toml
-[resolvers.cloudflare-dot-with-ca]
-address = "1.1.1.1:853"
-protocol = "dot"
-ca = "/path/to/DigiCertECCSecureServerCA.pem"
-```
-
-DoT resolver using mTLS with a server that expects a client certificate
-
-```toml
-[resolvers.my-mutual-tls]
-address = "myserver:853"
-protocol = "dot"
-ca = "/path/to/my-ca.pem"
-client-key = "/path/to/my-key.pem"
-client-crt = "/path/to/my-crt.pem"
-```
-
-Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [simple-dot-cache.toml](../cmd/routedns/example-config/simple-dot-cache.toml)
+-> [Resolvers](resolvers.md#dns-over-tls-resolver)
 
 ### DNS-over-HTTPS Resolver
 
-DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
-DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. Only GET requests can be sent as 0-RTT data, so with `enable-0rtt = true` the method defaults to GET when none is configured, and the address has to be a URL template containing the `{?dns}` parameter. RouteDNS fails to start if 0-RTT is enabled on a configuration that can't use it: with `transport` other than `"quic"`, with `doh = { method = "POST" }`, or with an address that isn't a URL template. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
-The idle connection timeout can be configured with `doh = { idle-timeout = 60 }` (in seconds). This controls how long idle HTTP connections are kept open before being closed. For TCP transport, the default is 30 seconds. For QUIC transport, the default is determined by the quic-go library. Note that for QUIC, the actual idle timeout is the minimum of the client and server values.
+DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`.
 
-#### Configuration
-
-DoH resolvers are instantiated with `protocol = "doh"` in the resolvers section. The `address` is the full endpoint URL. The port defaults to `443` when the URL does not carry one.
-
-Options:
-
-- All [common resolver options](#resolvers).
-- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
-- `transport` - `"tcp"` (default) for HTTP/2 over TCP, or `"quic"` to run DoH over QUIC.
-- `doh` - Table of DoH-specific settings: `method` (`"POST"` default, or `"GET"`) and `idle-timeout` in seconds.
-- `enable-0rtt` - Use 0-RTT connection establishment. Requires `transport = "quic"`, the GET method, and a URL template address. Optional, defaults to false.
-- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
-
-`edns0-udp-size` does not apply to this protocol.
-
-#### Examples
-
-Simple DoH resolver using the POST method.
-
-```toml
-[resolvers.cloudflare-doh-post]
-address = "https://1.1.1.1/dns-query"
-protocol = "doh"
-```
-
-Simple DoH resolver using the GET method.
-
-```toml
-[resolvers.cloudflare-doh-get]
-address = "https://1.1.1.1/dns-query{?dns}"
-protocol = "doh"
-doh = { method = "GET" }
-```
-
-DoH resolver using QUIC transport.
-
-```toml
-[resolvers.cloudflare-doh-quic]
-address = "https://cloudflare-dns.com/dns-query{?dns}"
-protocol = "doh"
-transport = "quic"
-enable-0rtt = true
-```
-
-DoH resolver with extended idle timeout.
-
-```toml
-[resolvers.cloudflare-doh-long-idle]
-address = "https://1.1.1.1/dns-query"
-protocol = "doh"
-doh = { idle-timeout = 60 }
-```
-
-Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [simple-doh.toml](../cmd/routedns/example-config/simple-doh.toml), [mutual-tls-doh-client.toml](../cmd/routedns/example-config/mutual-tls-doh-client.toml)
+-> [Resolvers](resolvers.md#dns-over-https-resolver)
 
 ### Oblivious DNS (ODoH) Resolver
 
-ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) is intended to improve privacy of **clients** by encrypting queries for a **target** DNS server while sending the query through a **proxy**. In this configuration, neither the target nor the proxy can see the query content and the source IP of the client at the same time. A client query is resolved as follows:
+ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) is intended to improve privacy of **clients** by encrypting queries for a **target** DNS server while sending the query through a **proxy**.
 
-- If the clients target-config = "" parameter is not set, the client will automatically query the public key of the target resolver directly from the target. This is bad for the anonymity of the client and should be avoided by pre-configuring the config beforehand.
-- The client then encrypts the actual query with the public key of the target. A public key of the client is embedded in the encrypted message.
-- The encrypted query message is sent to the proxy, with information about which target it should be forwarded to.
-- The target then encrypts the response with the client key and responds to the proxy, which then forwards the response to the client.
-- The client decrypts the response it received from the proxy using its private key.
-
-#### Configuration
-
-ODoH resolvers are instantiated with `protocol = "odoh"` in the resolvers section. The endpoint, certificate and mTLS options all describe the connection to the **proxy**; the target is reached by the proxy on the client's behalf, so it takes no certificate or bootstrap options of its own. No default port is applied to the address.
-
-Options:
-
-- All [common resolver options](#resolvers).
-- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate. These apply to the proxy connection.
-- `target` - URL of the ODoH target. Required.
-- `target-config` - The target's ODoH config, as hex. Fetched from the target automatically when not set, which costs the client's anonymity for that one request, so prefer configuring it. Running with debug logging prints the fetched value so it can be copied here.
-- `transport` - `"tcp"` (default) or `"quic"` for the proxy connection.
-- `doh` - Table of DoH-specific settings for the proxy connection: `method` and `idle-timeout`.
-
-`edns0-udp-size`, `enable-0rtt` and the SOCKS5 options do not apply to this protocol.
-
-#### Examples
-
-ODoH client using Cloudflare as target. If a proxy is available, set `address` to the proxy URL. If omitted, the target is contacted directly.
-
-```toml
-[resolvers.cloudflare-odoh]
-protocol = "odoh"
-# Address of the oblivious DNS proxy server. If omitted, the target is used directly.
-# address = "https://odoh-proxy.example.com/proxy"
-# Address of the target. The hostname and path are passed to the proxy for forwarding
-# of encrypted queries. No cert or bootstrap options for the target since the proxy
-# connects to it on the client's behalf
-target = "https://odoh.cloudflare-dns.com/dns-query"
-
-# The ODoH config/key of the Target.
-target-config = "0000000secret...."
-# The ODoH config is usually hosted on the target under https://[target]/.well-known/odohconfigs
-# If the target-config is not specified here, the resolver will request it automatically. Running the client with debug flags will also print the targets public key/config. This can then be copied to the config file, to avoid repeatedly fetching the key with every new launch of the client.
-
-```
-
-Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-client.toml)
+-> [Resolvers](resolvers.md#oblivious-dns-odoh-resolver)
 
 ### DNS-over-DTLS Resolver
 
 Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
-#### Configuration
-
-DTLS resolvers are instantiated with `protocol = "dtls"` in the resolvers section. The port defaults to `853` when the address does not carry one.
-
-Options:
-
-- All [common resolver options](#resolvers).
-- `ca`, `client-crt`, `client-key` - [TLS options](#resolvers) for validating the server and presenting a client certificate. `server-name` is not supported for DTLS.
-- `edns0-udp-size` - Set the EDNS0 UDP size in queries sent upstream. Optional.
-
-`enable-0rtt` and the SOCKS5 options do not apply to this protocol.
-
-#### Examples
-
-DTLS resolver trusting a specific server certificate and setting a bootstrap address to avoid looking up the server IP at startup.
-
-```toml
-[resolvers.local-dtls]
-address = "server.acme.test:853"
-protocol = "dtls"
-ca = "example-config/server-ec.crt"
-bootstrap-address = "127.0.0.1"
-```
-
-Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-client.toml)
+-> [Resolvers](resolvers.md#dns-over-dtls-resolver)
 
 ### DNS-over-QUIC Resolver
 
-Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#dns-over-https-resolver) for how to configure this.
-The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
+Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/).
 
-#### Configuration
-
-DoQ resolvers are instantiated with `protocol = "doq"` in the resolvers section. The port defaults to `8853` when the address does not carry one.
-
-Options:
-
-- All [common resolver options](#resolvers).
-- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
-- `enable-0rtt` - Use 0-RTT connection establishment. Optional, defaults to false.
-
-`edns0-udp-size` and the SOCKS5 options do not apply to this protocol.
-
-#### Examples
-
-```toml
-[resolvers.local-doq]
-address = "server.acme.test:8853"
-protocol = "doq"
-ca = "example-config/server.crt"
-bootstrap-address = "127.0.0.1"
-enable-0rtt = true
-```
-
-Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-client.toml)
+-> [Resolvers](resolvers.md#dns-over-quic-resolver)
 
 ### Bootstrap Resolver
 
-Some configurations contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
-Note: Resolvers (including the bootstrap resolver itself) also support a `bootstrap-address` property that sets the IP directly and bypasses the bootstrap resolver.
+Some configurations contain references to external resources by hostname.
 
-#### Configuration
-
-The bootstrap resolver is defined in a top-level `[bootstrap-resolver]` table rather than under `resolvers`, since nothing references it by name. There can be only one.
-
-Options:
-
-- The same options as the resolver protocol it uses, see the protocol sections above.
-
-#### Examples
-
-Use Cloudflare DoT to resolve all hostnames in the configuration.
-
-```toml
-[bootstrap-resolver]
-address = "1.1.1.1:853"
-protocol = "dot"
-```
-
-Example config files: [bootstrap-resolver.toml](../cmd/routedns/example-config/bootstrap-resolver.toml), [use-case-6.toml](../cmd/routedns/example-config/use-case-6.toml)
+-> [Resolvers](resolvers.md#bootstrap-resolver)
 
 ### SOCKS5 Proxy Support
 
-Several resolver types support connecting to upstream servers through a SOCKS5 proxy. This includes:
+Several resolver types support connecting to upstream servers through a SOCKS5 proxy.
 
-- [Plain DNS](#plain-dns-resolver)
-- [DNS-over-TLS](#dns-over-tls-resolver)
-- [DNS-over-HTTPS](#dns-over-https-resolver)
-
-If SOCKS5 is available, the following options can be used to configure it:
-
-Options:
-
-- `socks5-address` - SOCKS5 server address, including port.
-- `socks5-username` - SOCKS5 server username.
-- `socks5-password` - SOCKS5 server password.
-- `socks5-resolve-local` - Experimental: Resolve the upstream DNS server name locally before connecting through the proxy.
-
-#### Examples
-
-```toml
-[resolvers.cloudflare-doh]
-address = "https://cloudflare-dns.com/dns-query"
-protocol = "doh"
-socks5-address = "1.2.3.4:1080"
-socks5-username = "test"
-socks5-password = "test"
-```
+-> [Resolvers](resolvers.md#socks5-proxy-support)
 
 ### Network Namespace Support
 
-On Linux, listeners and resolvers can be assigned to different network namespaces using the `netns` option. This allows RouteDNS to listen for queries in one namespace (e.g. a container) and resolve them via another (e.g. the host), without requiring iptables rules or veth forwarding.
+On Linux, listeners and resolvers can be assigned to different network namespaces using the `netns` option.
 
-The `netns` value can be either:
-
-- A **name** — looked up in `/var/run/netns/` (as created by `ip netns add`)
-- An **absolute path** — e.g. `/proc/PID/ns/net` to reference another process's namespace
-
-The option is supported on all listener protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, Admin) and all resolver protocols (UDP, TCP, DoT, DoH, DoQ, DTLS, ODoH). On non-Linux platforms, configuring `netns` returns an error.
-
-Listeners bound to a named namespace are supervised: the listener starts when the namespace appears and stops when it is removed, so namespaces can come and go while RouteDNS runs. This requires `/var/run/netns` to exist when RouteDNS starts; the directory is created by the first `ip netns add` after boot. If RouteDNS starts before that, the listener is disabled with an error. To start RouteDNS independent of namespace creation order, create the directory beforehand, e.g. with `ExecStartPre=+mkdir -p /run/netns` in a systemd unit.
-
-Options:
-
-- `netns` - Namespace name or absolute path. Available on listeners and resolvers. Mutually exclusive with `xsocket`.
-- `xsocket` - Path to an `xsocket-server` Unix socket, see below. Available on listeners and resolvers, except `dtls` listeners.
-
-#### Examples
-
-Listen in a container namespace, resolve in the host namespace:
-
-```toml
-[resolvers.host-upstream]
-address = "8.8.8.8:53"
-protocol = "udp"
-netns = "/proc/1/ns/net"
-
-[listeners.container-udp]
-address = "10.0.0.2:53"
-protocol = "udp"
-resolver = "host-upstream"
-netns = "container"
-```
-
-Example config files: [netns.toml](../cmd/routedns/example-config/netns.toml)
+-> [Resolvers](resolvers.md#network-namespace-support)
 
 #### Without elevated privileges: xsocket
 
-The `netns` option uses `setns(2)`, which requires the RouteDNS process to hold `CAP_SYS_ADMIN`. The `xsocket` option is an alternative that avoids this. It relies on [xsocket](https://github.com/koro666/xsocket): a small `xsocket-server` runs inside the target namespace and listens on a Unix socket. RouteDNS connects to that socket, asks the server to create a socket in its namespace, and receives the file descriptor back over the Unix socket (`SCM_RIGHTS`). RouteDNS then binds or connects that descriptor itself - so RouteDNS itself needs no elevated privileges at all, while still listening in and connecting to any number of namespaces.
-
-Placing `xsocket-server` inside the target namespace usually requires privilege to set up (e.g. `ip netns exec`, which needs root), but the server process itself can drop to an unprivileged user once there: creating sockets and passing file descriptors needs no capabilities. It only needs to retain privileges - e.g. `CAP_NET_ADMIN`/`CAP_NET_RAW`, possibly via an `LD_PRELOAD` shim - if it must apply privileged socket options such as firewall marks (`fwmark`) itself.
-
-RouteDNS ships with a compatible server built in: `routedns fd-server <socket-path>` runs an fd-server that can be used in place of `xsocket-server`, so no separate binary needs to be deployed. By default it only hands out IPv4/IPv6 TCP and UDP sockets - everything RouteDNS itself requests - and refuses anything else with `EPERM`; the `--unrestricted` flag lifts this limit for other xsocket clients. The `--mode` flag sets the permissions on the Unix socket (octal, e.g. `--mode 0660`). Each request is logged together with the pid/uid/gid of the requesting process (`SO_PEERCRED`), identifying where a connection over the Unix socket came from.
-
-```text
-ip netns exec ns1 sudo -u routedns -- routedns fd-server --mode 0660 /var/tmp/xsocket/ns1
-```
-
-The `xsocket` value is the path to the server's Unix socket. A leading `@` denotes an abstract socket (no filesystem entry), e.g. `xsocket = "@xsocket-ns1"`. The same applies to the `fd-server` sub-command.
-
-```toml
-[resolvers.res]
-address = "9.9.9.9:53"
-protocol = "udp"
-xsocket = "/var/tmp/xsocket/ns1"
-
-[listeners.local-udp]
-address = "[::]:1053"
-protocol = "udp"
-resolver = "res"
-xsocket = "/var/tmp/xsocket/ns2"
-```
-
-Notes and limitations:
-
-- `xsocket` and `netns` are mutually exclusive on the same component.
-- Security boundary: anyone who can connect to the `xsocket-server`'s Unix socket can obtain sockets in its namespace. Access is controlled entirely by filesystem ownership, permissions and ACLs on the socket (and its parent directory) - set these up restrictively. Abstract sockets (`@name`) have no filesystem entry and so cannot be permission-controlled; they are reachable by any process in the server's network namespace. Prefer a pathname socket with restrictive permissions when access control matters.
-- Upstream resolver addresses are resolved in RouteDNS's own namespace; prefer giving them as IP addresses.
-- `fwmark` and `bind-if` still require `CAP_NET_ADMIN` / `CAP_NET_RAW` in the RouteDNS process even when used with `xsocket`.
-- Supported for `udp`, `tcp`, `dot`, `doh` (including DoH/3), `doq`, `admin` and `odoh`, on both listeners and resolvers. For `dtls` it is supported on resolvers only: the DTLS library opens the listening socket internally, leaving no descriptor to inject, so a DTLS listener with `xsocket` fails to start (use `netns` instead). The same limitation applies to `fwmark`/`bind-if` on DTLS listeners.
-- For SOCKS5-proxied resolvers, `xsocket` controls the connection to the proxy: RouteDNS asks the `xsocket-server` for the socket used to reach the proxy, so the proxy is contacted from inside the target namespace. The proxy's own outbound connections to the upstream resolver are made by the proxy and unaffected. Alternatively, run the SOCKS5 proxy inside the target namespace and reach it from RouteDNS's own namespace without `xsocket`.
-- Linux only.
-
-Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml)
+-> [Resolvers](resolvers.md#without-elevated-privileges-xsocket)
 
 ### Firewall Mark and Interface Binding
 
 On Linux, listeners and resolvers support two socket-level options for advanced routing.
 
-Options:
-
-- `fwmark` - Sets the `SO_MARK` socket option. The firewall mark is attached to all packets sent from the socket, allowing Linux netfilter (`iptables`/`nftables`) and policy routing (`ip rule`) to match and route them. The value is an integer and supports TOML hex notation (e.g. `0xb`).
-- `bind-if` - Sets the `SO_BINDTODEVICE` socket option. Binds the socket to a specific network interface so that traffic can only flow through that interface. This is useful with [VRFs](https://docs.kernel.org/networking/vrf.html) or as a safeguard against route leaks. On kernels >= 5.7, `SO_BINDTODEVICE` does not require root privileges.
-
-Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged). On a resolver with `socks5-address`, the options are applied to the sockets reaching the SOCKS5 proxy.
-
-#### Examples
-
-**Resolver with fwmark and interface binding:**
-
-Route upstream DNS traffic over a specific WAN interface using policy routing:
-
-```toml
-[resolvers.quad9-wan2]
-address = "9.9.9.9:53"
-protocol = "udp"
-fwmark = 11
-bind-if = "eth2"
-```
-
-With the corresponding routing setup:
-
-```text
-ip -4 rule add fwmark 11 table 1234
-ip -4 route add default via 192.168.1.1 dev eth2 table 1234
-```
-
-**Listener bound to a VRF:**
-
-Bind a listener to a VRF interface so it is only reachable from within that VRF:
-
-```toml
-[listeners.vrf-udp]
-address = ":53"
-protocol = "udp"
-resolver = "upstream"
-bind-if = "vrf-blue"
-```
-
-**Listener with fwmark:**
-
-Mark packets from the listening socket for netfilter matching:
-
-```toml
-[listeners.marked-udp]
-address = "[::]:53"
-protocol = "udp"
-resolver = "upstream"
-fwmark = 12
-```
-
-Example config files: [fwmark-bind-if.toml](../cmd/routedns/example-config/fwmark-bind-if.toml)
+-> [Resolvers](resolvers.md#firewall-mark-and-interface-binding)
 
 ## Templates
 
-Some options hold templates, i.e. text with placeholders that are populated at runtime with data from the query. Placeholders between `{{` and `}}` are replaced when the response is built. The template syntax is explained in more detail [here](https://pkg.go.dev/text/template).
-
-Templates are supported in the following places:
-
-| Option | Where |
-| --- | --- |
-| `edns0-ede` `text` | [Query Blocklist](#query-blocklist), [Response Blocklist](#response-blocklist) (`response-blocklist-ip` only), [Static Responder](#static-responder), [Static Template Responder](#static-template-responder) |
-| `answer`, `ns`, `extra` | [Static Template Responder](#static-template-responder) |
-
-An extended error text on a blocklist, for example, would be configured as `"Blocked {{ .Question }} with ID {{ .ID }} because reasons"` and filled in when a query is blocked.
-
-**Data available to templates**
-
-The following pieces of information from the query are available in the template:
-
-- `ID` - The query ID.
-- `Question` - The question string.
-- `QuestionType` - The question type, `A`, `AAAA`, `CNAME` etc.
-- `QuestionClass` - The query class, `IN`, `ANY`, etc.
-- `Blocklist` - The name of the blocklist (only present if this request was blocked).
-- `BlocklistRule` - The rule on the blocklist that matched (only present if this was blocked).
-
-In addition to the [built-in template functions](https://pkg.go.dev/text/template#hdr-Functions), the following functions are available.
-
-- `replaceAll` - Replace all instances of a substring with another. Equivalent to [strings.ReplaceAll](https://pkg.go.dev/strings#ReplaceAll)
-- `trimPrefix` - Removes a prefix from string. Equivalent to [strings.TrimPrefix](https://pkg.go.dev/strings#TrimPrefix).
-- `trimSuffix` - Removes a suffix from a string. Equivalent to [strings.TrimSuffix](https://pkg.go.dev/strings#TrimPrefix).
-- `split` - Split strings into substrings using the given separator. Equivalent to [strings.Split](https://pkg.go.dev/strings#Split).
-- `join` - Concatenates strings with a given separator. Equivalent to [strings.Join](https://pkg.go.dev/strings#Join).
-
-Functions can be combined with conditionals to make more complex template such as this example.
-
-```template
-'{{ .Question }} 18000 IN NS {{ if (eq .QuestionType "AAAA") }}ns6{{ else }}ns4{{ end }}.example.com.'
-```
-
-Support for additional string-manipulation functions can be added as needed.
+Some options hold text with placeholders that are filled in from the query at runtime. See **[Templates](templates.md)**.
