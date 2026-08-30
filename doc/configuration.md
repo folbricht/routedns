@@ -110,6 +110,8 @@ resolver = "router1"
 
 More modifiers, groups or routers can be added to the pipeline (in any order). Objects reference each other by their identifiers which have to be unique in a given configuration.
 
+Every feature described in this guide has a working example under [example-config](../cmd/routedns/example-config/), indexed by topic in the README there.
+
 ### Split Configuration
 
 Configuration can be broken up into individual files to support large or generated configurations. Split configuration files are passed as arguments to the application:
