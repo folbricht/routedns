@@ -1,3 +1,6 @@
+# Adds an arbitrary EDNS0 option to queries. Here that is option 65001 carrying
+# a MAC address, which OpenDNS uses to identify a device.
+
 [resolvers.opendns-udp]
 address = "208.67.222.220:53"
 protocol = "udp"

@@ -1,3 +1,6 @@
+# Adds an EDNS Client Subnet option to outgoing queries with a fixed address and
+# prefix length, so the upstream resolver returns answers for that subnet.
+
 [resolvers.google-dot]
 address = "8.8.8.8:853"
 protocol = "dot"

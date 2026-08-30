@@ -1,3 +1,6 @@
+# Response IP blocklist with the CIDR lists downloaded over HTTP and refreshed
+# once a day.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

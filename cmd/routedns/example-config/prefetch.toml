@@ -1,3 +1,7 @@
+# A standalone prefetch group in front of a cache. It counts how often names are
+# queried and refreshes the popular ones before they expire. It does not cache
+# anything itself and relies on the cache upstream of it.
+
 [resolvers.cloudflare-dot]
 address = "1.1.1.1:853"
 protocol = "dot"

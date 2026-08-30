@@ -899,7 +899,7 @@ Options:
 - `filter` - If set to `true` in `response-blocklist-ip`, matching records will be removed from responses rather than the whole response. If there is no answer record left after applying the filter, NXDOMAIN will be returned unless an alternative `blocklist-resolver` is defined.
 - `inverted` - Inverts the behavior of the blocklist. If set to `true`, only IPs that are on the blocklist are allowed and responses containing an IP not on the blocklist are blocked. Can be combined with `filter` to remove any IPs not on the blocklist from the response.
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
-- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
+- `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID. Only `response-blocklist-ip` acts on this option; it is ignored by `response-blocklist-name`.
 
 Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP responses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
 
@@ -2405,7 +2405,16 @@ Example config files: [fwmark-bind-if.toml](../cmd/routedns/example-config/fwmar
 
 ## Templates
 
-Some groups support templates, i.e. allow placeholder in text fields that will be populated at runtime with data from a query. This can for example be used in the extended error text returned from a blocklist. In that case, the configuration would set a text with placeholders like this `"Blocked {{ .Question }} with ID {{ .ID }} because reasons"`. The placeholders in between `{{` and `}}` would then be replaced with data from the query when a query is blocked and the response returned. The template syntax is explained in more detail [here](https://pkg.go.dev/text/template).
+Some options hold templates, i.e. text with placeholders that are populated at runtime with data from the query. Placeholders between `{{` and `}}` are replaced when the response is built. The template syntax is explained in more detail [here](https://pkg.go.dev/text/template).
+
+Templates are supported in the following places:
+
+| Option | Where |
+| --- | --- |
+| `edns0-ede` `text` | [Query Blocklist](#query-blocklist), [Response Blocklist](#response-blocklist) (`response-blocklist-ip` only), [Static Responder](#static-responder), [Static Template Responder](#static-template-responder) |
+| `answer`, `ns`, `extra` | [Static Template Responder](#static-template-responder) |
+
+An extended error text on a blocklist, for example, would be configured as `"Blocked {{ .Question }} with ID {{ .ID }} because reasons"` and filled in when a query is blocked.
 
 **Data available to templates**
 
