@@ -2,7 +2,9 @@ name: Tag and Release
 
 # Runs after the "build" workflow (which builds, lints and runs the race-enabled
 # tests) completes on master. Tagging and release only proceed if that run
-# succeeded, so a red test or lint gates the release.
+# succeeded, so a red test or lint gates the release. Everything below works on
+# the commit that build ran against, not on master's head, which is a different
+# commit whenever another PR merges while the first build is still going.
 on:
   workflow_run:
     workflows: ["build"]
@@ -27,6 +29,11 @@ jobs:
       ${{ github.event_name == 'workflow_dispatch' ||
           (github.event.workflow_run.conclusion == 'success' &&
            github.event.workflow_run.event == 'push') }}
+    # Serialise close merges so the second run sees the first one's tag. Only
+    # tagging; the releases that follow can overlap.
+    concurrency:
+      group: tag
+      cancel-in-progress: false
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
     permissions:
@@ -39,9 +46,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
         with:
-          ref: master
-          # Tags are the source of truth for the version, so the full history
-          # is needed for git describe to find the most recent one.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Tags are the source of truth for the version, so full history.
           fetch-depth: 0
 
       - name: Tag the next version
@@ -52,11 +58,23 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
 
-          # The most recent release tag is the source of truth for the version.
-          # Nothing in the tree records it: the binaries get their version
-          # stamped in at link time from the tag, by goreleaser and by the
-          # Docker build.
-          CURRENT=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "v0.0.0")
+          SHA=$(git rev-parse HEAD)
+
+          # Already shipped, either tagged by a re-run or carried along by a
+          # later release that went out first. Tagging again would put a higher
+          # version on an older commit.
+          EXISTING=$(git tag --contains "$SHA" --list 'v[0-9]*' --sort=v:refname | head -1)
+          if [ -n "$EXISTING" ]; then
+            echo "$SHA already released in $EXISTING, nothing to do"
+            exit 0
+          fi
+
+          # The highest tag in the repo is the source of truth for the version;
+          # nothing in the tree records it. Every tag, not `git describe`: HEAD
+          # may be behind master's tip, and a version that went backwards there
+          # would collide with a tag that already exists.
+          CURRENT=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+          CURRENT=${CURRENT:-v0.0.0}
           MAJOR_MINOR=$(echo "$CURRENT" | cut -d. -f1,2)
           PATCH=$(echo "$CURRENT" | cut -d. -f3)
           if ! [ "$PATCH" -eq "$PATCH" ] 2>/dev/null; then
@@ -66,10 +84,9 @@ jobs:
           NEXT="$MAJOR_MINOR.$((PATCH + 1))"
           echo "latest tag $CURRENT, releasing $NEXT from $(git rev-parse --short HEAD)"
 
-          # Tag the commit that is already on master, which the build workflow
-          # has built, tested and linted. Tagging rather than committing means
-          # the released commit is one CI has actually run against.
-          git tag -a "$NEXT" -m "Automatic release $NEXT"
+          # Tagging rather than committing keeps the released commit one that
+          # CI has actually run against.
+          git tag -a "$NEXT" "$SHA" -m "Automatic release $NEXT"
           git push origin "$NEXT"
 
           # Output tag for release workflow
@@ -77,6 +94,8 @@ jobs:
 
   release:
     needs: tag
+    # Empty when the tag job skipped an already-released commit.
+    if: needs.tag.outputs.tag != ''
     uses: ./.github/workflows/release.yaml
     with:
       tag: ${{ needs.tag.outputs.tag }}
