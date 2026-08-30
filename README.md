@@ -276,7 +276,7 @@ resolver = "dnssec-validated"
 
 ## Documentation
 
-- [Configuration Guide](doc/configuration.md) — full reference for all component types and options
+- [Configuration Guide](doc/configuration.md) — full reference for all component types and options, split by topic
 - [Example Configs](cmd/routedns/example-config/) — 109 ready-to-use configurations, one per feature, with an index describing each
 
 ## Links

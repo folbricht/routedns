@@ -8,7 +8,7 @@ cd cmd/routedns
 ./routedns example-config/simple-dot.toml
 ```
 
-Some of these reference supporting files by relative path (`./example-config/domains.txt`), so run them from `cmd/routedns/` as shown. Most bind port 53 and need privileges or a port change. To load one without serving queries, use [`--check`](../../../doc/configuration.md#validating-a-configuration):
+Some of these reference supporting files by relative path (`./example-config/domains.txt`), so run them from `cmd/routedns/` as shown. Most bind port 53 and need privileges or a port change. To load one without serving queries, use [`--check`](../../../doc/overview.md#validating-a-configuration):
 
 ```text
 ./routedns --check example-config/simple-dot.toml
