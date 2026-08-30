@@ -31,6 +31,33 @@ LogsDirectory=routedns
 #                          kernels older than 5.7. Since 5.7 it is not
 #                          needed for the initial bind to an interface.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Hardening. DynamicUser already implies ProtectSystem=strict, ProtectHome,
+# PrivateTmp and RemoveIPC; these are the additions on top of it.
+#
+# RestrictNamespaces is deliberately absent: it filters setns(), which the
+# `netns` option needs to enter a namespace. @system-service does permit
+# setns(), through @process, so the syscall filter below does not have the
+# same problem.
+#
+# AF_UNIX is kept for the `xsocket` option and syslog, AF_NETLINK because Go
+# enumerates interfaces through it, which `bind-if` relies on.
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+MemoryDenyWriteExecute=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# The cache file records what has been looked up, so keep it to the service.
+UMask=0077
+
 ExecStart=/opt/routedns/routedns config.toml
 Restart=on-failure
 
