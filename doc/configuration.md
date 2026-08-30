@@ -172,7 +172,7 @@ Common options for all listeners:
 
 - `address` - Listen address.
 - `protocol` - The DNS protocol used to receive queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls`, `odoh` or `admin`.
-- `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both.
+- `ip-version` - IP version (4 or 6) to use for the listener. Optional, defaults to both. Only applies to the plain DNS and DoT listeners; the protocol sections below say which.
 - `resolver` - Name/identifier of the next element in the pipeline. Can be a router, group, modifier or resolver.
 - `allowed-net` - Array of network addresses that are allowed to send queries to this listener, in CIDR notation, such as `["192.167.1.0/24", "::1/128"]`. If not set, no filter is applied, all clients can send queries.
 - `netns` - Linux network namespace for the listening socket. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
@@ -195,7 +195,18 @@ The DNS-over-HTTPS listener also accepts the client IP address from trusted reve
 
 Regular (insecure) DNS protocol over port 53, UDP and TCP. Setting `protocol` to `udp` will start a UDP listener, and `tcp` starts a TCP listener. In many cases both are present in a configuration if RouteDNS is used to provide DNS to local services over the loopback device.
 
-Examples:
+#### Configuration
+
+Plain DNS listeners are instantiated with `protocol = "udp"` or `protocol = "tcp"` in the listeners section. The port defaults to `53` when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners).
+- `ip-version` - Restrict the listener to IPv4 (`4`) or IPv6 (`6`). Optional, defaults to both.
+
+The TLS options do not apply, this protocol is un-encrypted.
+
+#### Examples
 
 ```toml
 [listeners.local-udp]
@@ -211,9 +222,19 @@ resolver = "router1"
 
 ### DNS-over-TLS
 
-DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858). Listeners are configured with `protocol = "dot"`.
+DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
-Examples:
+#### Configuration
+
+DoT listeners are instantiated with `protocol = "dot"` in the listeners section. The port defaults to `853` when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners).
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
+- `ip-version` - Restrict the listener to IPv4 (`4`) or IPv6 (`6`). Optional, defaults to both.
+
+#### Examples
 
 DoT listener accepting any client. Does not require client certificates and does not validate client certificates with a CA.
 
@@ -243,9 +264,23 @@ Example config files: [mutual-tls-dot-server.toml](../cmd/routedns/example-confi
 
 ### DNS-over-HTTPS
 
-As per [RFC8484](https://tools.ietf.org/html/rfc8484), DNS using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC by providing the option `transport = "quic"`. For TCP transport, TLS can be disabled with the `no-tls = true` option which can be used for testing or when the server is only accessible via reverse proxy that terminates TLS already.
+DNS using the HTTPS protocol as per [RFC8484](https://tools.ietf.org/html/rfc8484).
 
-Examples:
+#### Configuration
+
+DoH listeners are instantiated with `protocol = "doh"` in the listeners section. The port defaults to `443`, or `1443` with QUIC transport, when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners).
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. Required unless `no-tls` is set.
+- `transport` - `"tcp"` (default) for HTTP/2 over TCP, or `"quic"` to run DoH over QUIC.
+- `no-tls` - Serve plain HTTP rather than HTTPS. For testing, or behind a reverse proxy that terminates TLS already. Not supported with `transport = "quic"`, the listener refuses to start. Optional, defaults to false.
+- `trusted-proxy` - CIDR of a reverse proxy whose `X-Forwarded-For` header is trusted to carry the real client address. Given under a `frontend` key, see the example below. Optional.
+
+`ip-version` has no effect on this listener.
+
+#### Examples
 
 DoH listener accepting queries from any client.
 
@@ -288,9 +323,23 @@ Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-confi
 
 ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) improves the privacy of **clients** by encrypting queries for a **target** DNS server and sending them through a **proxy**, so that neither the target nor the proxy sees the query content and the source IP of the client at the same time. Listeners are configured with `protocol = "odoh"` and can act as the target, the proxy, or both. See the [ODoH resolver](#oblivious-dns-odoh-resolver) for the client side.
 
-Providing the key-seed is not necessary if the listener is running in proxy mode. If it is not set in target mode, the listener will generate a new random key on each launch. A key seed can be manually generated using for example openssl: `openssl rand -hex 16`
+By default the ODoH listener listens on `/proxy` and `/dns-query`. Additionally, it will host its HPKE config under `/.well-known/odohconfigs`. If `odoh-mode = "proxy"` is set, it will only listen and handle ODoH proxy requests on `/proxy`. If set to target the listener will only handle the ODoH queries on `/dns-query`.
 
-By default the ODoH listener listens on `/proxy` and `/dns-query`. Additionally, it will host its HPKE config under `/.well-known/odohconfigs`. If `odoh-mode  = "proxy"` is set, it will only listen and handle ODoH proxy requests on `/proxy`. If set to target the listener will only handle the ODoH queries on `/dns-query`.
+#### Configuration
+
+ODoH listeners are instantiated with `protocol = "odoh"` in the listeners section. The port defaults to `443` when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners).
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
+- `key-seed` - 16 byte hex seed the HPKE keypair is generated from, for example from `openssl rand -hex 16`. Not needed in proxy mode. In target mode, a new random key is generated on every launch if this is not set, which invalidates any config clients have cached.
+- `odoh-mode` - `"target"` (default), `"proxy"` or `"dual"`. Determines which of the two paths the listener serves.
+- `allow-doh` - Also answer plain DoH queries on `/dns-query` using the same resolver. Ignored in proxy mode. Optional, defaults to false.
+
+`ip-version` has no effect on this listener.
+
+#### Examples
 
 ```toml
 [listeners.local-odoh]
@@ -315,9 +364,20 @@ Example config files: [odoh-listener.toml](../cmd/routedns/example-config/odoh-l
 
 ### DNS-over-DTLS
 
-Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
+Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
-Examples:
+#### Configuration
+
+DTLS listeners are instantiated with `protocol = "dtls"` in the listeners section. The port defaults to `853` when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners), except `xsocket` which is not supported for this protocol. Use `netns` instead.
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required. An EC certificate is normally used here.
+
+`ip-version` has no effect on this listener.
+
+#### Examples
 
 DTLS listener.
 
@@ -338,7 +398,18 @@ Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https:/
 
 Note: Support for the QUIC protocol is still experimental. For the purpose of DNS, there are two implementations, DNS-over-QUIC ([RFC9250](https://datatracker.ietf.org/doc/rfc9250/)) as well as DNS-over-HTTPS using QUIC. Both methods are supported by RouteDNS, client and server implementations.
 
-Examples:
+#### Configuration
+
+DoQ listeners are instantiated with `protocol = "doq"` in the listeners section. The port defaults to `8853` when the address does not carry one.
+
+Options:
+
+- All [common listener options](#listeners).
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required.
+
+`ip-version` has no effect on this listener.
+
+#### Examples
 
 DoQ listener accepting queries from all clients.
 
@@ -355,9 +426,21 @@ Example config files: [doq-listener.toml](../cmd/routedns/example-config/doq-lis
 
 ### Admin
 
-The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format. These metrics can be exported to be usable by Prometheus using [prometheus-expvar-exporter](https://github.com/albertito/prometheus-expvar-exporter). An example configuration is provided below.
+The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format. These metrics can be exported to be usable by Prometheus using [prometheus-expvar-exporter](https://github.com/albertito/prometheus-expvar-exporter).
 
-Examples:
+#### Configuration
+
+The admin listener is instantiated with `protocol = "admin"` in the listeners section. It serves metrics rather than answering queries, so it is the one listener that takes no `resolver`, and no default port is applied to its address.
+
+Options:
+
+- All [common listener options](#listeners), except `resolver`, which is not used.
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation.
+- `transport` - `"tcp"` (default) or `"quic"`.
+
+`ip-version` has no effect on this listener.
+
+#### Examples
 
 ```toml
 [listeners.local-admin]
@@ -903,7 +986,7 @@ Options:
 
 Location-based blocking requires a list of GeoName IDs of geographical entities (Continent, Country, City or Subdivision) and the GeoName ID, like `2750405` for Netherlands. The GeoName ID can be looked up in [https://www.geonames.org/](https://www.geonames.org/). Locations are read from a MAXMIND GeoIP2 database that either has to be present in `/usr/share/GeoIP/GeoLite2-City.mmdb` or is configured with the `location-db` option. Similarly, using a different location database (`/usr/share/GeoIP/GeoLite2-ASN.mmdb`) it is possible to block IP responses located in specific ASNs (Autonomous System Number). `blocklist-format` should be set to `asn` in that case.
 
-Examples:
+#### Examples
 
 Simple response blocklists with static rules in the configuration file.
 
@@ -1011,7 +1094,7 @@ Options:
 - `location-db` - If location-based IP blocking is used, this specifies the GeoIP data file to load. Optional. Defaults to /usr/share/GeoIP/GeoLite2-City.mmdb
 - `use-ecs` - If set to true, will use the IP address in the client's ECS record instead of the real IP. Can be used to simulate queries from other source IPs. The address should be set to the IP, not a subnet for this to work. Uses the client's real IP if no ECS record is found in the query.
 
-Examples:
+#### Examples
 
 Simple client blocklists that responds with DROP to all queries from one network source
 
@@ -1061,7 +1144,7 @@ Options:
 - `ecs-address` - The address to use in the option. Only used for add operations. If given, will set the address to a fixed value. If missing, the address of the client is used (with the appropriate `ecs-prefix` applied).
 - `ecs-prefix4` and `ecs-prefix6` - Source prefix length. Mask for the address. Only used for add and privacy operations.
 
-Examples:
+#### Examples
 
 Remove ECS options from all queries.
 
@@ -1116,7 +1199,7 @@ Options:
 - `edns0-code` - EDNS0 option code to apply the modification to.
 - `edns0-data` - Raw data for the option expressed in an array of (decimal!) byte values. Only used for `add` operations.
 
-Examples:
+#### Examples
 
 Add the MAC address 52:54:00:b6:49:60 to an EDNS0 option (code 65001) for identification with the upstream resolver.
 
@@ -1152,7 +1235,7 @@ Note:
 
 The default TTL of all records is 3600 unless provided in the configuration. To set the TTL in the answer, provide a placeholder for the name like so: `". 86400 IN A 1.2.3.4"`. Starting the line with the TTL value will not work.
 
-Examples:
+#### Examples
 
 A fixed responder that will return a full answer with NS and Extra records with different TTL. The name string in answer records gets updated dynamically to match the query, while NS and Extra records are return unmodified.
 
@@ -1219,9 +1302,13 @@ A static template responder operates similarly to a [Static Responder](#static-r
 
 #### Configuration
 
-See [Static Responder](#static-responder) for a list of options. The values are the same except that the string values are treated as [templates](#templates).
+A static template responder is instantiated with `type = "static-template"` in the groups section of the configuration.
 
-Examples:
+Options:
+
+- The same options as the [Static Responder](#static-responder). The difference is that `answer`, `ns` and `extra` are treated as [templates](#templates).
+
+#### Examples
 
 A fixed responder that can respond to queries like `192.168.1.12.rebind.` by stripping the `.rebind.` suffix and treating the remaining string as IP. Note that the template in this case has to produce a valid IP or it will fail. To ensure the queries reaching this responder are always valid it may be best to combine with a router or blocklist in front of it.
 
@@ -1261,7 +1348,11 @@ Terminates a pipeline by dropping the request. Typically used with blocklists to
 
 A drop group is instantiated with `type = "drop"` in the groups section of the configuration.
 
-Examples:
+Options:
+
+- None. A drop group terminates the pipeline, so it takes no `resolvers` either.
+
+#### Examples
 
 Client blocklist that drops requests from clients on the blocklist.
 
@@ -1289,7 +1380,11 @@ This element passes all queries to its upstream resolver and strips all Extra an
 
 A response minimizer is instantiated with `type = "response-minimize"` in the groups section of the configuration.
 
-Examples:
+Options:
+
+- `resolvers` - Array of upstream resolvers, only one is supported.
+
+#### Examples
 
 ```toml
 [groups.minimize]
@@ -1326,7 +1421,7 @@ Options:
 
 - `null-rcode` - Response code if after collapsing there are no answer records left: 0 = NOERROR (default), 1 = FORMERR, 2 = SERVFAIL, 3 = NXDOMAIN, ... See [rfc2929#section-2.3](https://tools.ietf.org/html/rfc2929#section-2.3)
 
-Examples:
+#### Examples
 
 ```toml
 [groups.collapse]
@@ -1367,7 +1462,7 @@ A route has the following fields:
 
 For all regular expressions, see [Syntax](https://github.com/google/re2/wiki/Syntax) on what is supported. To match case-insensitive, prefix with `(?i)`, e.g. `"(?i)example\.com$"`.
 
-Examples:
+#### Examples
 
 Sends all queries for the MX record of `google.com` and all its sub-domains to a group consisting of Google's DNS servers. Anything else is sent to a DNS-over-TLS resolver.
 
@@ -1497,7 +1592,7 @@ Options:
 - `prefix4` - Prefix length for identifying an IPv4 client, default 24
 - `prefix6` - Prefix length for identifying an IPv6 client, default 56
 
-Examples:
+#### Examples
 
 Simple rate-limiter allowing 200 requests per minute from the same /24 (or /56) networks.
 
@@ -1542,7 +1637,7 @@ Options:
 - `wait-all` - Instead of just returning the fastest response, wait for all probes and return them sorted by response time (fastest first). This will generally be slower as the slowest TCP probe determines the query response time. Default: `false`
 - `success-ttl-min` - Minimum TTL of successful probes (in seconds). Default: 0. Similar to the `ttl-min` option of [TTL Modifier](#ttl-modifier). Typically used to cache the response for longer given how resource-intensive and slow probing can be.
 
-Examples:
+#### Examples
 
 TCP probe for the HTTPS port. Successful probes are cached for 30min.
 
@@ -1573,7 +1668,7 @@ Options:
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `retry-resolver` - Must be referencing another resolver, typically using a stream-protocol such as TCP, DoH, or DoT.
 
-Examples:
+#### Examples
 
 TCP probe for the HTTPS port. Successful probes are cached for 30min.
 
@@ -1624,7 +1719,7 @@ Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 
-Examples:
+#### Examples
 
 ```toml
 [listeners.local-udp]
@@ -1666,7 +1761,7 @@ Options:
 - `log-response` - Enable logging of responses. Default `false`.
 - `verbose` - Log all answers, not just the types that match the query. Default `false`.
 
-Examples:
+#### Examples
 
 ```toml
 [groups.cloudflare-logged]
@@ -1695,7 +1790,7 @@ Options:
 - `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation. When running under the systemd unit shipped with the packages, use a path under `/var/log/routedns`; see [Writable Paths](#writable-paths).
 - `output-format` - Output format. Defaults to "text".
 
-Examples:
+#### Examples
 
 ```toml
 [groups.query-log]
@@ -1886,6 +1981,10 @@ Validates DNSSEC signatures on responses from upstream resolvers. The validator 
 
 By default, the validator uses the built-in IANA root trust anchors (KSK-2017 and KSK-2024). Custom trust anchors can be provided to override the defaults, or the validator can fetch them from a URL at startup.
 
+#### Configuration
+
+A DNSSEC validator is instantiated with `type = "dnssec-validator"` in the groups section of the configuration.
+
 Options:
 
 - `resolvers` - Array of upstream resolvers (only one supported).
@@ -1898,7 +1997,7 @@ Options:
   - `digest-type` - Digest type number.
   - `digest` - Hex-encoded digest of the DNSKEY.
 
-Examples:
+#### Examples
 
 Simple DNSSEC validation with default trust anchors:
 
@@ -1948,12 +2047,16 @@ Example config files: [dnssec-validator.toml](../cmd/routedns/example-config/dns
 
 Synthesizes AAAA records from A records for IPv6-only clients using NAT64 ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)). When an AAAA query returns no AAAA answers from upstream, DNS64 falls back to an A query and embeds the IPv4 addresses into configurable IPv6 prefixes per [RFC 6052](https://datatracker.ietf.org/doc/html/rfc6052). Queries for non-AAAA types and responses that already contain AAAA records pass through unchanged.
 
+#### Configuration
+
+A DNS64 group is instantiated with `type = "dns64"` in the groups section of the configuration.
+
 Options:
 
 - `resolvers` - Array of upstream resolvers (only one supported).
 - `dns64-prefix` - Array of IPv6 CIDR prefixes for address synthesis. Supported prefix lengths: `/32`, `/40`, `/48`, `/56`, `/64`, `/96`. Default: `["64:ff9b::/96"]` (well-known prefix from RFC 6052).
 
-Examples:
+#### Examples
 
 Using the well-known prefix (default):
 
@@ -1997,7 +2100,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 
 - `address` - Remote server endpoint and port. Can be IP or hostname, or a full URL depending on the protocol. See the [Bootstrapping](#bootstrapping) on how to handle hostnames that can't be resolved.
 - `protocol` - The DNS protocol used to send queries, can be `udp`, `tcp`, `dot`, `doh`, `doq`, `dtls` or `odoh`.
-- `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server.
+- `bootstrap-address` - Use this IP address if the name in `address` can't be resolved. Using the IP in `address` directly may not work when TLS/certificates are used by the server. Has no effect on plain DNS resolvers.
 - `local-address` - IP of the local interface to use for outgoing connections. The address is automatically chosen if this option is left blank.
 - `local-address-v4` - IPv4 address of the local interface to use when connecting to IPv4 targets. Takes priority over `local-address` for IPv4 connections.
 - `local-address-v6` - IPv6 address of the local interface to use when connecting to IPv6 targets. Takes priority over `local-address` for IPv6 connections. The address must be unbracketed (e.g. `fd00::1`, not `[fd00::1]`).
@@ -2066,9 +2169,21 @@ bootstrap-address = "8.8.8.8"
 
 ### Plain DNS Resolver
 
-Plain, un-encrypted DNS protocol clients for UDP or TCP. Use `protocol = "udp"` or `protocol = "tcp"`. Note that UDP responses can be truncated so it is common to use it in combination with a [truncate-retry](#retrying-truncated-responses) group to define a fallback.
+Plain, un-encrypted DNS protocol clients for UDP or TCP. Note that UDP responses can be truncated so it is common to use it in combination with a [truncate-retry](#retrying-truncated-responses) group to define a fallback.
 
-Examples:
+#### Configuration
+
+Plain DNS resolvers are instantiated with `protocol = "udp"` or `protocol = "tcp"` in the resolvers section. The port defaults to `53` when the address does not carry one.
+
+Options:
+
+- All [common resolver options](#resolvers) except `bootstrap-address`, which has no effect here since no TLS handshake needs a name.
+- `edns0-udp-size` - Set the EDNS0 UDP size in queries sent upstream. Optional, and only meaningful for `udp`.
+- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
+
+The TLS options do not apply, this protocol is un-encrypted.
+
+#### Examples
 
 ```toml
 [resolvers.google-udp-8-8-8-8]
@@ -2084,9 +2199,21 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 
 ### DNS-over-TLS Resolver
 
-DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858). Resolvers are configured with `protocol = "dot"` and additional options such as `client-crt`, `client-key` and `ca` are available.
+DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
-Examples:
+#### Configuration
+
+DoT resolvers are instantiated with `protocol = "dot"` in the resolvers section. The port defaults to `853` when the address does not carry one.
+
+Options:
+
+- All [common resolver options](#resolvers).
+- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
+- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
+
+`edns0-udp-size` does not apply to this protocol.
+
+#### Examples
 
 Simple DoT resolver using a well-known service.
 
@@ -2124,7 +2251,22 @@ DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. B
 DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. Only GET requests can be sent as 0-RTT data, so with `enable-0rtt = true` the method defaults to GET when none is configured, and the address has to be a URL template containing the `{?dns}` parameter. RouteDNS fails to start if 0-RTT is enabled on a configuration that can't use it: with `transport` other than `"quic"`, with `doh = { method = "POST" }`, or with an address that isn't a URL template. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
 The idle connection timeout can be configured with `doh = { idle-timeout = 60 }` (in seconds). This controls how long idle HTTP connections are kept open before being closed. For TCP transport, the default is 30 seconds. For QUIC transport, the default is determined by the quic-go library. Note that for QUIC, the actual idle timeout is the minimum of the client and server values.
 
-Examples:
+#### Configuration
+
+DoH resolvers are instantiated with `protocol = "doh"` in the resolvers section. The `address` is the full endpoint URL. The port defaults to `443` when the URL does not carry one.
+
+Options:
+
+- All [common resolver options](#resolvers).
+- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
+- `transport` - `"tcp"` (default) for HTTP/2 over TCP, or `"quic"` to run DoH over QUIC.
+- `doh` - Table of DoH-specific settings: `method` (`"POST"` default, or `"GET"`) and `idle-timeout` in seconds.
+- `enable-0rtt` - Use 0-RTT connection establishment. Requires `transport = "quic"`, the GET method, and a URL template address. Optional, defaults to false.
+- `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
+
+`edns0-udp-size` does not apply to this protocol.
+
+#### Examples
 
 Simple DoH resolver using the POST method.
 
@@ -2174,9 +2316,22 @@ ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) is intended to impro
 - The target then encrypts the response with the client key and responds to the proxy, which then forwards the response to the client.
 - The client decrypts the response it received from the proxy using its private key.
 
-The ODoH resolver has all the configuration options as [DoH](#dns-over-https-resolver), with the configuration (endpoint, certs, mTLS, etc) for the proxy. In addition, a `target` option is available to specify the URL of the target. Configured with `protocol = "odoh"`.
+#### Configuration
 
-Examples:
+ODoH resolvers are instantiated with `protocol = "odoh"` in the resolvers section. The endpoint, certificate and mTLS options all describe the connection to the **proxy**; the target is reached by the proxy on the client's behalf, so it takes no certificate or bootstrap options of its own. No default port is applied to the address.
+
+Options:
+
+- All [common resolver options](#resolvers).
+- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate. These apply to the proxy connection.
+- `target` - URL of the ODoH target. Required.
+- `target-config` - The target's ODoH config, as hex. Fetched from the target automatically when not set, which costs the client's anonymity for that one request, so prefer configuring it. Running with debug logging prints the fetched value so it can be copied here.
+- `transport` - `"tcp"` (default) or `"quic"` for the proxy connection.
+- `doh` - Table of DoH-specific settings for the proxy connection: `method` and `idle-timeout`.
+
+`edns0-udp-size`, `enable-0rtt` and the SOCKS5 options do not apply to this protocol.
+
+#### Examples
 
 ODoH client using Cloudflare as target. If a proxy is available, set `address` to the proxy URL. If omitted, the target is contacted directly.
 
@@ -2201,9 +2356,21 @@ Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-cli
 
 ### DNS-over-DTLS Resolver
 
-Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094). Configured with `protocol = "dtls"`.
+Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
-Examples:
+#### Configuration
+
+DTLS resolvers are instantiated with `protocol = "dtls"` in the resolvers section. The port defaults to `853` when the address does not carry one.
+
+Options:
+
+- All [common resolver options](#resolvers).
+- `ca`, `client-crt`, `client-key` - [TLS options](#resolvers) for validating the server and presenting a client certificate. `server-name` is not supported for DTLS.
+- `edns0-udp-size` - Set the EDNS0 UDP size in queries sent upstream. Optional.
+
+`enable-0rtt` and the SOCKS5 options do not apply to this protocol.
+
+#### Examples
 
 DTLS resolver trusting a specific server certificate and setting a bootstrap address to avoid looking up the server IP at startup.
 
@@ -2222,7 +2389,19 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#dns-over-https-resolver) for how to configure this.
 The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
 
-Examples:
+#### Configuration
+
+DoQ resolvers are instantiated with `protocol = "doq"` in the resolvers section. The port defaults to `8853` when the address does not carry one.
+
+Options:
+
+- All [common resolver options](#resolvers).
+- `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
+- `enable-0rtt` - Use 0-RTT connection establishment. Optional, defaults to false.
+
+`edns0-udp-size` and the SOCKS5 options do not apply to this protocol.
+
+#### Examples
 
 ```toml
 [resolvers.local-doq]
@@ -2240,7 +2419,15 @@ Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-clien
 Some configurations contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
 Note: Resolvers (including the bootstrap resolver itself) also support a `bootstrap-address` property that sets the IP directly and bypasses the bootstrap resolver.
 
-Examples:
+#### Configuration
+
+The bootstrap resolver is defined in a top-level `[bootstrap-resolver]` table rather than under `resolvers`, since nothing references it by name. There can be only one.
+
+Options:
+
+- The same options as the resolver protocol it uses, see the protocol sections above.
+
+#### Examples
 
 Use Cloudflare DoT to resolve all hostnames in the configuration.
 
@@ -2262,12 +2449,14 @@ Several resolver types support connecting to upstream servers through a SOCKS5 p
 
 If SOCKS5 is available, the following options can be used to configure it:
 
+Options:
+
 - `socks5-address` - SOCKS5 server address, including port.
 - `socks5-username` - SOCKS5 server username.
 - `socks5-password` - SOCKS5 server password.
 - `socks5-resolve-local` - Experimental: Resolve the upstream DNS server name locally before connecting through the proxy.
 
-Examples:
+#### Examples
 
 ```toml
 [resolvers.cloudflare-doh]
@@ -2291,7 +2480,12 @@ The option is supported on all listener protocols (UDP, TCP, DoT, DoH, DoQ, DTLS
 
 Listeners bound to a named namespace are supervised: the listener starts when the namespace appears and stops when it is removed, so namespaces can come and go while RouteDNS runs. This requires `/var/run/netns` to exist when RouteDNS starts; the directory is created by the first `ip netns add` after boot. If RouteDNS starts before that, the listener is disabled with an error. To start RouteDNS independent of namespace creation order, create the directory beforehand, e.g. with `ExecStartPre=+mkdir -p /run/netns` in a systemd unit.
 
-Examples:
+Options:
+
+- `netns` - Namespace name or absolute path. Available on listeners and resolvers. Mutually exclusive with `xsocket`.
+- `xsocket` - Path to an `xsocket-server` Unix socket, see below. Available on listeners and resolvers, except `dtls` listeners.
+
+#### Examples
 
 Listen in a container namespace, resolve in the host namespace:
 
@@ -2351,12 +2545,16 @@ Example config files: [xsocket.toml](../cmd/routedns/example-config/xsocket.toml
 
 ### Firewall Mark and Interface Binding
 
-On Linux, listeners and resolvers support two socket-level options for advanced routing:
+On Linux, listeners and resolvers support two socket-level options for advanced routing.
+
+Options:
 
 - `fwmark` - Sets the `SO_MARK` socket option. The firewall mark is attached to all packets sent from the socket, allowing Linux netfilter (`iptables`/`nftables`) and policy routing (`ip rule`) to match and route them. The value is an integer and supports TOML hex notation (e.g. `0xb`).
 - `bind-if` - Sets the `SO_BINDTODEVICE` socket option. Binds the socket to a specific network interface so that traffic can only flow through that interface. This is useful with [VRFs](https://docs.kernel.org/networking/vrf.html) or as a safeguard against route leaks. On kernels >= 5.7, `SO_BINDTODEVICE` does not require root privileges.
 
 Both options can be used independently or together on any listener or resolver. On non-Linux platforms, configuring either option returns an error. DTLS listeners do not support these options (a warning is logged). On a resolver with `socks5-address`, the options are applied to the sockets reaching the SOCKS5 proxy.
+
+#### Examples
 
 **Resolver with fwmark and interface binding:**
 
