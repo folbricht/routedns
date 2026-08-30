@@ -5,6 +5,7 @@
 - [Overview](#overview)
   - [Split Configuration](#split-configuration)
   - [Validating a Configuration](#validating-a-configuration)
+  - [Writable Paths](#writable-paths)
   - [Regex Formatting](https://github.com/google/re2/wiki/Syntax)
 - [Listeners](#listeners)
   - [Plain DNS](#plain-dns)
@@ -133,6 +134,30 @@ routedns --check example-config/split-config/*.toml
 Building the configuration is what validates it, so `--check` does the same work startup does, short of binding sockets and answering queries. That means it reads certificates and cache files, loads blocklists from their sources (including over HTTP), and connects to Redis. Problems that only appear at that point, such as an unreadable certificate or a blocklist URL that no longer resolves, are reported.
 
 It does not bind any listener address and does not write the cache file, so it is safe to run against the configuration of an instance that is currently serving.
+
+### Writable Paths
+
+Three options write to disk: the cache `filename`, the blocklist `cache-dir`, and the query log `output-file`.
+
+Running RouteDNS directly, these can point anywhere the user can write. Under the systemd unit shipped with the deb, rpm and apk packages, they cannot. That unit uses `DynamicUser=true`, which implies `ProtectSystem=strict` and `PrivateTmp=true`, so the filesystem is read-only apart from a private `/tmp` that systemd discards when the service stops. A path under `/tmp` or `/var/tmp` is therefore worse than one that fails outright: writes succeed and the data is gone on the next restart, with nothing logged to say so.
+
+The unit declares two directories for this:
+
+| Path | Use |
+| --- | --- |
+| `/var/cache/routedns` | cache `filename`, blocklist `cache-dir` |
+| `/var/log/routedns` | query log `output-file` |
+
+```toml
+[groups.cached]
+type = "cache"
+resolvers = ["upstream"]
+backend = {type = "memory", filename = "/var/cache/routedns/cache.json", save-interval = 300}
+```
+
+systemd creates both on start and preserves their contents across restarts, which matters here because `DynamicUser` allocates a different UID each time.
+
+To write somewhere else, add the location to the unit with `ReadWritePaths=`, or drop `DynamicUser=true` and run as a fixed user that owns the directory.
 
 ## Listeners
 
@@ -401,7 +426,7 @@ The memory backend will keep all cache items in memory. It can be configured to 
 
 - `type="memory"`
 - `size` - Max number of responses to cache. Defaults to 0 which means no limit.
-- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs. A new file is created with mode `0600`, since it records what has been looked up; an existing file keeps whatever mode it already has.
+- `filename` - File to use for persistent storage to disk. The cache will be initialized with the content from the file and it'll write the content to the same file on shutdown. Defaults to no persistence. The file is written by creating a temporary file in the same directory and renaming it into place, so the directory has to be writable, and a symlink at this path is replaced by a regular file rather than being written through. Point the option at the real location if the data needs to live elsewhere, for example on a tmpfs. A new file is created with mode `0600`, since it records what has been looked up; an existing file keeps whatever mode it already has. When running under the systemd unit shipped with the packages, use a path under `/var/cache/routedns`; see [Writable Paths](#writable-paths).
 - `save-interval` - Interval (in seconds) to save the cache to file. Optional. If not set, the file is written only on shutdown.
 
 **Redis backend**
@@ -761,7 +786,7 @@ Options:
 - `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
 
-When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup). As with the cache `filename` option, a new file is created with mode `0600` and an existing one keeps whatever mode it already has.
+When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup). As with the cache `filename` option, a new file is created with mode `0600` and an existing one keeps whatever mode it already has. When running under the systemd unit shipped with the packages, use a path under `/var/cache/routedns`; see [Writable Paths](#writable-paths).
 
 To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
 
@@ -1685,7 +1710,7 @@ To enable query-logging, add an element with `type = "query-log"` in the groups 
 
 Options:
 
-- `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation.
+- `output-file` - Name of the file to write logs to, leave blank for STDOUT. Logs are appended to the file and there is no rotation. When running under the systemd unit shipped with the packages, use a path under `/var/log/routedns`; see [Writable Paths](#writable-paths).
 - `output-format` - Output format. Defaults to "text".
 
 Examples:
