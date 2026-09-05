@@ -1,14 +1,17 @@
 name: release
 
+# Releases are cut by hand. Pick a commit on master that the "build" workflow
+# passed, tag it and push the tag:
+#
+#   git tag -a v0.2.0 -m "Release v0.2.0"
+#   git push origin v0.2.0
+#
+# Pushing the tag is the only trigger. Ordinary pushes to master are built and
+# tested but not released.
 on:
   push:
     tags:
       - 'v*'
-  workflow_call:
-    inputs:
-      tag:
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -22,7 +25,8 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          # Tags and history, which goreleaser needs for the version and the
+          # generated changelog.
           fetch-depth: 0
 
       - name: Set up Go
@@ -50,8 +54,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -74,8 +76,7 @@ jobs:
 
       # The build context excludes .git, so the version stamp has to be passed
       # into the image build rather than derived from VCS as it is for the
-      # goreleaser builds. Read the commit from the checkout so it matches the
-      # tag being released, not whatever triggered the workflow.
+      # goreleaser builds.
       - name: Build metadata
         id: meta
         run: |
@@ -89,11 +90,11 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           build-args: |
-            VERSION=${{ inputs.tag || github.ref_name }}
+            VERSION=${{ github.ref_name }}
             COMMIT=${{ steps.meta.outputs.commit }}
             DATE=${{ steps.meta.outputs.date }}
           tags: |
             folbricht/routedns:latest
-            folbricht/routedns:${{ inputs.tag || github.ref_name }}
+            folbricht/routedns:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/routedns:latest
-            ghcr.io/${{ github.repository_owner }}/routedns:${{ inputs.tag || github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/routedns:${{ github.ref_name }}
