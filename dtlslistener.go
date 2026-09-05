@@ -96,7 +96,7 @@ type dtlsListener struct {
 
 func (l dtlsListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
-	return &dtlsConn{Conn: conn}, err
+	return newDTLSConn(conn), err
 }
 
 // dtlsHandshakeTimeout bounds how long a DTLS handshake is given to complete.
@@ -108,9 +108,7 @@ func (l dtlsListener) Accept() (net.Conn, error) {
 // forever. On a listener that is the connection goroutine dns.Server.Shutdown
 // waits for, so the server never shuts down; on a resolver it is the pipeline's
 // reader and writer, which leak for every abandoned connection.
-// A variable rather than a constant so tests can shorten it; nothing else
-// writes to it.
-var dtlsHandshakeTimeout = 10 * time.Second
+const dtlsHandshakeTimeout = 10 * time.Second
 
 // dtlsConn wraps a dtls.Conn to support partial read operations. While
 // github.com/pion/dtls/v3 returns a net.Conn, that Read() fails on
@@ -122,9 +120,51 @@ var dtlsHandshakeTimeout = 10 * time.Second
 // dtlsHandshakeTimeout.
 type dtlsConn struct {
 	net.Conn
-	buf       *bytes.Buffer
+	buf *bytes.Buffer
+
+	// handshakeTimeout overrides dtlsHandshakeTimeout when non-zero. Only the
+	// tests set it, so production connections all use the default and nothing
+	// writes to it once the connection is in use.
+	handshakeTimeout time.Duration
+
 	handshake sync.Once
 	hsErr     error
+
+	// abort is closed when the connection is closed, or when its read deadline
+	// is moved into the past, which is how dns.Server.Shutdown unblocks a
+	// connection it is waiting on. A handshake in flight ignores the deadline,
+	// so it watches this instead and shutdown does not have to wait out
+	// dtlsHandshakeTimeout.
+	abortOnce sync.Once
+	abort     chan struct{}
+}
+
+func newDTLSConn(conn net.Conn) *dtlsConn {
+	return &dtlsConn{Conn: conn, abort: make(chan struct{})}
+}
+
+// signalAbort tells a handshake in flight to give up.
+func (c *dtlsConn) signalAbort() {
+	if c.abort == nil {
+		return
+	}
+	c.abortOnce.Do(func() { close(c.abort) })
+}
+
+func (c *dtlsConn) Close() error {
+	c.signalAbort()
+	return c.Conn.Close()
+}
+
+// SetReadDeadline passes the deadline through, and treats one that has already
+// passed as a request to unblock. That is what dns.Server.Shutdown does to the
+// connections it waits on, and a handshake would otherwise ignore it, since
+// pion only consults the read deadline once the handshake is complete.
+func (c *dtlsConn) SetReadDeadline(t time.Time) error {
+	if !t.IsZero() && !t.After(time.Now()) {
+		c.signalAbort()
+	}
+	return c.Conn.SetReadDeadline(t)
 }
 
 // dtlsHandshaker is implemented by *dtls.Conn. Taken as an interface so the
@@ -143,8 +183,19 @@ func (c *dtlsConn) completeHandshake() error {
 		if !ok {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), dtlsHandshakeTimeout)
+		timeout := c.handshakeTimeout
+		if timeout == 0 {
+			timeout = dtlsHandshakeTimeout
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
+		go func() {
+			select {
+			case <-c.abort:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
 		c.hsErr = hs.HandshakeContext(ctx)
 	})
 	return c.hsErr

@@ -74,7 +74,6 @@ func TestDTLSListenerPSK(t *testing.T) {
 // The key has to be verified, not just accepted, so a client with the wrong
 // one must not get an answer through.
 func TestDTLSListenerPSKMismatch(t *testing.T) {
-	defer shortenDTLSHandshakeTimeout(t)()
 	upstream := new(TestResolver)
 
 	addr, err := getLnAddress()
@@ -196,7 +195,6 @@ func TestDTLSPSKNegotiatesForwardSecrecy(t *testing.T) {
 // context, so without a deadline of our own the connection goroutine never
 // returns and dns.Server.Shutdown waits on it forever.
 func TestDTLSListenerStopAfterAbandonedHandshake(t *testing.T) {
-	defer shortenDTLSHandshakeTimeout(t)()
 	upstream := new(TestResolver)
 
 	addr, err := getLnAddress()
@@ -223,22 +221,18 @@ func TestDTLSListenerStopAfterAbandonedHandshake(t *testing.T) {
 	require.NoError(t, conn.Close())
 	time.Sleep(500 * time.Millisecond)
 
+	// Shutdown has to cancel the handshake rather than wait it out, so this is
+	// deliberately far below dtlsHandshakeTimeout.
 	stopped := make(chan error, 1)
+	start := time.Now()
 	go func() { stopped <- s.Stop() }()
 	select {
 	case <-stopped:
-	case <-time.After(10 * time.Second):
+	case <-time.After(dtlsHandshakeTimeout / 2):
 		t.Fatal("Stop blocked on a connection whose handshake was abandoned")
 	}
-}
-
-// shortenDTLSHandshakeTimeout keeps the tests that wait out a handshake from
-// spending the production timeout doing it.
-func shortenDTLSHandshakeTimeout(t *testing.T) func() {
-	t.Helper()
-	previous := dtlsHandshakeTimeout
-	dtlsHandshakeTimeout = time.Second
-	return func() { dtlsHandshakeTimeout = previous }
+	require.Less(t, time.Since(start), dtlsHandshakeTimeout/2,
+		"shutdown waited out the handshake timeout instead of cancelling it")
 }
 
 // stalledHandshakeConn stands in for a *dtls.Conn whose peer never finishes the
@@ -260,10 +254,9 @@ func (c *stalledHandshakeConn) Write([]byte) (int, error) { panic("handshake sho
 // Read and Write both wait for the handshake, so both have to give up when it
 // does not finish, and between them they must only run it once.
 func TestDTLSConnHandshakeDeadline(t *testing.T) {
-	defer shortenDTLSHandshakeTimeout(t)()
-
 	stalled := &stalledHandshakeConn{}
-	c := &dtlsConn{Conn: stalled}
+	c := newDTLSConn(stalled)
+	c.handshakeTimeout = time.Second
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
