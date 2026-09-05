@@ -1,8 +1,10 @@
 # Failover and Load Balancing
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | **Failover and Load Balancing** | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Round-Robin group
+
+`type = "round-robin"`
 
 A Round-Robin balancer groups multiple upstream resolvers and sends every received query to the next resolver. It effectively balances the query load evenly over a number of upstream resolvers or modifiers.
 
@@ -23,6 +25,8 @@ type = "round-robin"
 ```
 
 ## Fail-Rotate group
+
+`type = "fail-rotate"`
 
 In a Fail-Rotate group, one of the upstream resolvers or modifiers is active and receives all queries. If the active resolver fails, i.e. no response or returns SERVFAIL, the next becomes active and the request is retried. If the last resolver fails the first becomes the active again. There's no time-based automatic fail-back.
 
@@ -46,6 +50,8 @@ type = "fail-rotate"
 
 ## Fail-Back group
 
+`type = "fail-back"`
+
 Similar to [fail-rotate](#fail-rotate-group) but will attempt to fall back to the original order (prioritizing the first) if there are no failures for a minute. Failure means either no response or it returns SERVFAIL.
 
 ### Configuration
@@ -68,6 +74,8 @@ type = "fail-back"
 ```
 
 ## Random group
+
+`type = "random"`
 
 This group will pick a resolver from its list of upstream resolvers at random. Resolvers that fail will be deactivated for an amount of time before being re-tried.
 
@@ -93,6 +101,8 @@ resolvers = ["cloudflare-dot-1", "cloudflare-dot-2", "google-dot"]
 Example config files: [random-resolver.toml](../cmd/routedns/example-config/random-resolver.toml)
 
 ## Load-Balance group
+
+`type = "load-balance"`
 
 This group distributes queries across all configured resolvers using weighted random selection based on measured response times. Resolvers with lower average response times receive proportionally more traffic. If the selected resolver fails, the query is retried with another resolver until one succeeds or all have been tried.
 
@@ -125,6 +135,8 @@ failure-penalty = 5
 Example config files: [load-balance.toml](../cmd/routedns/example-config/load-balance.toml)
 
 ## Fastest group
+
+`type = "fastest"`
 
 This group will send every query to all configured resolvers but only use the fastest (successful) response. Slower responses are discarded. Use sparingly as this increases the overall query load on upstream resolvers.
 

@@ -1,6 +1,8 @@
 # Resolvers
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | **Resolvers** | [Templates](templates.md)
+
+**On this page:** [Bootstrapping](#bootstrapping) | [Plain DNS Resolver](#plain-dns-resolver) | [DNS-over-TLS Resolver](#dns-over-tls-resolver) | [DNS-over-HTTPS Resolver](#dns-over-https-resolver) | [Oblivious DNS (ODoH) Resolver](#oblivious-dns-odoh-resolver) | [DNS-over-DTLS Resolver](#dns-over-dtls-resolver) | [DNS-over-QUIC Resolver](#dns-over-quic-resolver) | [Bootstrap Resolver](#bootstrap-resolver) | [SOCKS5 Proxy Support](#socks5-proxy-support) | [Network Namespace Support](#network-namespace-support) | [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
 
 Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers require a unique identifier to reference them from other elements. The following protocols are supported:
 
@@ -85,6 +87,8 @@ bootstrap-address = "8.8.8.8"
 
 ## Plain DNS Resolver
 
+`protocol = "udp"` or `protocol = "tcp"`
+
 Plain, un-encrypted DNS protocol clients for UDP or TCP. Note that UDP responses can be truncated so it is common to use it in combination with a [truncate-retry](caching.md#retrying-truncated-responses) group to define a fallback.
 
 ### Configuration
@@ -114,6 +118,8 @@ protocol = "tcp"
 Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [truncate-retry.toml](../cmd/routedns/example-config/truncate-retry.toml)
 
 ## DNS-over-TLS Resolver
+
+`protocol = "dot"`
 
 DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
@@ -162,6 +168,8 @@ client-crt = "/path/to/my-crt.pem"
 Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [family-browsing.toml](../cmd/routedns/example-config/family-browsing.toml), [simple-dot-cache.toml](../cmd/routedns/example-config/simple-dot-cache.toml)
 
 ## DNS-over-HTTPS Resolver
+
+`protocol = "doh"`
 
 DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
 DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. Only GET requests can be sent as 0-RTT data, so with `enable-0rtt = true` the method defaults to GET when none is configured, and the address has to be a URL template containing the `{?dns}` parameter. RouteDNS fails to start if 0-RTT is enabled on a configuration that can't use it: with `transport` other than `"quic"`, with `doh = { method = "POST" }`, or with an address that isn't a URL template. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
@@ -224,6 +232,8 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 
 ## Oblivious DNS (ODoH) Resolver
 
+`protocol = "odoh"`
+
 ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) is intended to improve privacy of **clients** by encrypting queries for a **target** DNS server while sending the query through a **proxy**. In this configuration, neither the target nor the proxy can see the query content and the source IP of the client at the same time. A client query is resolved as follows:
 
 - If the clients target-config = "" parameter is not set, the client will automatically query the public key of the target resolver directly from the target. This is bad for the anonymity of the client and should be avoided by pre-configuring the config beforehand.
@@ -272,6 +282,8 @@ Example config files: [odoh-client.toml](../cmd/routedns/example-config/odoh-cli
 
 ## DNS-over-DTLS Resolver
 
+`protocol = "dtls"`
+
 Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
 ### Configuration
@@ -302,6 +314,8 @@ Example config files: [dtls-client.toml](../cmd/routedns/example-config/dtls-cli
 
 ## DNS-over-QUIC Resolver
 
+`protocol = "doq"`
+
 Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#dns-over-https-resolver) for how to configure this.
 The DoQ resolver will try to use 0-RTT connection establishment if `enable-0rtt = true` is configured. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
 
@@ -331,6 +345,8 @@ enable-0rtt = true
 Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-client.toml)
 
 ## Bootstrap Resolver
+
+`[bootstrap-resolver]`
 
 Some configurations contain references to external resources by hostname. For example remote blocklists or resolvers. For those configurations to be valid, RouteDNS needs to be able to resolve those names at startup. If RouteDNS is the only service providing name resolution, this would fail. A bootstrap resolver allows the config to provide a resolver that is used to lookup such hostnames from the RouteDNS process itself. Bootstrap resolvers support the same protocols and options as regular resolvers.
 Note: Resolvers (including the bootstrap resolver itself) also support a `bootstrap-address` property that sets the IP directly and bypasses the bootstrap resolver.

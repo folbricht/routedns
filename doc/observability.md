@@ -1,8 +1,10 @@
 # Logging
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | **Logging** | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Syslog
+
+`type = "syslog"`
 
 The `syslog` element can be used to log requests and/or responses to local or remote syslog servers. It forwards queries un-modified to the configured resolver. It is possible to configure multiple syslog loggers in different places. For example a logger could be configured to log and forward queries for domains on a blocklist, or behind a router.
 
@@ -38,6 +40,8 @@ log-response = true
 Example config files: [syslog.toml](../cmd/routedns/example-config/syslog.toml)
 
 ## Query Log
+
+`type = "query-log"`
 
 The `query-log` element logs all DNS query details, including time, client IP, DNS question name, class and type. Logs can be written to a file or STDOUT.
 
