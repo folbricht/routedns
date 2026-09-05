@@ -51,10 +51,13 @@ func TestBackendsAgeIdentically(t *testing.T) {
 	require.NotNil(t, fromMemory.IsEdns0(), "the OPT record must survive")
 
 	// Redis has no test server, so go through its codec and age the result the
-	// way redisBackend.Lookup does.
-	encoded, err := encodeCacheAnswer(make([]byte, 0, 2048), item)
+	// way redisBackend.Lookup does. Both backends now encode the same way, so
+	// this is the record the memory path just served, which is the point: they
+	// must not disagree about how old an entry is. They used to, by up to a
+	// second, because the redis format truncated its timestamp.
+	encoded, err := newCacheBlob(lruKey{}, item)
 	require.NoError(t, err)
-	decoded, err := decodeCacheAnswer(encoded)
+	decoded, err := decodeRecord(encoded)
 	require.NoError(t, err)
 	require.True(t, ageCachedAnswer(decoded.Msg, q,
 		cacheAge(time.Now().UnixNano(), decoded.Timestamp.UnixNano())))

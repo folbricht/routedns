@@ -45,7 +45,11 @@ The memory backend will keep all cache items in memory. It can be configured to 
 
 **Redis backend**
 
-The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend. The following options are supported:
+The `redis` backend stores cached items in a Redis database. This allows multiple instances of routedns to share a common cache backend.
+
+Note that the format of a stored record changes between releases from time to time. A newer instance reads what an older one wrote, but not the other way around: while instances sharing one database are on different versions, those still running the older build see a cache miss and log an error for every record the upgraded ones have written. Nothing is lost but the warm cache, and it clears without intervention, since every record is stored with a TTL and so ages out within one DNS TTL of the upgrade finishing. Upgrading all instances close together keeps the window short.
+
+The following options are supported:
 
 - `type="redis"`
 - `redis-network` - The network type, either `tcp` or `unix`. Defaults to `tcp`.
