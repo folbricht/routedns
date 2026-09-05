@@ -371,6 +371,11 @@ func run(opt options, args []string) error {
 		if l.IPVersion != 4 && l.IPVersion != 6 && l.IPVersion != 0 {
 			return errors.New("ip-version must be 4 or 6")
 		}
+		// See the equivalent check for resolvers: the options are on the shared
+		// listener struct, so they have to be rejected where they do nothing.
+		if (l.PSK != "" || l.PSKIdentity != "") && l.Protocol != "dtls" {
+			return fmt.Errorf("listener '%s': psk and psk-identity are only supported by the dtls protocol", id)
+		}
 
 		netns, err := buildNetNS(l.NetNS, l.XSocket)
 		if err != nil {
@@ -422,9 +427,13 @@ func run(opt options, args []string) error {
 			}
 		case "dtls":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
-			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			psk, err := parsePSK(l.PSK, l.PSKIdentity)
 			if err != nil {
-				return err
+				return fmt.Errorf("listener '%s': %w", id, err)
+			}
+			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS, psk)
+			if err != nil {
+				return fmt.Errorf("listener '%s': %w", id, err)
 			}
 			build = func() (rdns.Listener, error) {
 				return rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver), nil

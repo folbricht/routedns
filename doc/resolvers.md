@@ -2,7 +2,7 @@
 
 [Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | **Resolvers** | [Templates](templates.md)
 
-**On this page:** [Bootstrapping](#bootstrapping) | [Plain DNS Resolver](#plain-dns-resolver) | [DNS-over-TLS Resolver](#dns-over-tls-resolver) | [DNS-over-HTTPS Resolver](#dns-over-https-resolver) | [Oblivious DNS (ODoH) Resolver](#oblivious-dns-odoh-resolver) | [DNS-over-DTLS Resolver](#dns-over-dtls-resolver) | [DNS-over-QUIC Resolver](#dns-over-quic-resolver) | [Idle Connection Timeout](#idle-connection-timeout) | [Bootstrap Resolver](#bootstrap-resolver) | [SOCKS5 Proxy Support](#socks5-proxy-support) | [Network Namespace Support](#network-namespace-support) | [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
+**On this page:** [Bootstrapping](#bootstrapping) | [Plain DNS Resolver](#plain-dns-resolver) | [DNS-over-TLS Resolver](#dns-over-tls-resolver) | [DNS-over-HTTPS Resolver](#dns-over-https-resolver) | [Oblivious DNS (ODoH) Resolver](#oblivious-dns-odoh-resolver) | [DNS-over-DTLS Resolver](#dns-over-dtls-resolver) | [Pre-Shared Keys](#pre-shared-keys) | [DNS-over-QUIC Resolver](#dns-over-quic-resolver) | [Idle Connection Timeout](#idle-connection-timeout) | [Bootstrap Resolver](#bootstrap-resolver) | [SOCKS5 Proxy Support](#socks5-proxy-support) | [Network Namespace Support](#network-namespace-support) | [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
 
 Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers require a unique identifier to reference them from other elements. The following protocols are supported:
 
@@ -296,8 +296,44 @@ Options:
 - All [common resolver options](#resolvers).
 - `ca`, `client-crt`, `client-key` - [TLS options](#resolvers) for validating the server and presenting a client certificate. `server-name` is not supported for DTLS.
 - `edns0-udp-size` - Set the EDNS0 UDP size in queries sent upstream. Optional.
+- `psk` - Pre-shared key, hex-encoded, used instead of certificates. See [Pre-Shared Keys](#pre-shared-keys). Optional.
+- `psk-identity` - Identity naming the key, sent to the server during the handshake. Required when `psk` is set.
 
 `enable-0rtt` and the SOCKS5 options do not apply to this protocol.
+
+### Pre-Shared Keys
+
+Instead of certificates, a DTLS connection can be authenticated with a pre-shared key, which suits constrained devices that can't do a full certificate exchange. Both ends need the same key, and a `psk` cannot be combined with `client-crt`/`client-key` on the same resolver since the two are alternatives.
+
+The key is given as hex, for example from `openssl rand -hex 16`. `psk-identity` names the key and is sent to the server so it can select the matching one. It is required on a resolver.
+
+```toml
+[resolvers.dtls-psk]
+address      = "server.acme.test:853"
+protocol     = "dtls"
+psk          = "0102030405060708090a0b0c0d0e0f10"
+psk-identity = "routedns-client"
+```
+
+When a key is configured, only pre-shared key cipher suites are offered, in this order:
+
+1. `TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256`
+2. `TLS_PSK_WITH_AES_128_GCM_SHA256`
+3. `TLS_PSK_WITH_CHACHA20_POLY1305_SHA256`
+4. `TLS_PSK_WITH_AES_128_CCM`
+5. `TLS_PSK_WITH_AES_128_CCM_8`
+6. `TLS_PSK_WITH_AES_256_CCM_8`
+7. `TLS_PSK_WITH_AES_128_CBC_SHA256`
+
+The server picks the first entry it also supports, so a peer that only implements one of them, such as `TLS_PSK_WITH_AES_128_CCM_8` on an embedded stack, negotiates it without further configuration.
+
+The ECDHE suite is first despite the others being AEAD, because it is the only one that provides forward secrecy. The rest derive their keys from the shared secret alone, so anyone who obtains the key later can decrypt traffic captured earlier, and the key stays in a configuration file for its whole lifetime. Two peers that both support ECDHE therefore get forward secrecy, while constrained ones still fall through to a suite further down.
+
+Note the key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as. Generating fewer than 16 bytes is allowed, since some devices use shorter keys, but logs a warning at startup: on this path the key is the only thing authenticating the connection.
+
+`psk` cannot be combined with `mutual-tls` on a listener. A pre-shared key handshake carries no client certificate, so requiring one produces a listener that starts and then fails every handshake.
+
+Example config files: [dtls-psk-client.toml](../cmd/routedns/example-config/dtls-psk-client.toml)
 
 ### Examples
 
