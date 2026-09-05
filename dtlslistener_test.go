@@ -151,9 +151,16 @@ func TestDTLSPSKNegotiatesForwardSecrecy(t *testing.T) {
 	clientConfig, err := DTLSClientConfig("", "", "", &PSK{Key: key, Identity: "client"})
 	require.NoError(t, err)
 
+	// Driven through the options API rather than the deprecated dtls.Listen,
+	// but from the configs built above, so the suite list under test is still
+	// the one this package produces.
 	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
 	require.NoError(t, err)
-	ln, err := dtls.Listen("udp", addr, serverConfig)
+	ln, err := dtls.ListenWithOptions("udp", addr,
+		dtls.WithPSK(serverConfig.PSK),
+		dtls.WithPSKIdentityHint(serverConfig.PSKIdentityHint),
+		dtls.WithCipherSuites(serverConfig.CipherSuites...),
+	)
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -169,7 +176,11 @@ func TestDTLSPSKNegotiatesForwardSecrecy(t *testing.T) {
 		_, _ = conn.Read(buf) // completes the handshake on this side
 	}()
 
-	conn, err := dtls.Dial("udp", ln.Addr().(*net.UDPAddr), clientConfig)
+	conn, err := dtls.DialWithOptions("udp", ln.Addr().(*net.UDPAddr),
+		dtls.WithPSK(clientConfig.PSK),
+		dtls.WithPSKIdentityHint(clientConfig.PSKIdentityHint),
+		dtls.WithCipherSuites(clientConfig.CipherSuites...),
+	)
 	require.NoError(t, err)
 	defer conn.Close()
 	_, err = conn.Write([]byte("ping"))
