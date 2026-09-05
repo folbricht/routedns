@@ -36,6 +36,10 @@ type DNSClientOptions struct {
 
 	QueryTimeout time.Duration
 
+	// IdleTimeout is how long an upstream connection is kept without any
+	// traffic before it is torn down. Zero applies the default.
+	IdleTimeout time.Duration
+
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
 
@@ -69,7 +73,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		id:       id,
 		net:      network,
 		endpoint: endpoint,
-		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout),
+		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout, opt.IdleTimeout),
 		opt:      opt,
 	}, nil
 }

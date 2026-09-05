@@ -14,8 +14,9 @@ import (
 // Defines how long to wait for a response from the resolver if no other timeout is given.
 const defaultQueryTimeout = 2 * time.Second
 
-// Tear down an upstream connection if nothing has been received for this long.
-const idleTimeout = 10 * time.Second
+// Tear down an upstream connection if nothing has been received for this long,
+// unless the resolver configures its own.
+const defaultIdleTimeout = 10 * time.Second
 
 // Pipeline is a DNS client that is able to use pipelining for multiple requests over
 // one connection, handle out-of-order responses and deals with disconnects
@@ -28,6 +29,7 @@ type Pipeline struct {
 	inFlight inFlightQueue
 	metrics  *ListenerMetrics
 	timeout  time.Duration
+	idle     time.Duration
 }
 
 // DNSDialer is an abstraction for a dns.Client that returns a *dns.Conn.
@@ -36,9 +38,13 @@ type DNSDialer interface {
 }
 
 // NewPipeline returns an initialized (and running) DNS connection manager.
-func NewPipeline(id string, addr string, client DNSDialer, timeout time.Duration) *Pipeline {
+// A zero timeout or idle timeout applies the package defaults.
+func NewPipeline(id string, addr string, client DNSDialer, timeout, idle time.Duration) *Pipeline {
 	if timeout == 0 {
 		timeout = defaultQueryTimeout
+	}
+	if idle == 0 {
+		idle = defaultIdleTimeout
 	}
 	c := &Pipeline{
 		addr:     addr,
@@ -46,6 +52,7 @@ func NewPipeline(id string, addr string, client DNSDialer, timeout time.Duration
 		requests: make(chan *request),
 		metrics:  NewListenerMetrics("client", id),
 		timeout:  timeout,
+		idle:     idle,
 	}
 	go c.start()
 	return c
@@ -139,7 +146,7 @@ func (c *Pipeline) start() {
 				// a network topology change wouldn't be noticed. Putting the idle timeout here ensures
 				// a reconnect in that case as well. This does create a very slight race however if the
 				// sender is using the connection right at the time of the timeout in the receiver.
-				_ = conn.SetReadDeadline(time.Now().Add(idleTimeout))
+				_ = conn.SetReadDeadline(time.Now().Add(c.idle))
 				a, err := conn.ReadMsg()
 				if err != nil {
 					switch e := err.(type) {

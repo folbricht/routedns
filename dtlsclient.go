@@ -38,6 +38,10 @@ type DTLSClientOptions struct {
 
 	QueryTimeout time.Duration
 
+	// IdleTimeout is how long an upstream connection is kept without any
+	// traffic before it is torn down. Zero applies the default.
+	IdleTimeout time.Duration
+
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
 
@@ -103,7 +107,7 @@ func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, err
 	return &DTLSClient{
 		id:       id,
 		endpoint: endpoint,
-		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout),
+		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout, opt.IdleTimeout),
 		opt:      opt,
 	}, nil
 }

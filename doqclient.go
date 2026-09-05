@@ -47,7 +47,11 @@ type DoQClientOptions struct {
 
 	TLSConfig    *tls.Config
 	QueryTimeout time.Duration
-	Use0RTT      bool
+
+	// IdleTimeout sets the QUIC MaxIdleTimeout. Zero uses the library default.
+	// The effective value is the lower of this and the server's.
+	IdleTimeout time.Duration
+	Use0RTT     bool
 
 	// Linux network namespace for outbound connections.
 	NetNS *NetNS
@@ -100,6 +104,9 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	config := &quic.Config{
 		TokenStore:           quic.NewLRUTokenStore(10, 10),
 		HandshakeIdleTimeout: opt.QueryTimeout,
+	}
+	if opt.IdleTimeout > 0 {
+		config.MaxIdleTimeout = opt.IdleTimeout
 	}
 
 	client := &DoQClient{

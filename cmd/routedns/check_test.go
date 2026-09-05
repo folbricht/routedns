@@ -211,3 +211,69 @@ resolver = "router"
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "'bootstrap-resolver' is unknown")
 }
+
+// idle-timeout moved from the doh sub-table to the resolver level. Both forms
+// have to keep working, but not together, since zero is indistinguishable from
+// unset and a silent winner would ignore what the user wrote.
+func TestCheckIdleTimeout(t *testing.T) {
+	config := func(resolverOpt, dohOpt string) string {
+		return `
+[resolvers.upstream]
+address = "https://dns.google/dns-query"
+protocol = "doh"
+` + resolverOpt + `
+` + dohOpt + `
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "upstream"
+`
+	}
+
+	t.Run("resolver level", func(t *testing.T) {
+		require.NoError(t, check(t, config(`idle-timeout = 60`, ``)))
+	})
+	t.Run("deprecated doh form", func(t *testing.T) {
+		require.NoError(t, check(t, config(``, `doh = { idle-timeout = 60 }`)))
+	})
+	t.Run("neither", func(t *testing.T) {
+		require.NoError(t, check(t, config(``, ``)))
+	})
+	t.Run("both is an error", func(t *testing.T) {
+		err := check(t, config(`idle-timeout = 60`, `doh = { idle-timeout = 30 }`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "both at the resolver level and under doh")
+	})
+	t.Run("negative is an error", func(t *testing.T) {
+		err := check(t, config(`idle-timeout = -1`, ``))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "must not be negative")
+	})
+}
+
+// The option applies to every protocol, not just the two it started on.
+func TestCheckIdleTimeoutAllProtocols(t *testing.T) {
+	for _, tc := range []struct{ protocol, address string }{
+		{"udp", "8.8.8.8:53"},
+		{"tcp", "8.8.8.8:53"},
+		{"dot", "dns.google:853"},
+		{"dtls", "8.8.8.8:853"},
+		{"doq", "dns.adguard.com:8853"},
+		{"doh", "https://dns.google/dns-query"},
+	} {
+		t.Run(tc.protocol, func(t *testing.T) {
+			require.NoError(t, check(t, `
+[resolvers.upstream]
+address = "`+tc.address+`"
+protocol = "`+tc.protocol+`"
+idle-timeout = 45
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "upstream"
+`))
+		})
+	}
+}

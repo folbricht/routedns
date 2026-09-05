@@ -2,7 +2,7 @@
 
 [Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | **Resolvers** | [Templates](templates.md)
 
-**On this page:** [Bootstrapping](#bootstrapping) | [Plain DNS Resolver](#plain-dns-resolver) | [DNS-over-TLS Resolver](#dns-over-tls-resolver) | [DNS-over-HTTPS Resolver](#dns-over-https-resolver) | [Oblivious DNS (ODoH) Resolver](#oblivious-dns-odoh-resolver) | [DNS-over-DTLS Resolver](#dns-over-dtls-resolver) | [DNS-over-QUIC Resolver](#dns-over-quic-resolver) | [Bootstrap Resolver](#bootstrap-resolver) | [SOCKS5 Proxy Support](#socks5-proxy-support) | [Network Namespace Support](#network-namespace-support) | [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
+**On this page:** [Bootstrapping](#bootstrapping) | [Plain DNS Resolver](#plain-dns-resolver) | [DNS-over-TLS Resolver](#dns-over-tls-resolver) | [DNS-over-HTTPS Resolver](#dns-over-https-resolver) | [Oblivious DNS (ODoH) Resolver](#oblivious-dns-odoh-resolver) | [DNS-over-DTLS Resolver](#dns-over-dtls-resolver) | [DNS-over-QUIC Resolver](#dns-over-quic-resolver) | [Idle Connection Timeout](#idle-connection-timeout) | [Bootstrap Resolver](#bootstrap-resolver) | [SOCKS5 Proxy Support](#socks5-proxy-support) | [Network Namespace Support](#network-namespace-support) | [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding)
 
 Resolvers forward queries to other DNS servers over the network and typically represent the end of one or many processing pipelines. Resolvers encode every query that is passed from listeners, modifiers, routers etc and send them to a DNS server without further processing. Like with other elements in the pipeline, resolvers require a unique identifier to reference them from other elements. The following protocols are supported:
 
@@ -24,6 +24,7 @@ Resolvers are defined in the configuration like so `[resolvers.NAME]` and have t
 - `local-address-v6` - IPv6 address of the local interface to use when connecting to IPv6 targets. Takes priority over `local-address` for IPv6 connections. The address must be unbracketed (e.g. `fd00::1`, not `[fd00::1]`).
 - `edns0-udp-size` - If set, modifies the EDNS0 UDP size option in all queries sent upstream. Only meaningful when using UDP or DTLS resolvers. Upstream resolvers may not respect this value and apply their own limits.
 - `query-timeout` - Sets the query timeout to allow. In seconds.
+- `idle-timeout` - How long an idle upstream connection is kept open before being torn down, in seconds. Applies to all protocols. If not set, each protocol uses its own default, see [Idle Connection Timeout](#idle-connection-timeout).
 - `netns` - Linux network namespace for outbound connections. Can be a name (looked up in `/var/run/netns/`) or an absolute path (e.g. `/proc/PID/ns/net`). Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 - `xsocket` - Path to an `xsocket-server` Unix socket. Outbound connections are made through a socket created in that server's network namespace without requiring `CAP_SYS_ADMIN`. Mutually exclusive with `netns`. For SOCKS5-proxied resolvers it is the connection to the proxy that is made in the target namespace. Optional, Linux only. See [Network Namespace Support](#network-namespace-support).
 - `fwmark` - Linux firewall mark (`SO_MARK`) to set on outbound connections. Used for netfilter matching and policy routing. Optional, Linux only, integer. See [Firewall Mark and Interface Binding](#firewall-mark-and-interface-binding).
@@ -173,7 +174,7 @@ Example config files: [well-known.toml](../cmd/routedns/example-config/well-know
 
 DNS resolvers using the HTTPS protocol are configured with `protocol = "doh"`. By default, DoH uses TCP as transport, but it can also be run over QUIC (UDP) by providing the option `transport = "quic"`. DoH supports two HTTP methods, GET and POST. By default RouteDNS uses the POST method, but can be configured to use GET as well using the option `doh = { method = "GET" }`.
 DoH with QUIC supports 0-RTT. The DoH resolver will try to use 0-RTT connection establishment if `transport = "quic"` and `enable-0rtt = true` are configured. Only GET requests can be sent as 0-RTT data, so with `enable-0rtt = true` the method defaults to GET when none is configured, and the address has to be a URL template containing the `{?dns}` parameter. RouteDNS fails to start if 0-RTT is enabled on a configuration that can't use it: with `transport` other than `"quic"`, with `doh = { method = "POST" }`, or with an address that isn't a URL template. Since 0-RTT data is replayable, only the opcodes RFC 9250 allows there (QUERY and NOTIFY) are sent as early data; queries with any other opcode wait for the handshake to complete.
-The idle connection timeout can be configured with `doh = { idle-timeout = 60 }` (in seconds). This controls how long idle HTTP connections are kept open before being closed. For TCP transport, the default is 30 seconds. For QUIC transport, the default is determined by the quic-go library. Note that for QUIC, the actual idle timeout is the minimum of the client and server values.
+The idle connection timeout is set with the resolver-level `idle-timeout` option, see [Idle Connection Timeout](#idle-connection-timeout). For DoH it controls how long idle HTTP connections are kept open, defaulting to 30 seconds over TCP and to the quic-go library value over QUIC. The older `doh = { idle-timeout = 60 }` form still works but is deprecated.
 
 ### Configuration
 
@@ -184,7 +185,7 @@ Options:
 - All [common resolver options](#resolvers).
 - `ca`, `client-crt`, `client-key`, `server-name` - [TLS options](#resolvers) for validating the server and presenting a client certificate.
 - `transport` - `"tcp"` (default) for HTTP/2 over TCP, or `"quic"` to run DoH over QUIC.
-- `doh` - Table of DoH-specific settings: `method` (`"POST"` default, or `"GET"`) and `idle-timeout` in seconds.
+- `doh` - Table of DoH-specific settings: `method` (`"POST"` default, or `"GET"`). It also accepts a deprecated `idle-timeout`, superseded by the resolver-level [`idle-timeout`](#idle-connection-timeout).
 - `enable-0rtt` - Use 0-RTT connection establishment. Requires `transport = "quic"`, the GET method, and a URL template address. Optional, defaults to false.
 - `socks5-address`, `socks5-username`, `socks5-password`, `socks5-resolve-local` - Connect through a [SOCKS5 proxy](#socks5-proxy-support). Optional.
 
@@ -225,7 +226,7 @@ DoH resolver with extended idle timeout.
 [resolvers.cloudflare-doh-long-idle]
 address = "https://1.1.1.1/dns-query"
 protocol = "doh"
-doh = { idle-timeout = 60 }
+idle-timeout = 60
 ```
 
 Example config files: [well-known.toml](../cmd/routedns/example-config/well-known.toml), [simple-doh.toml](../cmd/routedns/example-config/simple-doh.toml), [mutual-tls-doh-client.toml](../cmd/routedns/example-config/mutual-tls-doh-client.toml)
@@ -253,7 +254,7 @@ Options:
 - `target` - URL of the ODoH target. Required.
 - `target-config` - The target's ODoH config, as hex. Fetched from the target automatically when not set, which costs the client's anonymity for that one request, so prefer configuring it. Running with debug logging prints the fetched value so it can be copied here.
 - `transport` - `"tcp"` (default) or `"quic"` for the proxy connection.
-- `doh` - Table of DoH-specific settings for the proxy connection: `method` and `idle-timeout`.
+- `doh` - Table of DoH-specific settings for the proxy connection: `method`. It also accepts a deprecated `idle-timeout`, superseded by the resolver-level [`idle-timeout`](#idle-connection-timeout).
 
 `edns0-udp-size`, `enable-0rtt` and the SOCKS5 options do not apply to this protocol.
 
@@ -343,6 +344,35 @@ enable-0rtt = true
 ```
 
 Example config files: [doq-client.toml](../cmd/routedns/example-config/doq-client.toml)
+
+## Idle Connection Timeout
+
+`idle-timeout`
+
+RouteDNS keeps upstream connections open between queries rather than reconnecting each time. The `idle-timeout` option controls how long a connection with no traffic on it is kept before being torn down, in seconds. It is available on every resolver protocol. Lowering it releases connections sooner, which can matter on devices with few resources or behind stateful firewalls that track idle flows. Raising it keeps connections warm for longer, avoiding repeated handshakes on a busy resolver.
+
+If the option is not set, each protocol applies its own default:
+
+| Protocol | Default idle timeout |
+| --- | --- |
+| `udp`, `tcp`, `dot`, `dtls` | 10 seconds |
+| `doh` over TCP | 30 seconds |
+| `doh` over QUIC, `doq` | Determined by the quic-go library |
+
+Notes:
+
+- For the QUIC-based protocols (`doq` and `doh` with `transport = "quic"`) the value maps to the QUIC `MaxIdleTimeout`, which is negotiated as the lower of the client and server values. Raising it beyond what the server allows has no effect.
+- Many public resolvers close idle connections after a couple of seconds regardless of what the client asks for, so a high value is not a guarantee that the connection survives.
+- A negative value is rejected at startup.
+
+```toml
+[resolvers.cloudflare-dot]
+address      = "1.1.1.1:853"
+protocol     = "dot"
+idle-timeout = 60
+```
+
+The DoH resolver previously carried this setting as `doh = { idle-timeout = 60 }`. That form is deprecated and logs a warning, but continues to work. Setting both it and the resolver-level option is an error, since a zero value cannot be told apart from an unset one and silently picking a winner would ignore what was configured.
 
 ## Bootstrap Resolver
 
