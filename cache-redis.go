@@ -34,81 +34,33 @@ type RedisBackendOptions struct {
 
 var _ CacheBackend = (*redisBackend)(nil)
 
-// The record format this backend writes. Version 2, the layout it shares with
-// the memory backend, is read but not yet written; see decodeRecord.
+// The record format this backend wrote before it shared a layout with the
+// memory backend. Still read, no longer written; see decodeRecord.
 const (
 	binaryFormatVersion = 1
 	headerSize          = 10
 	flagPrefetchBit     = 1 << 0
 )
 
-// decodeRecord decodes a stored record, whichever format it is in. Version 1
-// is the format above, which this backend still writes. Version 2 is the blob
-// layout shared with the memory backend, which a later release will write.
+// decodeRecord decodes a stored record, whichever format it is in. Version 2
+// is the blob layout shared with the memory backend, which this backend now
+// writes. Version 1 is the format above, which it wrote until this release.
 //
-// Reading it first is deliberate. A redis cache is shared between instances,
-// so a record written in a format an instance does not know is a miss and an
-// error log line on every lookup that finds it. Shipping the reader a release
-// ahead of the writer means that by the time anything emits version 2, the
-// instances sharing the database can already read it, and a rollback lands on
-// a build that can too.
+// Reading version 1 keeps a shared cache usable while instances are on either
+// side of the upgrade. It does not have to stay: every record is stored with a
+// TTL, so version 1 drains within one DNS TTL of the last instance writing it
+// stopping, and reading it can go then.
 func decodeRecord(b []byte) (*cacheAnswer, error) {
 	if len(b) == 0 {
 		return nil, errors.New("empty cache record")
 	}
 	switch b[0] {
-	case binaryFormatVersion:
-		return decodeCacheAnswer(b)
 	case blobVersion:
 		return cacheBlob(b).cacheAnswer()
+	case binaryFormatVersion:
+		return decodeCacheAnswer(b)
 	}
 	return nil, fmt.Errorf("unsupported cache record version: %d", b[0])
-}
-
-// encodeCacheAnswer encodes a cacheAnswer into a compact binary format:
-// - byte 0: version (1)
-// - byte 1: flags (bit0: prefetchEligible)
-// - bytes 2..9: timestamp (uint64 seconds from Unix epoch, big endian)
-// - bytes 10..N: dns.Msg wire bytes
-//
-// The message is packed into buf when it fits, so the returned slice
-// typically aliases buf. The caller owns buf and must not reuse it while
-// the result is in use.
-func encodeCacheAnswer(buf []byte, item *cacheAnswer) ([]byte, error) {
-	if cap(buf) < headerSize {
-		buf = make([]byte, headerSize+2048)
-	}
-	buf = buf[:cap(buf)]
-
-	// Pack the DNS message directly after the header. PackBuffer packs
-	// in place and only allocates a new buffer if the message doesn't fit.
-	dnsWire, err := item.Msg.PackBuffer(buf[headerSize:])
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
-	}
-
-	var result []byte
-	if &dnsWire[0] == &buf[headerSize] {
-		// Packed in place, header and wire bytes are contiguous in buf
-		result = buf[:headerSize+len(dnsWire)]
-	} else {
-		// The message didn't fit and PackBuffer allocated a new buffer
-		result = make([]byte, headerSize+len(dnsWire))
-		copy(result[headerSize:], dnsWire)
-	}
-
-	// Write header
-	result[0] = binaryFormatVersion
-
-	var flags byte
-	if item.PrefetchEligible {
-		flags |= flagPrefetchBit
-	}
-	result[1] = flags
-
-	binary.BigEndian.PutUint64(result[2:10], uint64(item.Timestamp.Unix()))
-
-	return result, nil
 }
 
 // decodeCacheAnswer decodes a binary-encoded cacheAnswer.
@@ -166,35 +118,30 @@ func (b *redisBackend) Store(query *dns.Msg, item *cacheAnswer) {
 	// they can't be touched from a background goroutine.
 	key := b.keyFromQuery(query)
 
-	bufPtr := packBufPool.Get().(*[]byte)
-	value, err := encodeCacheAnswer(*bufPtr, item)
+	// The redis key already encodes the question, so the record is stored
+	// under the empty key: the region costs its ten header bytes and nothing
+	// would read it back. newCacheBlob returns its own allocation, so the
+	// value can be handed to a background write as it is.
+	value, err := newCacheBlob(lruKey{}, item)
 	if err != nil {
-		putPackBuf(bufPtr)
 		Log.Error("failed to encode cache record", "error", err)
 		return
 	}
-	adoptPackBuf(bufPtr, value)
 
 	if b.opt.SyncSet {
 		b.set(key, value, ttl)
-		putPackBuf(bufPtr)
 		return
 	}
 
-	// Non-blocking semaphore acquire. The value buffer is handed to the
-	// goroutine and returned to the pool once the write completes.
+	// Non-blocking semaphore acquire.
 	select {
 	case b.asyncWriteSem <- struct{}{}:
 		go func() {
-			defer func() {
-				putPackBuf(bufPtr)
-				<-b.asyncWriteSem
-			}()
+			defer func() { <-b.asyncWriteSem }()
 			b.set(key, value, ttl)
 		}()
 	default:
 		// Semaphore full, skip async store (best-effort caching)
-		putPackBuf(bufPtr)
 		b.asyncSkipped.Add(1)
 	}
 }
