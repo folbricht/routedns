@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"io"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -294,4 +295,72 @@ func (r *earlyDataRelay) serverToClient() {
 			_, _ = r.conn.WriteToUDP(buf[:n], client)
 		}
 	}
+}
+
+// A nil response means "drop". Every other listener already handles it; DoQ
+// was added later and never picked the convention up, so it packed the nil
+// message and brought the process down with it. A drop group behind a DoQ
+// listener is a shipped configuration, see client-blocklist-drop.toml, which
+// made this reachable by any client the operator had deliberately blocked.
+func TestDoQListenerDropsNilResponse(t *testing.T) {
+	var seen atomic.Int32
+	upstream := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			// The first query is dropped, the second answered, so the test can
+			// tell "survived the drop" apart from "died quietly".
+			if seen.Add(1) == 1 {
+				return nil, nil
+			}
+			a := new(dns.Msg)
+			a.SetReply(q)
+			return a, nil
+		},
+	}
+
+	addr := startTestDoQListener(t, upstream)
+	conn, err := quic.DialAddr(context.Background(), addr, doqTestClientConfig(t), nil)
+	require.NoError(t, err)
+	defer conn.CloseWithError(0, "")
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	// The dropped query gets a closed stream and no data.
+	dropped, err := conn.OpenStreamSync(context.Background())
+	require.NoError(t, err)
+	writeDoQQueryToStream(t, dropped, q)
+	require.NoError(t, dropped.SetReadDeadline(time.Now().Add(5*time.Second)))
+	n, err := dropped.Read(make([]byte, 1))
+	require.Zero(t, n, "a dropped query must not be answered")
+	require.Error(t, err)
+
+	// The listener has to still be serving, which it cannot be if the drop
+	// took the process down.
+	answered, err := conn.OpenStreamSync(context.Background())
+	require.NoError(t, err)
+	writeDoQQueryToStream(t, answered, q)
+	require.NoError(t, answered.SetReadDeadline(time.Now().Add(5*time.Second)))
+	var length [2]byte
+	_, err = io.ReadFull(answered, length[:])
+	require.NoError(t, err, "the listener stopped serving after a dropped query")
+	body := make([]byte, binary.BigEndian.Uint16(length[:]))
+	_, err = io.ReadFull(answered, body)
+	require.NoError(t, err)
+	reply := new(dns.Msg)
+	require.NoError(t, reply.Unpack(body))
+	require.Equal(t, dns.RcodeSuccess, reply.Rcode)
+}
+
+// writeDoQQueryToStream writes a length-prefixed DNS message to an existing
+// stream, for tests that need to read the response back off it.
+func writeDoQQueryToStream(t *testing.T, stream *quic.Stream, m *dns.Msg) {
+	t.Helper()
+	p, err := m.Pack()
+	require.NoError(t, err)
+	out := make([]byte, 2+len(p))
+	binary.BigEndian.PutUint16(out, uint16(len(p)))
+	copy(out[2:], p)
+	_, err = stream.Write(out)
+	require.NoError(t, err)
+	require.NoError(t, stream.Close())
 }
