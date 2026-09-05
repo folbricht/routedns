@@ -210,3 +210,33 @@ func TestRawCacheFileRejectsUnknownBlobVersion(t *testing.T) {
 	require.NoError(t, dst.deserializeRaw(bytes.NewReader(damaged)))
 	require.Equal(t, 2, dst.size(), "the record with an unknown layout is skipped, the rest load")
 }
+
+// A raw file holds blobs, so its version has to move whenever blobVersion
+// does. If it doesn't, the header check passes and every record is then
+// rejected one at a time by the per-record version check, which is the silent
+// empty cache the header check exists to prevent. Nothing in the types ties
+// the two constants together, so pin both: changing either should mean coming
+// here and deciding about the other.
+func TestRawCacheFileVersionTracksBlobVersion(t *testing.T) {
+	require.Equal(t, 2, rawCacheVersion, "if this moved, blobVersion likely has to move with it")
+	require.Equal(t, 2, blobVersion, "if this moved, rawCacheVersion has to move with it")
+}
+
+// A file written before the backends shared a record layout is refused at the
+// header, so it reports a cold start rather than being accepted and then
+// losing every record to the per-record check without a word.
+func TestRawCacheFileRejectsOlderFileVersion(t *testing.T) {
+	src := newLRUCache(0)
+	fillCache(t, src, 3)
+	var buf bytes.Buffer
+	require.NoError(t, src.serializeRaw(&buf))
+
+	older := bytes.Clone(buf.Bytes())
+	older[len(rawCacheMagic)] = rawCacheVersion - 1
+
+	dst := newLRUCache(0)
+	err := dst.deserializeRaw(bytes.NewReader(older))
+	require.Error(t, err, "an older file version must be refused, not read")
+	require.Contains(t, err.Error(), "unsupported raw cache file version")
+	require.Zero(t, dst.size())
+}

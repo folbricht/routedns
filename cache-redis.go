@@ -34,11 +34,36 @@ type RedisBackendOptions struct {
 
 var _ CacheBackend = (*redisBackend)(nil)
 
+// The record format this backend writes. Version 2, the layout it shares with
+// the memory backend, is read but not yet written; see decodeRecord.
 const (
 	binaryFormatVersion = 1
 	headerSize          = 10
 	flagPrefetchBit     = 1 << 0
 )
+
+// decodeRecord decodes a stored record, whichever format it is in. Version 1
+// is the format above, which this backend still writes. Version 2 is the blob
+// layout shared with the memory backend, which a later release will write.
+//
+// Reading it first is deliberate. A redis cache is shared between instances,
+// so a record written in a format an instance does not know is a miss and an
+// error log line on every lookup that finds it. Shipping the reader a release
+// ahead of the writer means that by the time anything emits version 2, the
+// instances sharing the database can already read it, and a rollback lands on
+// a build that can too.
+func decodeRecord(b []byte) (*cacheAnswer, error) {
+	if len(b) == 0 {
+		return nil, errors.New("empty cache record")
+	}
+	switch b[0] {
+	case binaryFormatVersion:
+		return decodeCacheAnswer(b)
+	case blobVersion:
+		return cacheBlob(b).cacheAnswer()
+	}
+	return nil, fmt.Errorf("unsupported cache record version: %d", b[0])
+}
 
 // encodeCacheAnswer encodes a cacheAnswer into a compact binary format:
 // - byte 0: version (1)
@@ -197,7 +222,7 @@ func (b *redisBackend) Lookup(q *dns.Msg) (*dns.Msg, bool, bool) {
 		return nil, false, false
 	}
 
-	a, err := decodeCacheAnswer(valueBytes)
+	a, err := decodeRecord(valueBytes)
 	if err != nil {
 		Log.Error("failed to decode cache record from redis", "error", err)
 		return nil, false, false
