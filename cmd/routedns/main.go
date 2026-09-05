@@ -171,6 +171,10 @@ type Node struct {
 	value any
 }
 
+// bootstrapResolverID is the reserved ID of the resolver defined in the
+// [bootstrap-resolver] section. It can be referenced like any other resolver.
+const bootstrapResolverID = "bootstrap-resolver"
+
 var _ dag.IDInterface = Node{}
 
 func (n Node) ID() string {
@@ -190,6 +194,11 @@ func uniqueIDs(ids []string) []string {
 	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" })
 	slices.Sort(ids)
 	return slices.Compact(ids)
+}
+
+func hasKey[V any](m map[string]V, key string) bool {
+	_, ok := m[key]
+	return ok
 }
 
 type pendingListener struct {
@@ -254,11 +263,22 @@ func run(opt options, args []string) error {
 	// See if a bootstrap-resolver was defined in the config. If so, instantiate it,
 	// wrap it in a net.Resolver wrapper and replace the net.DefaultResolver with it
 	// for all other entities to use.
+	var hasBootstrapResolver bool
 	if config.BootstrapResolver.Address != "" {
-		if err := instantiateResolver("bootstrap-resolver", config.BootstrapResolver, resolvers); err != nil {
+		// The ID is reserved while a bootstrap-resolver is defined. Without this
+		// an element of the same name would be built again by the loop below and
+		// replace it in the map, leaving net.DefaultResolver pointing at one
+		// resolver while everything referencing the ID by name got the other.
+		if hasKey(config.Resolvers, bootstrapResolverID) ||
+			hasKey(config.Groups, bootstrapResolverID) ||
+			hasKey(config.Routers, bootstrapResolverID) {
+			return fmt.Errorf("'%s' is reserved when a [bootstrap-resolver] is defined", bootstrapResolverID)
+		}
+		if err := instantiateResolver(bootstrapResolverID, config.BootstrapResolver, resolvers); err != nil {
 			return fmt.Errorf("failed to instantiate bootstrap-resolver: %w", err)
 		}
-		net.DefaultResolver = rdns.NewNetResolver(resolvers["bootstrap-resolver"])
+		net.DefaultResolver = rdns.NewNetResolver(resolvers[bootstrapResolverID])
+		hasBootstrapResolver = true
 	}
 	// Add all types of nodes to a DAG, this is to find duplicates. Then populate the edges (dependencies).
 	graph := dag.NewDAG()
@@ -295,6 +315,14 @@ func run(opt options, args []string) error {
 	// Add the edges to the DAG. This will fail if there is recursion or missing nodes.
 	for id, es := range edges {
 		for _, e := range es {
+			// The bootstrap-resolver is built before the graph, since
+			// net.DefaultResolver has to be replaced before anything that may
+			// perform a lookup is instantiated. It has no vertex to point at and
+			// nothing needs to wait for it, so references to it carry no
+			// ordering constraint.
+			if hasBootstrapResolver && e == bootstrapResolverID {
+				continue
+			}
 			if err := graph.AddEdge(id, e); err != nil {
 				return err
 			}

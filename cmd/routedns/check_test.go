@@ -113,3 +113,96 @@ resolver = "cached"
 	require.NoError(t, err)
 	require.Equal(t, content, after, "--check overwrote the cache file")
 }
+
+// The bootstrap-resolver is built before the dependency graph, so referencing
+// it by ID has to be wired up separately from the other elements.
+func TestCheckBootstrapResolverAsResolver(t *testing.T) {
+	require.NoError(t, check(t, `
+[bootstrap-resolver]
+address = "127.0.0.1:5399"
+protocol = "udp"
+
+[resolvers.upstream]
+address = "127.0.0.1:5398"
+protocol = "udp"
+
+[groups.cached]
+type = "cache"
+resolvers = ["bootstrap-resolver"]
+
+[routers.router]
+routes = [
+  {name = '\.com\.$', resolver = "bootstrap-resolver"},
+  {type = "A", resolver = "cached"},
+  {resolver = "upstream"},
+]
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "router"
+
+[listeners.direct]
+address = "127.0.0.1:5398"
+protocol = "udp"
+resolver = "bootstrap-resolver"
+`))
+}
+
+// Defining an element with the reserved ID would build a second resolver and
+// replace the bootstrap one in the map, so it has to be rejected.
+func TestCheckBootstrapResolverIDReserved(t *testing.T) {
+	for _, tc := range []struct{ name, section string }{
+		{"resolver", `
+[resolvers.bootstrap-resolver]
+address = "127.0.0.1:5398"
+protocol = "udp"`},
+		{"group", `
+[groups.bootstrap-resolver]
+type = "cache"
+resolvers = ["upstream"]`},
+		{"router", `
+[routers.bootstrap-resolver]
+routes = [{resolver = "upstream"}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := check(t, `
+[bootstrap-resolver]
+address = "127.0.0.1:5399"
+protocol = "udp"
+
+[resolvers.upstream]
+address = "127.0.0.1:5398"
+protocol = "udp"
+`+tc.section+`
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "upstream"
+`)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "is reserved")
+		})
+	}
+}
+
+// Without a [bootstrap-resolver] section the ID is not special and a reference
+// to it is a typo like any other.
+func TestCheckBootstrapResolverNotDefined(t *testing.T) {
+	err := check(t, `
+[resolvers.upstream]
+address = "127.0.0.1:5398"
+protocol = "udp"
+
+[routers.router]
+routes = [{resolver = "bootstrap-resolver"}]
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "router"
+`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "'bootstrap-resolver' is unknown")
+}

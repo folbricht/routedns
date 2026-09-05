@@ -353,7 +353,7 @@ Note: Resolvers (including the bootstrap resolver itself) also support a `bootst
 
 ### Configuration
 
-The bootstrap resolver is defined in a top-level `[bootstrap-resolver]` table rather than under `resolvers`, since nothing references it by name. There can be only one.
+The bootstrap resolver is defined in a top-level `[bootstrap-resolver]` table rather than under `resolvers`. There can be only one.
 
 Options:
 
@@ -367,6 +367,20 @@ Use Cloudflare DoT to resolve all hostnames in the configuration.
 [bootstrap-resolver]
 address = "1.1.1.1:853"
 protocol = "dot"
+```
+
+The bootstrap resolver can also be used to answer queries, by referencing it as `bootstrap-resolver` from a group, router or listener. This avoids having to define the same server twice when it should serve queries as well as resolve the names in the config. Since the ID is used for this, it can't also be given to a resolver, group or router while a `[bootstrap-resolver]` is defined.
+
+```toml
+[bootstrap-resolver]
+address = "1.1.1.1:853"
+protocol = "dot"
+
+[routers.router]
+routes = [
+  { name = '\.internal\.$', resolver = "bootstrap-resolver" },
+  { resolver = "upstream" },
+]
 ```
 
 Example config files: [bootstrap-resolver.toml](../cmd/routedns/example-config/bootstrap-resolver.toml), [use-case-6.toml](../cmd/routedns/example-config/use-case-6.toml)
