@@ -229,7 +229,7 @@ Options:
 
 `ip-version` has no effect on this listener.
 
-A pre-shared key is an alternative to a server certificate, intended for constrained clients that can't do a full certificate exchange. Both ends need the same key, and `psk` cannot be combined with `server-crt`/`server-key`. Unlike on a resolver, `psk-identity` is optional here and is only a hint to the client. When a key is set, only pre-shared key cipher suites are offered; see [Pre-Shared Keys](resolvers.md#pre-shared-keys) for the list. The key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as.
+A pre-shared key is an alternative to a server certificate, intended for constrained clients that can't do a full certificate exchange. Both ends need the same key, and `psk` cannot be combined with `server-crt`/`server-key`. Unlike on a resolver, `psk-identity` is optional here and is only a hint to the client. `psk` cannot be combined with `mutual-tls`, since a pre-shared key handshake carries no client certificate. When a key is set, only pre-shared key cipher suites are offered; see [Pre-Shared Keys](resolvers.md#pre-shared-keys) for the list and for why the forward secret one is preferred. The key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as.
 
 ```toml
 [listeners.local-dtls]

@@ -63,6 +63,14 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 		return err
 	}
 
+	// Pre-shared keys only mean something to DTLS. The options live on the
+	// shared resolver struct, so without this they would be accepted and
+	// quietly ignored on every other protocol, leaving the impression that the
+	// connection is authenticated by a key when it is not.
+	if (r.PSK != "" || r.PSKIdentity != "") && r.Protocol != "dtls" {
+		return fmt.Errorf("resolver '%s': psk and psk-identity are only supported by the dtls protocol", id)
+	}
+
 	sockOpts := rdns.SocketOptions{
 		FWMark:        r.FWMark,
 		BindInterface: r.BindInterface,

@@ -341,3 +341,64 @@ server-key = "../../testdata/server.key"`))
 		require.Contains(t, err.Error(), "cannot be combined with a certificate")
 	})
 }
+
+// The psk options sit on the shared listener and resolver structs, so they
+// would otherwise be accepted and ignored on protocols that cannot use them.
+func TestCheckPSKOnlyForDTLS(t *testing.T) {
+	for _, protocol := range []string{"dot", "doh", "doq", "udp", "tcp"} {
+		t.Run("listener "+protocol, func(t *testing.T) {
+			err := check(t, `
+[resolvers.upstream]
+address = "8.8.8.8:53"
+protocol = "udp"
+
+[listeners.local]
+address = "127.0.0.1:5399"
+protocol = "`+protocol+`"
+resolver = "upstream"
+server-crt = "../../testdata/server.crt"
+server-key = "../../testdata/server.key"
+psk = "0102030405060708090a0b0c0d0e0f10"
+`)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "only supported by the dtls protocol")
+		})
+	}
+	for _, protocol := range []string{"dot", "doq", "udp", "tcp"} {
+		t.Run("resolver "+protocol, func(t *testing.T) {
+			err := check(t, `
+[resolvers.upstream]
+address = "dns.google:853"
+protocol = "`+protocol+`"
+psk = "0102030405060708090a0b0c0d0e0f10"
+psk-identity = "client"
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "upstream"
+`)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "only supported by the dtls protocol")
+		})
+	}
+}
+
+// A listener that asks for both a key and client certificates cannot work.
+func TestCheckPSKWithMutualTLS(t *testing.T) {
+	err := check(t, `
+[resolvers.upstream]
+address = "8.8.8.8:53"
+protocol = "udp"
+
+[listeners.local-dtls]
+address = "127.0.0.1:5399"
+protocol = "dtls"
+resolver = "upstream"
+ca = "../../testdata/ca.crt"
+mutual-tls = true
+psk = "0102030405060708090a0b0c0d0e0f10"
+`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot be combined with mutual-tls")
+}

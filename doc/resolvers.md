@@ -315,9 +315,23 @@ psk          = "0102030405060708090a0b0c0d0e0f10"
 psk-identity = "routedns-client"
 ```
 
-When a key is configured, only pre-shared key cipher suites are offered: `TLS_PSK_WITH_AES_128_GCM_SHA256`, `TLS_PSK_WITH_CHACHA20_POLY1305_SHA256`, `TLS_PSK_WITH_AES_128_CCM`, `TLS_PSK_WITH_AES_128_CCM_8`, `TLS_PSK_WITH_AES_256_CCM_8`, `TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256` and `TLS_PSK_WITH_AES_128_CBC_SHA256`, in that order. A peer that supports only one of them, such as `TLS_PSK_WITH_AES_128_CCM_8` on an embedded stack, negotiates it without further configuration.
+When a key is configured, only pre-shared key cipher suites are offered, in this order:
 
-Note the key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as.
+1. `TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256`
+2. `TLS_PSK_WITH_AES_128_GCM_SHA256`
+3. `TLS_PSK_WITH_CHACHA20_POLY1305_SHA256`
+4. `TLS_PSK_WITH_AES_128_CCM`
+5. `TLS_PSK_WITH_AES_128_CCM_8`
+6. `TLS_PSK_WITH_AES_256_CCM_8`
+7. `TLS_PSK_WITH_AES_128_CBC_SHA256`
+
+The server picks the first entry it also supports, so a peer that only implements one of them, such as `TLS_PSK_WITH_AES_128_CCM_8` on an embedded stack, negotiates it without further configuration.
+
+The ECDHE suite is first despite the others being AEAD, because it is the only one that provides forward secrecy. The rest derive their keys from the shared secret alone, so anyone who obtains the key later can decrypt traffic captured earlier, and the key stays in a configuration file for its whole lifetime. Two peers that both support ECDHE therefore get forward secrecy, while constrained ones still fall through to a suite further down.
+
+Note the key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as. Generating fewer than 16 bytes is allowed, since some devices use shorter keys, but logs a warning at startup: on this path the key is the only thing authenticating the connection.
+
+`psk` cannot be combined with `mutual-tls` on a listener. A pre-shared key handshake carries no client certificate, so requiring one produces a listener that starts and then fails every handshake.
 
 Example config files: [dtls-psk-client.toml](../cmd/routedns/example-config/dtls-psk-client.toml)
 

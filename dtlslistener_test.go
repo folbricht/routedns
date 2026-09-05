@@ -1,10 +1,12 @@
 package rdns
 
 import (
+	"net"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/pion/dtls/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -107,9 +109,75 @@ func TestDTLSClientPSKRequiresIdentity(t *testing.T) {
 	require.Contains(t, err.Error(), "psk-identity is required")
 }
 
-// Certificates and a PSK are alternatives, not a combination.
+// Certificates and a PSK are alternatives, not a combination. A half-specified
+// certificate counts too: checking the loaded certificates rather than the file
+// names would let one through and silently drop it.
 func TestDTLSPSKAndCertificateRejected(t *testing.T) {
-	_, err := DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", false, &PSK{Key: []byte{0x01}})
+	for _, tc := range []struct{ name, crt, key string }{
+		{"both", "testdata/server.crt", "testdata/server.key"},
+		{"certificate only", "testdata/server.crt", ""},
+		{"key only", "", "testdata/server.key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DTLSServerConfig("", tc.crt, tc.key, false, &PSK{Key: []byte{0x01}})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "cannot be combined with a certificate")
+
+			_, err = DTLSClientConfig("", tc.crt, tc.key, &PSK{Key: []byte{0x01}, Identity: "client"})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "cannot be combined with a certificate")
+		})
+	}
+}
+
+// mutual-tls asks the client for a certificate, which a PSK handshake never
+// sends. Without this the listener starts and then fails every handshake.
+func TestDTLSPSKAndMutualTLSRejected(t *testing.T) {
+	_, err := DTLSServerConfig("testdata/ca.crt", "", "", true, &PSK{Key: []byte{0x01}})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot be combined with a certificate")
+	require.Contains(t, err.Error(), "cannot be combined with mutual-tls")
+}
+
+// Two peers both using the configs built here have to end up on the forward
+// secret suite. A server selects the first entry of the client's list that it
+// also supports, so this depends on the order of pskCipherSuites and would
+// silently regress if the AEAD suites were moved to the front.
+func TestDTLSPSKNegotiatesForwardSecrecy(t *testing.T) {
+	key := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}
+
+	serverConfig, err := DTLSServerConfig("", "", "", false, &PSK{Key: key, Identity: "server"})
+	require.NoError(t, err)
+	clientConfig, err := DTLSClientConfig("", "", "", &PSK{Key: key, Identity: "client"})
+	require.NoError(t, err)
+
+	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ln, err := dtls.Listen("udp", addr, serverConfig)
+	require.NoError(t, err)
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 16)
+		_, _ = conn.Read(buf) // completes the handshake on this side
+	}()
+
+	conn, err := dtls.Dial("udp", ln.Addr().(*net.UDPAddr), clientConfig)
+	require.NoError(t, err)
+	defer conn.Close()
+	_, err = conn.Write([]byte("ping"))
+	require.NoError(t, err)
+	<-done
+
+	state, ok := conn.ConnectionState()
+	require.True(t, ok)
+	require.Equal(t, dtls.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256, state.CipherSuiteID,
+		"a PSK connection between two RouteDNS peers should use the forward secret suite")
 }

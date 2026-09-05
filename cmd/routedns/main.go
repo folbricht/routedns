@@ -371,6 +371,11 @@ func run(opt options, args []string) error {
 		if l.IPVersion != 4 && l.IPVersion != 6 && l.IPVersion != 0 {
 			return errors.New("ip-version must be 4 or 6")
 		}
+		// See the equivalent check for resolvers: the options are on the shared
+		// listener struct, so they have to be rejected where they do nothing.
+		if (l.PSK != "" || l.PSKIdentity != "") && l.Protocol != "dtls" {
+			return fmt.Errorf("listener '%s': psk and psk-identity are only supported by the dtls protocol", id)
+		}
 
 		netns, err := buildNetNS(l.NetNS, l.XSocket)
 		if err != nil {
