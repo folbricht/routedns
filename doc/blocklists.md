@@ -1,8 +1,12 @@
 # Blocklists
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | **Blocklists** | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
+
+**On this page:** [Query Blocklist](#query-blocklist) | [Response Blocklist](#response-blocklist) | [Client Blocklist](#client-blocklist)
 
 ## Query Blocklist
+
+`type = "blocklist-v2"`
 
 Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist. A blocklist can have multiple rule-sets, with different formats. In its simplest form, the blocklist has just one upstream resolver and forwards anything that does not match its rules. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP, depending on what blocklist format is used.
 
@@ -146,6 +150,8 @@ Example config files: [blocklist-regexp.toml](../cmd/routedns/example-config/blo
 
 ## Response Blocklist
 
+`type = "response-blocklist-ip"` or `type = "response-blocklist-name"`
+
 Rather than filtering queries, response blocklists evaluate the response to a query and block anything that matches a filter-rule. There are two kinds of response blocklists: `response-blocklist-ip` and `response-blocklist-name`.
 
 - `response-blocklist-ip` blocks based on IP addresses in the response, by network IP (in CIDR notation) or geographical location.
@@ -262,6 +268,8 @@ blocklist           = [
 Example config files: [response-blocklist-ip.toml](../cmd/routedns/example-config/response-blocklist-ip.toml), [response-blocklist-name.toml](../cmd/routedns/example-config/response-blocklist-name.toml), [response-blocklist-ip-remote.toml](../cmd/routedns/example-config/response-blocklist-ip-remote.toml), [response-blocklist-name-remote.toml](../cmd/routedns/example-config/response-blocklist-name-remote.toml), [response-blocklist-ip-resolver.toml](../cmd/routedns/example-config/response-blocklist-ip-resolver.toml), [response-blocklist-name-resolver.toml](../cmd/routedns/example-config/response-blocklist-name-resolver.toml), [response-blocklist-geo.toml](../cmd/routedns/example-config/response-blocklist-geo.toml), [response-blocklist-asn.toml](../cmd/routedns/example-config/response-blocklist-asn.toml)
 
 ## Client Blocklist
+
+`type = "client-blocklist"`
 
 Client blocklists match the IP of the client instead of responses. By default, a client on the blocklist will receive a REFUSED, though other responses can be configured by combining it with a `static-responder`. The same options as with [response-blocklist-ip](#response-blocklist) are supported. This includes CIDR lists, static in configuration, on local disk or remote via HTTP. Also, geo location based blocklists are supported.
 

@@ -1,8 +1,10 @@
 # Modifiers
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | **Modifiers** | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Replace
+
+`type = "replace"`
 
 The replace modifier applies regular expressions to query strings and replaces them before forwarding the query to the upstream resolver or modifier. The response is then mapped back to the original query, similar to NAT in a network. This can be useful to map hostnames to different domains on-the-fly or to append domain names to short hostname queries. In lab environments, one can replace a query for a production host with the equivalent lab host.
 
@@ -33,6 +35,8 @@ This replacer could be used where the company has multiple environment behind VP
 ```
 
 ## EDNS0 Client Subnet Modifier
+
+`type = "ecs-modifier"`
 
 A client subnet modifier is used to either remove ECS options from a query, replace/add one, or improve privacy by hiding more bits of the address. The following operation are supported by the subnet modifier:
 
@@ -91,6 +95,8 @@ Example config files: [ecs-modifier-add.toml](../cmd/routedns/example-config/ecs
 
 ## EDNS0 Modifier
 
+`type = "edns0-modifier"`
+
 EDNS0 Modifier allows low-level operations on the EDNS0 option records in queries. It can be used to add or remove custom option codes with arbitrary data.
 
 - `add` - Add an EDNS0 option to a query. If there is one already it is replaced.
@@ -124,6 +130,8 @@ Example config files: [edns0-modifier.toml](../cmd/routedns/example-config/edns0
 
 ## Response Minimizer
 
+`type = "response-minimize"`
+
 This element passes all queries to its upstream resolver and strips all Extra and NS records from the response, making responses smaller.
 
 ### Configuration
@@ -145,6 +153,8 @@ resolvers = ["google-dot"]
 Example config files: [response-minimize.toml](../cmd/routedns/example-config/response-minimize.toml)
 
 ## Response Collapse
+
+`type = "response-collapse"`
 
 This element passes all queries to its upstream resolver and collapses response chains in the answer records to just the query name and the queried type.
 
@@ -182,6 +192,8 @@ resolvers = ["google-dot"]
 Example config files: [response-collapse.toml](../cmd/routedns/example-config/response-collapse.toml)
 
 ## DNS64
+
+`type = "dns64"`
 
 Synthesizes AAAA records from A records for IPv6-only clients using NAT64 ([RFC 6147](https://datatracker.ietf.org/doc/html/rfc6147)). When an AAAA query returns no AAAA answers from upstream, DNS64 falls back to an A query and embeds the IPv4 addresses into configurable IPv6 prefixes per [RFC 6052](https://datatracker.ietf.org/doc/html/rfc6052). Queries for non-AAAA types and responses that already contain AAAA records pass through unchanged.
 

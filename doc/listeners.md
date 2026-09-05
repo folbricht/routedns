@@ -1,6 +1,8 @@
 # Listeners
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | **Listeners** | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
+
+**On this page:** [Plain DNS](#plain-dns) | [DNS-over-TLS](#dns-over-tls) | [DNS-over-HTTPS](#dns-over-https) | [Oblivious DNS (ODoH)](#oblivious-dns-odoh) | [DNS-over-DTLS](#dns-over-dtls) | [DNS-over-QUIC](#dns-over-quic) | [Admin](#admin)
 
 Listeners are query receivers that form the start of a query pipeline. Queries received by a listener are then forwarded to routers, groups, or to resolvers directly. Several DNS protocols are supported.
 
@@ -31,6 +33,8 @@ The DNS-over-HTTPS listener also accepts the client IP address from trusted reve
 
 ## Plain DNS
 
+`protocol = "udp"` or `protocol = "tcp"`
+
 Regular (insecure) DNS protocol over port 53, UDP and TCP. Setting `protocol` to `udp` will start a UDP listener, and `tcp` starts a TCP listener. In many cases both are present in a configuration if RouteDNS is used to provide DNS to local services over the loopback device.
 
 ### Configuration
@@ -59,6 +63,8 @@ resolver = "router1"
 ```
 
 ## DNS-over-TLS
+
+`protocol = "dot"`
 
 DNS protocol using a TLS connection (DoT) as per [RFC7858](https://tools.ietf.org/html/rfc7858).
 
@@ -101,6 +107,8 @@ mutual-tls = true
 Example config files: [mutual-tls-dot-server.toml](../cmd/routedns/example-config/mutual-tls-dot-server.toml)
 
 ## DNS-over-HTTPS
+
+`protocol = "doh"`
 
 DNS using the HTTPS protocol as per [RFC8484](https://tools.ietf.org/html/rfc8484).
 
@@ -159,6 +167,8 @@ Example config files: [mutual-tls-doh-server.toml](../cmd/routedns/example-confi
 
 ## Oblivious DNS (ODoH)
 
+`protocol = "odoh"`
+
 ODoH ([RFC9230](https://datatracker.ietf.org/doc/rfc9230/)) improves the privacy of **clients** by encrypting queries for a **target** DNS server and sending them through a **proxy**, so that neither the target nor the proxy sees the query content and the source IP of the client at the same time. Listeners are configured with `protocol = "odoh"` and can act as the target, the proxy, or both. See the [ODoH resolver](resolvers.md#oblivious-dns-odoh-resolver) for the client side.
 
 By default the ODoH listener listens on `/proxy` and `/dns-query`. Additionally, it will host its HPKE config under `/.well-known/odohconfigs`. If `odoh-mode = "proxy"` is set, it will only listen and handle ODoH proxy requests on `/proxy`. If set to target the listener will only handle the ODoH queries on `/dns-query`.
@@ -202,6 +212,8 @@ Example config files: [odoh-listener.toml](../cmd/routedns/example-config/odoh-l
 
 ## DNS-over-DTLS
 
+`protocol = "dtls"`
+
 Similar to DoT, but uses a DTLS (UDP) connection as transport as per [RFC8094](https://tools.ietf.org/html/rfc8094).
 
 ### Configuration
@@ -231,6 +243,8 @@ server-key = "example-config/server-ec.key"
 Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-server.toml)
 
 ## DNS-over-QUIC
+
+`protocol = "doq"`
 
 Similar to DoT, but uses a QUIC connection as transport as per [RFC9250](https://datatracker.ietf.org/doc/rfc9250/). Configured with `protocol = "doq"`. Note that this is different from DoH over QUIC. See [DNS-over-HTTPS](#dns-over-https) for how to configure this.
 
@@ -263,6 +277,8 @@ server-key = "example-config/server.key"
 Example config files: [doq-listener.toml](../cmd/routedns/example-config/doq-listener.toml)
 
 ## Admin
+
+`protocol = "admin"`
 
 The Admin listener provides metrics on RouteDNS usage and performance at https://{address}/routedns/vars/ in [expvar](https://pkg.go.dev/expvar) format. These metrics can be exported to be usable by Prometheus using [prometheus-expvar-exporter](https://github.com/albertito/prometheus-expvar-exporter).
 

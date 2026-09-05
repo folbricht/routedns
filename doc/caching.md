@@ -1,8 +1,12 @@
 # Caching and Performance
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | **Caching and Performance** | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
+
+**On this page:** [Cache](#cache) | [Prefetch](#prefetch) | [TTL modifier](#ttl-modifier) | [Fastest TCP Probe](#fastest-tcp-probe) | [Retrying Truncated Responses](#retrying-truncated-responses) | [Request Deduplication](#request-deduplication)
 
 ## Cache
+
+`type = "cache"`
 
 A cache will store the responses to queries in memory and respond to further identical queries with the same response. To determine how long an item is kept in memory, the cache uses the lowest TTL of the RRs in the response. Responses served from the cache have their TTL updated according to the time the records spent in memory. If a query has an [ECS Subnet](https://tools.ietf.org/html/rfc7871) option, the subnet address forms part of the key to support subnet-specific answers.
 
@@ -109,6 +113,8 @@ Example config files: [cache.toml](../cmd/routedns/example-config/cache.toml), [
 
 ## Prefetch
 
+`type = "prefetch"`
+
 While [Cache](#cache) has built-in prefetch capabilities, the dedicated `prefetch` group may be more appropriate for some use cases. It tracks the number of queries made within a time window and actively prefetches frequently requested records. While it actively sends queries in order to refresh a cache, it does not cache responses itself and relies on a cache upstream from it.
 
 On multi-core systems the internal tracking caches are automatically sharded (based on `GOMAXPROCS`) to reduce lock contention under concurrent query load. This is an internal optimization only; it does not change behavior or measurably affect end-to-end query latency.
@@ -146,6 +152,8 @@ prefetch-max-items = 50
 Example config files: [prefetch.toml](../cmd/routedns/example-config/prefetch.toml)
 
 ## TTL modifier
+
+`type = "ttl-modifier"`
 
 A TTL modifier is used to adjust the time-to-live (TTL) of DNS responses. This is used to avoid frequently making the same queries to upstream because many responses have a value that is unreasonably low as outlined in this [blog](https://blog.apnic.net/2019/11/12/stop-using-ridiculously-low-dns-ttls). It's also possible to restrict very high TTL values that might be used in DNS poisoning attacks.
 
@@ -196,6 +204,8 @@ Example config files: [ttl-modifier.toml](../cmd/routedns/example-config/ttl-mod
 
 ## Fastest TCP Probe
 
+`type = "fastest-tcp"`
+
 The `fastest-tcp` element will first perform a lookup, then send TCP probes to all A or AAAA records in the response. It can then either return just the A/AAAA record for the fastest response, or all A/AAAA sorted by response time (fastest first). Since probing multiple servers can be slow, it is typically used behind a [cache](#cache) to avoid making too many probes repeatedly. Each instance can only probe one port and if different ports are to be probed depending on the query name, a router should be used in front of it as well.
 
 ### Configuration
@@ -228,6 +238,8 @@ resolvers = ["cloudflare-dot"]
 Example config files: [fastest-tcp.toml](../cmd/routedns/example-config/fastest-tcp.toml)
 
 ## Retrying Truncated Responses
+
+`type = "truncate-retry"`
 
 The `truncated-retry` element will first perform a lookup using its primary resolver. If the response from the primary is truncated, the same query is retried with the secondary `retry-resolver`. This element is only useful if the primary resolver uses either plain UDP or DTLS as those apply limits to the size of the response. In addition, it is typically used behind a [cache](#cache) which can then store the full response and respond faster to clients which too may have to retry the query if using a UDP or DTLS listener.
 
@@ -280,6 +292,8 @@ resolver = "cache"
 Example config files: [truncate-retry.toml](../cmd/routedns/example-config/truncate-retry.toml)
 
 ## Request Deduplication
+
+`type = "request-dedup"`
 
 The `request-dedup` element passes individual queries to its upstream resolver. While the first query is being processed, further queries for the same name will be blocked. Once the first query has been answered, all waiting queries are completed with the same answer. This element can be used to reduce load on upstream servers when queried by clients sending the same query multiple times.
 

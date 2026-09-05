@@ -14,54 +14,54 @@ Some of these reference supporting files by relative path (`./example-config/dom
 ./routedns --check example-config/simple-dot.toml
 ```
 
-Every option used here is described in the [Configuration Guide](../../../doc/configuration.md).
+Every option used here is described in the [Configuration Guide](../../../doc/configuration.md), which also indexes every component by the `protocol` or `type` value that selects it. The Guide column below links each example to the section describing the component it demonstrates.
 
 ## Start here
 
-| File | Description |
-| --- | --- |
-| [simple-dot.toml](simple-dot.toml) | Plain DNS on loopback, forwarded to Cloudflare over DoT. The starting point for most setups. |
-| [simple-doh.toml](simple-doh.toml) | The same, over DoH. |
-| [simple-dot-cache.toml](simple-dot-cache.toml) | DoT with a cache in front of the upstream resolver. |
-| [simple-dot-proxy.toml](simple-dot-proxy.toml) | Network-wide proxy translating plain DNS on port 53 into DoT. |
-| [use-case-1.toml](use-case-1.toml) | Local proxy with a cache, everything forwarded over DoT. |
-| [well-known.toml](well-known.toml) | Reference list of public resolvers and the protocols they support. Not meant to be run directly. |
-| [well-known-wo-ports.toml](well-known-wo-ports.toml) | The same list relying on each protocol's default port. |
-| [restricted-listener.toml](restricted-listener.toml) | Listener that only accepts queries from named client networks (`allowed-net`). |
+| File | Description | Guide |
+| --- | --- | --- |
+| [simple-dot.toml](simple-dot.toml) | Plain DNS on loopback, forwarded to Cloudflare over DoT. The starting point for most setups. | [DoT resolver](../../../doc/resolvers.md#dns-over-tls-resolver) |
+| [simple-doh.toml](simple-doh.toml) | The same, over DoH. | [DoH resolver](../../../doc/resolvers.md#dns-over-https-resolver) |
+| [simple-dot-cache.toml](simple-dot-cache.toml) | DoT with a cache in front of the upstream resolver. | [Cache](../../../doc/caching.md#cache) |
+| [simple-dot-proxy.toml](simple-dot-proxy.toml) | Network-wide proxy translating plain DNS on port 53 into DoT. | [Plain DNS listener](../../../doc/listeners.md#plain-dns) |
+| [use-case-1.toml](use-case-1.toml) | Local proxy with a cache, everything forwarded over DoT. | [Cache](../../../doc/caching.md#cache) |
+| [well-known.toml](well-known.toml) | Reference list of public resolvers and the protocols they support. Not meant to be run directly. | [Resolvers](../../../doc/resolvers.md) |
+| [well-known-wo-ports.toml](well-known-wo-ports.toml) | The same list relying on each protocol's default port. | [Resolvers](../../../doc/resolvers.md) |
+| [restricted-listener.toml](restricted-listener.toml) | Listener that only accepts queries from named client networks (`allowed-net`). | [Listener options](../../../doc/listeners.md#listeners) |
 
 ## Protocol clients (resolvers)
 
-| File | Description |
-| --- | --- |
-| [dot-client.toml](dot-client.toml) | Forward to a DoT server. |
-| [doq-client.toml](doq-client.toml) | Forward to a local DoQ server, using 0-RTT where possible. |
-| [doq-client-simple.toml](doq-client-simple.toml) | Forward to a public DoQ server. |
-| [doh-quic-client.toml](doh-quic-client.toml) | DoH over QUIC transport, with 0-RTT. |
-| [doh-quic-client-local.toml](doh-quic-client-local.toml) | DoH over QUIC against the local test server in `doh-quic-server.toml`. |
-| [dtls-client.toml](dtls-client.toml) | Forward to a DoDTLS server. |
-| [odoh-client.toml](odoh-client.toml) | Oblivious DoH client, with target and optional proxy. |
-| [bootstrap-resolver.toml](bootstrap-resolver.toml) | Resolve hostnames used elsewhere in the config (resolver endpoints, blocklist URLs) through a defined resolver. |
-| [socks5-dot.toml](socks5-dot.toml) | DoT upstream reached through a SOCKS5 proxy. |
-| [socks5-doh.toml](socks5-doh.toml) | DoH upstream reached through a SOCKS5 proxy. |
-| [socks5-udp.toml](socks5-udp.toml) | Plain DNS through a SOCKS5 proxy. |
-| [socks5-udp-resolvelocal.toml](socks5-udp-resolvelocal.toml) | The same, but resolving the server hostname locally rather than on the proxy. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [dot-client.toml](dot-client.toml) | Forward to a DoT server. | [DoT resolver](../../../doc/resolvers.md#dns-over-tls-resolver) |
+| [doq-client.toml](doq-client.toml) | Forward to a local DoQ server, using 0-RTT where possible. | [DoQ resolver](../../../doc/resolvers.md#dns-over-quic-resolver) |
+| [doq-client-simple.toml](doq-client-simple.toml) | Forward to a public DoQ server. | [DoQ resolver](../../../doc/resolvers.md#dns-over-quic-resolver) |
+| [doh-quic-client.toml](doh-quic-client.toml) | DoH over QUIC transport, with 0-RTT. | [DoH resolver](../../../doc/resolvers.md#dns-over-https-resolver) |
+| [doh-quic-client-local.toml](doh-quic-client-local.toml) | DoH over QUIC against the local test server in `doh-quic-server.toml`. | [DoH resolver](../../../doc/resolvers.md#dns-over-https-resolver) |
+| [dtls-client.toml](dtls-client.toml) | Forward to a DoDTLS server. | [DTLS resolver](../../../doc/resolvers.md#dns-over-dtls-resolver) |
+| [odoh-client.toml](odoh-client.toml) | Oblivious DoH client, with target and optional proxy. | [ODoH resolver](../../../doc/resolvers.md#oblivious-dns-odoh-resolver) |
+| [bootstrap-resolver.toml](bootstrap-resolver.toml) | Resolve hostnames used elsewhere in the config (resolver endpoints, blocklist URLs) through a defined resolver. | [Bootstrap resolver](../../../doc/resolvers.md#bootstrap-resolver) |
+| [socks5-dot.toml](socks5-dot.toml) | DoT upstream reached through a SOCKS5 proxy. | [SOCKS5](../../../doc/resolvers.md#socks5-proxy-support) |
+| [socks5-doh.toml](socks5-doh.toml) | DoH upstream reached through a SOCKS5 proxy. | [SOCKS5](../../../doc/resolvers.md#socks5-proxy-support) |
+| [socks5-udp.toml](socks5-udp.toml) | Plain DNS through a SOCKS5 proxy. | [SOCKS5](../../../doc/resolvers.md#socks5-proxy-support) |
+| [socks5-udp-resolvelocal.toml](socks5-udp-resolvelocal.toml) | The same, but resolving the server hostname locally rather than on the proxy. | [SOCKS5](../../../doc/resolvers.md#socks5-proxy-support) |
 
 ## Protocol servers (listeners)
 
-| File | Description |
-| --- | --- |
-| [dot-server.toml](dot-server.toml) | DoT server. |
-| [doq-listener.toml](doq-listener.toml) | DoQ server without mutual TLS. |
-| [doh-quic-server.toml](doh-quic-server.toml) | DoH server using QUIC transport. |
-| [doh-no-tls.toml](doh-no-tls.toml) | DoH server with TLS disabled, for testing or behind a terminating proxy. |
-| [doh-behind-proxy.toml](doh-behind-proxy.toml) | DoH server taking the client address from `X-Forwarded-For` sent by a trusted reverse proxy. |
-| [dtls-server.toml](dtls-server.toml) | DoDTLS server. |
-| [odoh-listener.toml](odoh-listener.toml) | ODoH listener acting as target and proxy. |
-| [admin.toml](admin.toml) | Admin listener exposing expvar metrics over HTTPS. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [dot-server.toml](dot-server.toml) | DoT server. | [DoT listener](../../../doc/listeners.md#dns-over-tls) |
+| [doq-listener.toml](doq-listener.toml) | DoQ server without mutual TLS. | [DoQ listener](../../../doc/listeners.md#dns-over-quic) |
+| [doh-quic-server.toml](doh-quic-server.toml) | DoH server using QUIC transport. | [DoH listener](../../../doc/listeners.md#dns-over-https) |
+| [doh-no-tls.toml](doh-no-tls.toml) | DoH server with TLS disabled, for testing or behind a terminating proxy. | [DoH listener](../../../doc/listeners.md#dns-over-https) |
+| [doh-behind-proxy.toml](doh-behind-proxy.toml) | DoH server taking the client address from `X-Forwarded-For` sent by a trusted reverse proxy. | [DoH listener](../../../doc/listeners.md#dns-over-https) |
+| [dtls-server.toml](dtls-server.toml) | DoDTLS server. | [DTLS listener](../../../doc/listeners.md#dns-over-dtls) |
+| [odoh-listener.toml](odoh-listener.toml) | ODoH listener acting as target and proxy. | [ODoH listener](../../../doc/listeners.md#oblivious-dns-odoh) |
+| [admin.toml](admin.toml) | Admin listener exposing expvar metrics over HTTPS. | [Admin listener](../../../doc/listeners.md#admin) |
 
 ## Mutual TLS
 
-Client and server halves of the same setup, meant to be run as a pair. They reference `/path/to/...` certificates that have to be provided.
+Client and server halves of the same setup, meant to be run as a pair. They reference `/path/to/...` certificates that have to be provided. Documented under the common options in [Listeners](../../../doc/listeners.md#listeners) (`mutual-tls`, `ca`) and [Resolvers](../../../doc/resolvers.md#resolvers) (`client-crt`, `client-key`).
 
 | File | Description |
 | --- | --- |
@@ -72,23 +72,23 @@ Client and server halves of the same setup, meant to be run as a pair. They refe
 
 ## Caching
 
-| File | Description |
-| --- | --- |
-| [cache.toml](cache.toml) | Cache with a size limit, persisted to disk on an interval. |
-| [cache-flush.toml](cache-flush.toml) | Cache that resets when a defined query name is received. |
-| [cache-rcode.toml](cache-rcode.toml) | Cache with an upper bound on the TTL of NXDOMAIN responses. |
-| [cache-redis.toml](cache-redis.toml) | Cache backed by Redis, which allows several instances to share it. |
-| [cache-with-prefetch.toml](cache-with-prefetch.toml) | Cache refreshing records itself before their TTL runs out. |
-| [prefetch.toml](prefetch.toml) | Standalone `prefetch` group that tracks frequent queries and refreshes them in a cache upstream of it. |
-| [ttl-modifier.toml](ttl-modifier.toml) | Clamp TTLs to a minimum and maximum before caching. |
-| [ttl-modifier-average.toml](ttl-modifier-average.toml) | The same using the `average` selection function. |
-| [request-dedup.toml](request-dedup.toml) | Collapse identical concurrent queries into one upstream query. |
-| [truncate-retry.toml](truncate-retry.toml) | Query over UDP, retry over TCP when the response is truncated, so only complete responses are cached. |
-| [fastest-tcp.toml](fastest-tcp.toml) | Probe the response IPs over TCP and cache only the fastest one. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [cache.toml](cache.toml) | Cache with a size limit, persisted to disk on an interval. | [Cache](../../../doc/caching.md#cache) |
+| [cache-flush.toml](cache-flush.toml) | Cache that resets when a defined query name is received. | [Cache](../../../doc/caching.md#cache) |
+| [cache-rcode.toml](cache-rcode.toml) | Cache with an upper bound on the TTL of NXDOMAIN responses. | [Cache](../../../doc/caching.md#cache) |
+| [cache-redis.toml](cache-redis.toml) | Cache backed by Redis, which allows several instances to share it. | [Cache](../../../doc/caching.md#cache) |
+| [cache-with-prefetch.toml](cache-with-prefetch.toml) | Cache refreshing records itself before their TTL runs out. | [Cache](../../../doc/caching.md#cache) |
+| [prefetch.toml](prefetch.toml) | Standalone `prefetch` group that tracks frequent queries and refreshes them in a cache upstream of it. | [Prefetch](../../../doc/caching.md#prefetch) |
+| [ttl-modifier.toml](ttl-modifier.toml) | Clamp TTLs to a minimum and maximum before caching. | [TTL modifier](../../../doc/caching.md#ttl-modifier) |
+| [ttl-modifier-average.toml](ttl-modifier-average.toml) | The same using the `average` selection function. | [TTL modifier](../../../doc/caching.md#ttl-modifier) |
+| [request-dedup.toml](request-dedup.toml) | Collapse identical concurrent queries into one upstream query. | [Request dedup](../../../doc/caching.md#request-deduplication) |
+| [truncate-retry.toml](truncate-retry.toml) | Query over UDP, retry over TCP when the response is truncated, so only complete responses are cached. | [Truncate-retry](../../../doc/caching.md#retrying-truncated-responses) |
+| [fastest-tcp.toml](fastest-tcp.toml) | Probe the response IPs over TCP and cache only the fastest one. | [Fastest TCP](../../../doc/caching.md#fastest-tcp-probe) |
 
 ## Blocklists
 
-Query blocklists, matched against the name being asked for.
+Query blocklists, matched against the name being asked for. See [Query Blocklist](../../../doc/blocklists.md#query-blocklist).
 
 | File | Description |
 | --- | --- |
@@ -105,7 +105,7 @@ Query blocklists, matched against the name being asked for.
 | [blocklist-resolver.toml](blocklist-resolver.toml) | Send matching queries to a different resolver instead of answering NXDOMAIN. |
 | [block-split-cache.toml](block-split-cache.toml) | Blocklist in front of a router that splits traffic between a cached and an uncached resolver. |
 
-Response blocklists, matched against what came back.
+Response blocklists, matched against what came back. See [Response Blocklist](../../../doc/blocklists.md#response-blocklist).
 
 | File | Description |
 | --- | --- |
@@ -118,7 +118,7 @@ Response blocklists, matched against what came back.
 | [response-blocklist-name-remote.toml](response-blocklist-name-remote.toml) | The same with the list loaded from a file. |
 | [response-blocklist-name-resolver.toml](response-blocklist-name-resolver.toml) | Re-send matching queries to an alternative resolver. |
 
-Client blocklists, matched against who asked.
+Client blocklists, matched against who asked. See [Client Blocklist](../../../doc/blocklists.md#client-blocklist).
 
 | File | Description |
 | --- | --- |
@@ -129,43 +129,45 @@ Client blocklists, matched against who asked.
 
 ## Failover and load balancing
 
-| File | Description |
-| --- | --- |
-| [load-balance.toml](load-balance.toml) | Prefer resolvers with lower average response time, retrying elsewhere after a failure. |
-| [random-resolver.toml](random-resolver.toml) | Pick a resolver at random, taking failing ones out of rotation for a while. |
-| [fastest.toml](fastest.toml) | Query every resolver at once and use the first good answer. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [load-balance.toml](load-balance.toml) | Prefer resolvers with lower average response time, retrying elsewhere after a failure. | [Load-balance](../../../doc/groups.md#load-balance-group) |
+| [random-resolver.toml](random-resolver.toml) | Pick a resolver at random, taking failing ones out of rotation for a while. | [Random](../../../doc/groups.md#random-group) |
+| [fastest.toml](fastest.toml) | Query every resolver at once and use the first good answer. | [Fastest](../../../doc/groups.md#fastest-group) |
 
 ## Routing
 
-| File | Description |
-| --- | --- |
-| [router.toml](router.toml) | Routes by query type and name, including an inverted route. |
-| [router-time.toml](router-time.toml) | Routes by time of day and weekday. |
-| [split-dns.toml](split-dns.toml) | Internal names to internal servers, everything else over DoT. |
-| [family-browsing.toml](family-browsing.toml) | Per-device filtering by source IP, with a filtered upstream for those devices. |
-| [use-case-2.toml](use-case-2.toml) | Corporate split DNS, company servers grouped with fail-rotate, everything else over DoH. |
-| [use-case-4.toml](use-case-4.toml) | Multiple VPNs each with their own DNS, rewriting short hostnames to the right domain. |
-| [use-case-7.toml](use-case-7.toml) | Per-client policy driven by EDNS Client Subnet when RouteDNS sits behind another resolver. |
-| [walled-garden.toml](walled-garden.toml) | Route by query type to static responders, so every query gets a canned answer and nothing reaches an upstream resolver. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [router.toml](router.toml) | Routes by query type and name, including an inverted route. | [Router](../../../doc/routing.md#router) |
+| [router-time.toml](router-time.toml) | Routes by time of day and weekday. | [Router](../../../doc/routing.md#router) |
+| [split-dns.toml](split-dns.toml) | Internal names to internal servers, everything else over DoT. | [Router](../../../doc/routing.md#router) |
+| [family-browsing.toml](family-browsing.toml) | Per-device filtering by source IP, with a filtered upstream for those devices. | [Router](../../../doc/routing.md#router) |
+| [use-case-2.toml](use-case-2.toml) | Corporate split DNS, company servers grouped with fail-rotate, everything else over DoH. | [Router](../../../doc/routing.md#router) |
+| [use-case-4.toml](use-case-4.toml) | Multiple VPNs each with their own DNS, rewriting short hostnames to the right domain. | [Router](../../../doc/routing.md#router), [Replace](../../../doc/modifiers.md#replace) |
+| [use-case-7.toml](use-case-7.toml) | Per-client policy driven by EDNS Client Subnet when RouteDNS sits behind another resolver. | [ECS source routing](../../../doc/routing.md#ecs-source-routing) |
+| [walled-garden.toml](walled-garden.toml) | Route by query type to static responders, so every query gets a canned answer and nothing reaches an upstream resolver. | [Static responder](../../../doc/responders.md#static-responder) |
 
 ## Modifiers and responders
 
-| File | Description |
-| --- | --- |
-| [ecs-modifier-add.toml](ecs-modifier-add.toml) | Add an EDNS Client Subnet option to outgoing queries. |
-| [ecs-modifier-delete.toml](ecs-modifier-delete.toml) | Strip ECS from outgoing queries. |
-| [ecs-modifier-privacy.toml](ecs-modifier-privacy.toml) | Truncate ECS to a coarser prefix instead of removing it. |
-| [edns0-modifier.toml](edns0-modifier.toml) | Add an arbitrary EDNS0 option, here a MAC address for OpenDNS. |
-| [response-minimize.toml](response-minimize.toml) | Strip Extra and NS records from responses. |
-| [response-collapse.toml](response-collapse.toml) | Collapse CNAME chains in the answer. |
-| [static-extended-error.toml](static-extended-error.toml) | Static response carrying an Extended DNS Error explaining the block. |
-| [static-template.toml](static-template.toml) | Build the response from the query with a Go template. |
-| [static-template-error.toml](static-template-error.toml) | The same, returning an error response. |
-| [rfc8482.toml](rfc8482.toml) | Answer ANY queries with an HINFO record as per RFC 8482. |
-| [truncate.toml](truncate.toml) | Set the TC bit on UDP responses to push clients onto TCP. |
-| [rate-limiter.toml](rate-limiter.toml) | Limit the query rate per client subnet. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [ecs-modifier-add.toml](ecs-modifier-add.toml) | Add an EDNS Client Subnet option to outgoing queries. | [ECS modifier](../../../doc/modifiers.md#edns0-client-subnet-modifier) |
+| [ecs-modifier-delete.toml](ecs-modifier-delete.toml) | Strip ECS from outgoing queries. | [ECS modifier](../../../doc/modifiers.md#edns0-client-subnet-modifier) |
+| [ecs-modifier-privacy.toml](ecs-modifier-privacy.toml) | Truncate ECS to a coarser prefix instead of removing it. | [ECS modifier](../../../doc/modifiers.md#edns0-client-subnet-modifier) |
+| [edns0-modifier.toml](edns0-modifier.toml) | Add an arbitrary EDNS0 option, here a MAC address for OpenDNS. | [EDNS0 modifier](../../../doc/modifiers.md#edns0-modifier) |
+| [response-minimize.toml](response-minimize.toml) | Strip Extra and NS records from responses. | [Response minimizer](../../../doc/modifiers.md#response-minimizer) |
+| [response-collapse.toml](response-collapse.toml) | Collapse CNAME chains in the answer. | [Response collapse](../../../doc/modifiers.md#response-collapse) |
+| [static-extended-error.toml](static-extended-error.toml) | Static response carrying an Extended DNS Error explaining the block. | [Static responder](../../../doc/responders.md#static-responder) |
+| [static-template.toml](static-template.toml) | Build the response from the query with a Go template. | [Static template](../../../doc/responders.md#static-template-responder) |
+| [static-template-error.toml](static-template-error.toml) | The same, returning an error response. | [Static template](../../../doc/responders.md#static-template-responder) |
+| [rfc8482.toml](rfc8482.toml) | Answer ANY queries with an HINFO record as per RFC 8482. | [Static responder](../../../doc/responders.md#static-responder) |
+| [truncate.toml](truncate.toml) | Set the TC bit on UDP responses to push clients onto TCP. | [Static responder](../../../doc/responders.md#static-responder) |
+| [rate-limiter.toml](rate-limiter.toml) | Limit the query rate per client subnet. | [Rate limiter](../../../doc/security.md#rate-limiter) |
 
 ## DNSSEC
+
+See [DNSSEC Validator](../../../doc/security.md#dnssec-validator).
 
 | File | Description |
 | --- | --- |
@@ -174,6 +176,8 @@ Client blocklists, matched against who asked.
 | [dnssec-validator-trust-anchors.toml](dnssec-validator-trust-anchors.toml) | Explicit trust anchors, with log-only mode. |
 
 ## Lua
+
+See [Lua Scripting](../../../doc/scripting.md#lua) and the [Lua API](../../../doc/scripting.md#lua-api).
 
 | File | Description |
 | --- | --- |
@@ -186,34 +190,34 @@ Client blocklists, matched against who asked.
 
 ## Logging and metrics
 
-| File | Description |
-| --- | --- |
-| [query-log.toml](query-log.toml) | Log queries and responses in text or JSON. |
-| [syslog.toml](syslog.toml) | Send query logs to syslog. |
-| [admin.toml](admin.toml) | expvar metrics over HTTPS. |
-| [prometheus-exporter/](prometheus-exporter/) | The admin listener paired with prometheus-expvar-exporter. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [query-log.toml](query-log.toml) | Log queries and responses in text or JSON. | [Query log](../../../doc/observability.md#query-log) |
+| [syslog.toml](syslog.toml) | Send query logs to syslog. | [Syslog](../../../doc/observability.md#syslog) |
+| [admin.toml](admin.toml) | expvar metrics over HTTPS. | [Admin listener](../../../doc/listeners.md#admin) |
+| [prometheus-exporter/](prometheus-exporter/) | The admin listener paired with prometheus-expvar-exporter. | [Admin listener](../../../doc/listeners.md#admin) |
 
 ## Linux networking
 
-| File | Description |
-| --- | --- |
-| [netns.toml](netns.toml) | Listen in one network namespace and resolve in another. Needs `CAP_SYS_ADMIN`. |
-| [xsocket.toml](xsocket.toml) | The same through an xsocket server, without `CAP_SYS_ADMIN`. |
-| [fwmark-bind-if.toml](fwmark-bind-if.toml) | `SO_MARK` and `SO_BINDTODEVICE` for policy routing and multi-WAN. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [netns.toml](netns.toml) | Listen in one network namespace and resolve in another. Needs `CAP_SYS_ADMIN`. | [Network namespaces](../../../doc/resolvers.md#network-namespace-support) |
+| [xsocket.toml](xsocket.toml) | The same through an xsocket server, without `CAP_SYS_ADMIN`. | [xsocket](../../../doc/resolvers.md#without-elevated-privileges-xsocket) |
+| [fwmark-bind-if.toml](fwmark-bind-if.toml) | `SO_MARK` and `SO_BINDTODEVICE` for policy routing and multi-WAN. | [fwmark, bind-if](../../../doc/resolvers.md#firewall-mark-and-interface-binding) |
 
 ## Whole-network setups
 
-| File | Description |
-| --- | --- |
-| [use-case-6.toml](use-case-6.toml) | Home network resolver: caching, TTL clamping, and query, response-name and response-IP blocklists refreshed daily. |
-| [split-config/](split-config/) | One configuration broken across several files, loaded together. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [use-case-6.toml](use-case-6.toml) | Home network resolver: caching, TTL clamping, and query, response-name and response-IP blocklists refreshed daily. | [Blocklists](../../../doc/blocklists.md) |
+| [split-config/](split-config/) | One configuration broken across several files, loaded together. | [Split configuration](../../../doc/overview.md#split-configuration) |
 
 ## Supporting files
 
-| File | Description |
-| --- | --- |
-| [domains.txt](domains.txt) | Domain blocklist used by the file-based examples. |
-| [cidr.txt](cidr.txt) | CIDR list for response IP blocklists. |
-| [location.txt](location.txt) | GeoIP location list, with the ID format the geo blocklists expect. |
-| `server.crt`, `server.key` | Self-signed certificate for the TLS listener examples. |
-| `server-ec.crt`, `server-ec.key` | The same with an EC key. |
+| File | Description | Guide |
+| --- | --- | --- |
+| [domains.txt](domains.txt) | Domain blocklist used by the file-based examples. | [Query blocklist](../../../doc/blocklists.md#query-blocklist) |
+| [cidr.txt](cidr.txt) | CIDR list for response IP blocklists. | [Response blocklist](../../../doc/blocklists.md#response-blocklist) |
+| [location.txt](location.txt) | GeoIP location list, with the ID format the geo blocklists expect. | [Response blocklist](../../../doc/blocklists.md#response-blocklist) |
+| `server.crt`, `server.key` | Self-signed certificate for the TLS listener examples. | [Listener TLS options](../../../doc/listeners.md#listeners) |
+| `server-ec.crt`, `server-ec.key` | The same with an EC key. | [Listener TLS options](../../../doc/listeners.md#listeners) |

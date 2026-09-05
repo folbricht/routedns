@@ -1,8 +1,10 @@
 # Responders
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | **Responders** | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Static responder
+
+`type = "static-responder"`
 
 A static responder can be used to terminate every query made to it with a fixed answer. The answer can contain Answer, NS, and Extra records with a configurable RCode. Static responders are useful in combination with routers to build walled-gardens or blocklists providing more control over the response. The individual records in the response are defined in zone-file format. The default TTL is 1h unless given in the record.
 
@@ -86,6 +88,8 @@ Example config files: [walled-garden.toml](../cmd/routedns/example-config/walled
 
 ## Static Template Responder
 
+`type = "static-template"`
+
 A static template responder operates similarly to a [Static Responder](#static-responder) with the main difference being that the records configured are templates, meaning they can contain placeholders which can refer to data in the query, such as the question. Based on the values in the question, the template can manipulate the response. Templates can contain more complex operations such as string splitting, replacing etc.
 
 ### Configuration
@@ -129,6 +133,8 @@ edns0-ede = {code = 15, text = '{{ .Question }} is banned!'}
 Example config files: [static-template.toml](../cmd/routedns/example-config/static-template.toml), [static-template-error.toml](../cmd/routedns/example-config/static-template-error.toml)
 
 ## Drop
+
+`type = "drop"`
 
 Terminates a pipeline by dropping the request. Typically used with blocklists to abort queries that match block rules. UDP and TCP listeners close the connection without replying, while HTTP listeners will reply with an HTTP error.
 

@@ -1,8 +1,10 @@
 # DNSSEC and Rate Limiting
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | **DNSSEC and Rate Limiting** | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Rate Limiter
+
+`type = "rate-limiter"`
 
 This element is used to limit the number of queries a client or network is allowed to make in a given time period. It uses a fixed window algorithm and by default drops any queries that exceed the configured maximum. Alternatively, a `limit-resolver` can be configured to route such queries to other elements such as [static responders](responders.md#static-responder) or other resolvers.
 
@@ -50,6 +52,8 @@ rcode = 5 # REFUSED
 Example config files: [rate-limiter.toml](../cmd/routedns/example-config/rate-limiter.toml)
 
 ## DNSSEC Validator
+
+`type = "dnssec-validator"`
 
 Validates DNSSEC signatures on responses from upstream resolvers. The validator builds a chain of trust from configured root trust anchors down through DS and DNSKEY records to verify RRSIG signatures on the response. If validation fails, a SERVFAIL is returned to the client. Unsigned zones (insecure delegations) pass through without error. Only NOERROR and NXDOMAIN responses are validated.
 

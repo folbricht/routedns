@@ -1,6 +1,6 @@
 # Templates
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | [Lua Scripting](scripting.md) | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | **Templates**
 
 Some options hold templates, i.e. text with placeholders that are populated at runtime with data from the query. Placeholders between `{{` and `}}` are replaced when the response is built. The template syntax is explained in more detail [here](https://pkg.go.dev/text/template).
 

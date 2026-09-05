@@ -1,8 +1,10 @@
 # Lua Scripting
 
-Part of the [RouteDNS Configuration Guide](configuration.md).
+[Guide index](configuration.md) | [Overview](overview.md) | [Listeners](listeners.md) | [Routing](routing.md) | [Blocklists](blocklists.md) | [Caching and Performance](caching.md) | [Failover and Load Balancing](groups.md) | [Modifiers](modifiers.md) | [Responders](responders.md) | **Lua Scripting** | [DNSSEC and Rate Limiting](security.md) | [Logging](observability.md) | [Resolvers](resolvers.md) | [Templates](templates.md)
 
 ## Lua
+
+`type = "lua"`
 
 Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers.
 
