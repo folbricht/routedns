@@ -275,12 +275,16 @@ func TestBlobKeyRegionDependsOnlyOnTheKey(t *testing.T) {
 	require.NotEqual(t, first.keyRegion(), third.keyRegion())
 }
 
-// The version byte is reserved, not yet used: blobs are freshly allocated so
-// it reads as 0 without being written. Pinning it means a later layout change
-// bumps it deliberately, and notices it has to start setting it.
-func TestBlobVersionIsReserved(t *testing.T) {
+// The version byte is written, not left at whatever the allocation carried.
+// A blob now travels on its own into Redis and into the cache file, where the
+// byte is what tells a reader the layout matches its accessors, so a blob that
+// went out carrying an implicit 0 would be indistinguishable from a record
+// written before the backends shared a layout.
+func TestBlobVersionIsWritten(t *testing.T) {
 	blob, err := newCacheBlob(blobTestKey(), &cacheAnswer{Msg: blobTestAnswer(t)})
 	require.NoError(t, err)
 	require.Equal(t, byte(blobVersion), blob.version())
-	require.Zero(t, blobVersion, "still reserved; bumping it means writing it too")
+	require.NotZero(t, blobVersion, "must be written, so it cannot be the zero value")
+	require.NotEqual(t, byte(binaryFormatVersion), blob.version(),
+		"must not collide with the pre-unification Redis record format")
 }

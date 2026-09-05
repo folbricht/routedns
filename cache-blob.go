@@ -38,16 +38,15 @@ import (
 // blob be matched, or hashed, without decoding it back into an lruKey.
 type cacheBlob []byte
 
-// blobVersion is the version of the layout above. A blob is freshly allocated
-// and so carries 0 without being written, but it is read back: a blob read
-// from the cache file is rejected unless it carries this version, so a later
-// change to the layout keeps old records out of new accessors. A writer that
-// bumps it has to start setting it explicitly.
+// blobVersion is the version of the layout above. It is written into every
+// blob and checked wherever one is read back from storage, so a later change
+// to the layout keeps old records out of accessors that no longer match them.
 //
-// Note that 1 is already taken: it is binaryFormatVersion, the Redis record
-// format, which is a different layout in the same first byte. A stored form
-// meant to be read by either backend has to start at 2.
-const blobVersion = 0
+// 0 was this layout while it lived only in memory and in the cache file, and 1
+// is binaryFormatVersion, the Redis record format from before the backends
+// shared a layout, a different shape in the same first byte. A record that
+// either backend may read therefore starts at 2.
+const blobVersion = 2
 
 const (
 	blobOffVersion   = 0
@@ -103,6 +102,7 @@ func newCacheBlobFromWire(key lruKey, meta *cacheAnswer, wire []byte) (cacheBlob
 	}
 
 	blob := make(cacheBlob, blobHdrLen+len(key.Net)+len(key.Question.Name)+len(wire))
+	blob[blobOffVersion] = blobVersion
 	if meta.PrefetchEligible {
 		blob[blobOffMetaFlags] |= blobMetaPrefetchEligible
 	}
@@ -205,4 +205,24 @@ func (b cacheBlob) key() lruKey {
 		CD:      b[blobOffKeyFlags]&blobKeyCD != 0,
 		ECSMask: b[blobOffECSMask],
 	}
+}
+
+// cacheAnswer decodes a blob back into the form the cache layer works with.
+// Used by the Redis backend, which hands its records to callers as a
+// cacheAnswer; the memory backend serves a hit straight off the blob and needs
+// none of this.
+func (b cacheBlob) cacheAnswer() (*cacheAnswer, error) {
+	if len(b) < blobHdrLen || blobHdrLen+b.netLen()+b.nameLen() > len(b) {
+		return nil, fmt.Errorf("cache record too short: %d bytes", len(b))
+	}
+	msg := new(dns.Msg)
+	if err := msg.Unpack(b.message()); err != nil {
+		return nil, fmt.Errorf("failed to unpack DNS message: %w", err)
+	}
+	return &cacheAnswer{
+		Timestamp:        nanoTime(b.timestamp()),
+		Expiry:           nanoTime(b.expiry()),
+		PrefetchEligible: b.prefetchEligible(),
+		Msg:              msg,
+	}, nil
 }

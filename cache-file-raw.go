@@ -21,11 +21,18 @@ import (
 // at once that it is binary.
 //
 // The version belongs to the file rather than to each record: it is checked
-// once, and a file cannot hold a mix. The version byte inside a blob stays
-// reserved for a record that travels on its own, without a file around it.
+// once, and a file cannot hold a mix. The version byte inside a blob covers a
+// record that travels on its own, without a file around it, which is how the
+// Redis backend stores one.
+//
+// Version 2 carries blobVersion 2, the layout the memory and Redis backends
+// share. Version 1 files hold the same layout under blobVersion 0 and are
+// rejected here rather than record by record, so an operator who tried the raw
+// format before the two were unified gets one clear line about a cold start
+// instead of a cache that silently comes up empty.
 const (
 	rawCacheMagic     = "\x00RDC"
-	rawCacheVersion   = 1
+	rawCacheVersion   = 2
 	rawCacheHeaderLen = len(rawCacheMagic) + 1
 
 	// An upper bound on a stored record, so a corrupt length can't ask for an

@@ -299,3 +299,65 @@ func BenchmarkKeyFromQuery(b *testing.B) {
 		_ = backend.keyFromQuery(q)
 	}
 }
+
+// The reader ships a release ahead of the writer, so the version 2 path has to
+// work before anything in this backend produces one. Build the record the way
+// the memory backend does and read it back through the dispatch.
+func TestRedisReadsVersion2Records(t *testing.T) {
+	msg := new(dns.Msg)
+	msg.SetQuestion("shared.example.", dns.TypeA)
+	msg.Response = true
+	rr, err := dns.NewRR("shared.example. 300 IN A 192.0.2.9")
+	require.NoError(t, err)
+	msg.Answer = append(msg.Answer, rr)
+
+	now := time.Now()
+	for _, eligible := range []bool{false, true} {
+		// The empty key is what the writer will store: the redis key already
+		// encodes the question, so the record does not repeat it.
+		encoded, err := newCacheBlob(lruKey{}, &cacheAnswer{
+			Timestamp:        now,
+			Expiry:           now.Add(5 * time.Minute),
+			PrefetchEligible: eligible,
+			Msg:              msg,
+		})
+		require.NoError(t, err)
+		require.Equal(t, byte(blobVersion), encoded.version())
+
+		decoded, err := decodeRecord(encoded)
+		require.NoError(t, err)
+		require.Equal(t, eligible, decoded.PrefetchEligible)
+		require.Equal(t, now.UnixNano(), decoded.Timestamp.UnixNano())
+		require.Equal(t, "shared.example.", decoded.Msg.Question[0].Name)
+	}
+}
+
+// Records this backend writes today keep being read, which is the direction
+// that matters while a version 1 writer is still running somewhere.
+func TestRedisReadsVersion1Records(t *testing.T) {
+	msg := new(dns.Msg)
+	msg.SetQuestion("legacy.example.", dns.TypeA)
+	msg.Response = true
+
+	encoded, err := encodeCacheAnswer(nil, &cacheAnswer{
+		Timestamp:        time.Unix(1234567890, 0),
+		PrefetchEligible: true,
+		Msg:              msg,
+	})
+	require.NoError(t, err)
+	require.Equal(t, byte(binaryFormatVersion), encoded[0])
+
+	decoded, err := decodeRecord(encoded)
+	require.NoError(t, err)
+	require.True(t, decoded.PrefetchEligible)
+	require.Equal(t, "legacy.example.", decoded.Msg.Question[0].Name)
+}
+
+func TestDecodeRecordRejectsUnknownVersion(t *testing.T) {
+	_, err := decodeRecord(nil)
+	require.Error(t, err, "an empty record has no version to dispatch on")
+
+	_, err = decodeRecord([]byte{0x99, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported cache record version")
+}
