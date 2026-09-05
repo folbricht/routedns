@@ -1,0 +1,17 @@
+# DTLS listener authenticating clients with a pre-shared key instead of a
+# certificate. Useful with constrained devices that can't do a full certificate
+# exchange. Generate a key for example with: openssl rand -hex 16
+#
+# psk-identity is optional on a listener. When set it is offered to the client
+# as a hint so it can pick the matching key.
+
+[listeners.local-dtls]
+address      = "127.0.0.1:853"
+protocol     = "dtls"
+resolver     = "cloudflare-dot"
+psk          = "0102030405060708090a0b0c0d0e0f10"
+psk-identity = "routedns-server"
+
+[resolvers.cloudflare-dot]
+address  = "1.1.1.1:853"
+protocol = "dot"

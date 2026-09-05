@@ -223,9 +223,22 @@ DTLS listeners are instantiated with `protocol = "dtls"` in the listeners sectio
 Options:
 
 - All [common listener options](#listeners), except `xsocket` which is not supported for this protocol. Use `netns` instead.
-- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. `server-crt` and `server-key` are required. An EC certificate is normally used here.
+- `server-crt`, `server-key`, `ca`, `mutual-tls` - [TLS options](#listeners) for the server certificate and client validation. An EC certificate is normally used here. Required unless a `psk` is configured.
+- `psk` - Pre-shared key, hex-encoded, used to authenticate clients instead of a server certificate. Optional.
+- `psk-identity` - Identity hint offered to clients so they can select the matching key. Optional.
 
 `ip-version` has no effect on this listener.
+
+A pre-shared key is an alternative to a server certificate, intended for constrained clients that can't do a full certificate exchange. Both ends need the same key, and `psk` cannot be combined with `server-crt`/`server-key`. Unlike on a resolver, `psk-identity` is optional here and is only a hint to the client. When a key is set, only pre-shared key cipher suites are offered; see [Pre-Shared Keys](resolvers.md#pre-shared-keys) for the list. The key is a secret held in the configuration file, so the file should be readable only by the user RouteDNS runs as.
+
+```toml
+[listeners.local-dtls]
+address      = ":853"
+protocol     = "dtls"
+resolver     = "cloudflare-dot"
+psk          = "0102030405060708090a0b0c0d0e0f10"
+psk-identity = "routedns-server"
+```
 
 ### Examples
 
@@ -240,7 +253,7 @@ server-crt = "example-config/server-ec.crt"
 server-key = "example-config/server-ec.key"
 ```
 
-Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-server.toml)
+Example config files: [dtls-server.toml](../cmd/routedns/example-config/dtls-server.toml), [dtls-psk-server.toml](../cmd/routedns/example-config/dtls-psk-server.toml)
 
 ## DNS-over-QUIC
 

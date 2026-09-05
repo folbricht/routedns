@@ -22,12 +22,12 @@ func TestTLSServerConfigMutualTLSRequiresCA(t *testing.T) {
 }
 
 func TestDTLSServerConfigMutualTLSRequiresCA(t *testing.T) {
-	_, err := DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", true)
+	_, err := DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", true, nil)
 	require.Error(t, err)
 
-	_, err = DTLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true)
+	_, err = DTLSServerConfig("testdata/ca.crt", "testdata/server.crt", "testdata/server.key", true, nil)
 	require.NoError(t, err)
 
-	_, err = DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
+	_, err = DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", false, nil)
 	require.NoError(t, err)
 }

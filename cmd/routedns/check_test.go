@@ -277,3 +277,67 @@ resolver = "upstream"
 		})
 	}
 }
+
+// DTLS pre-shared keys, on both resolvers and listeners.
+func TestCheckDTLSPSK(t *testing.T) {
+	listener := func(opts string) string {
+		return `
+[listeners.local-dtls]
+address = "127.0.0.1:5399"
+protocol = "dtls"
+resolver = "upstream"
+` + opts + `
+
+[resolvers.upstream]
+address = "8.8.8.8:53"
+protocol = "udp"
+`
+	}
+	resolver := func(opts string) string {
+		return `
+[resolvers.upstream]
+address = "8.8.8.8:853"
+protocol = "dtls"
+` + opts + `
+
+[listeners.local-udp]
+address = "127.0.0.1:5399"
+protocol = "udp"
+resolver = "upstream"
+`
+	}
+
+	t.Run("listener psk", func(t *testing.T) {
+		require.NoError(t, check(t, listener(`psk = "0102030405060708"`)))
+	})
+	t.Run("listener psk with identity", func(t *testing.T) {
+		require.NoError(t, check(t, listener(`psk = "0102030405060708"
+psk-identity = "server"`)))
+	})
+	t.Run("resolver psk with identity", func(t *testing.T) {
+		require.NoError(t, check(t, resolver(`psk = "0102030405060708"
+psk-identity = "client"`)))
+	})
+	t.Run("resolver psk without identity", func(t *testing.T) {
+		err := check(t, resolver(`psk = "0102030405060708"`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "psk-identity is required")
+	})
+	t.Run("identity without a key", func(t *testing.T) {
+		err := check(t, listener(`psk-identity = "server"`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "psk-identity requires psk")
+	})
+	t.Run("key is not hex", func(t *testing.T) {
+		err := check(t, listener(`psk = "not-hex"`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "hex-encoded")
+	})
+	t.Run("psk with a certificate", func(t *testing.T) {
+		err := check(t, listener(`psk = "0102030405060708"
+server-crt = "../../testdata/server.crt"
+server-key = "../../testdata/server.key"`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot be combined with a certificate")
+	})
+}

@@ -30,7 +30,9 @@ type listener struct {
 	ServerKey     string   `toml:"server-key"`
 	ServerCrt     string   `toml:"server-crt"`
 	MutualTLS     bool     `toml:"mutual-tls"`
-	NoTLS         bool     `toml:"no-tls"` // Disable TLS in DoH servers
+	PSK           string   `toml:"psk"`          // DTLS pre-shared key, hex-encoded. Alternative to a certificate.
+	PSKIdentity   string   `toml:"psk-identity"` // Identity hint offered with the PSK. Optional for listeners.
+	NoTLS         bool     `toml:"no-tls"`       // Disable TLS in DoH servers
 	AllowedNet    []string `toml:"allowed-net"`
 	KeySeed       string   `toml:"key-seed"`  // ODoH HPKE key seed, 16 byte hex key. Generate for example with: "openssl rand -hex 16"
 	OdohMode      string   `toml:"odoh-mode"` // ODoH mode - accepts "proxy", "target" or "dual", default is target mode
@@ -55,7 +57,9 @@ type resolver struct {
 	CA            string
 	ClientKey     string `toml:"client-key"`
 	ClientCrt     string `toml:"client-crt"`
-	ServerName    string `toml:"server-name"` // TLS server name presented in the server certificate
+	PSK           string `toml:"psk"`          // DTLS pre-shared key, hex-encoded. Alternative to a certificate.
+	PSKIdentity   string `toml:"psk-identity"` // Identity sent with the PSK. Required when psk is set.
+	ServerName    string `toml:"server-name"`  // TLS server name presented in the server certificate
 	BootstrapAddr string `toml:"bootstrap-address"`
 	LocalAddr     string `toml:"local-address"`
 	LocalAddrV4   string `toml:"local-address-v4"`

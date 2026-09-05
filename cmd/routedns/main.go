@@ -422,9 +422,13 @@ func run(opt options, args []string) error {
 			}
 		case "dtls":
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.DTLSPort)
-			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS)
+			psk, err := parsePSK(l.PSK, l.PSKIdentity)
 			if err != nil {
-				return err
+				return fmt.Errorf("listener '%s': %w", id, err)
+			}
+			dtlsConfig, err := rdns.DTLSServerConfig(l.CA, l.ServerCrt, l.ServerKey, l.MutualTLS, psk)
+			if err != nil {
+				return fmt.Errorf("listener '%s': %w", id, err)
 			}
 			build = func() (rdns.Listener, error) {
 				return rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver), nil

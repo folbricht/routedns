@@ -10,9 +10,60 @@ import (
 	"github.com/pion/dtls/v3"
 )
 
+// PSK is a DTLS pre-shared key and the identity presented alongside it. Used
+// as an alternative to certificates, typically with constrained devices that
+// can't do a full certificate exchange.
+type PSK struct {
+	// Key is the shared secret itself.
+	Key []byte
+
+	// Identity names the key so the peer can select the right one. Required
+	// for clients, which send it during the handshake. Optional for servers,
+	// where it is offered as a hint.
+	Identity string
+}
+
+// pskCipherSuites are the pre-shared key suites pion supports, AEAD first.
+// They have to be selected explicitly: pion's default list holds only
+// certificate suites, so a config with a PSK and no suites of its own fails
+// the handshake with no available cipher suite.
+var pskCipherSuites = []dtls.CipherSuiteID{
+	dtls.TLS_PSK_WITH_AES_128_GCM_SHA256,
+	dtls.TLS_PSK_WITH_CHACHA20_POLY1305_SHA256,
+	dtls.TLS_PSK_WITH_AES_128_CCM,
+	dtls.TLS_PSK_WITH_AES_128_CCM_8,
+	dtls.TLS_PSK_WITH_AES_256_CCM_8,
+	dtls.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256,
+	dtls.TLS_PSK_WITH_AES_128_CBC_SHA256,
+}
+
+// applyPSK puts a pre-shared key into a DTLS config. Certificates and a PSK
+// are mutually exclusive here: pion can offer both, but the mix makes it
+// unclear which one a peer actually used, so a config asking for both is
+// rejected instead.
+func applyPSK(cfg *dtls.Config, psk *PSK) error {
+	if psk == nil {
+		return nil
+	}
+	if len(psk.Key) == 0 {
+		return errors.New("psk must not be empty")
+	}
+	if len(cfg.Certificates) > 0 {
+		return errors.New("psk cannot be combined with a certificate and key, they are alternatives")
+	}
+	key := psk.Key
+	cfg.PSK = func([]byte) ([]byte, error) { return key, nil }
+	if psk.Identity != "" {
+		cfg.PSKIdentityHint = []byte(psk.Identity)
+	}
+	cfg.CipherSuites = pskCipherSuites
+	return nil
+}
+
 // DTLSServerConfig is a convenience function that builds a dtls.Config instance for DTLS servers
-// based on common options and certificate+key files.
-func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*dtls.Config, error) {
+// based on common options and certificate+key files. A non-nil psk configures
+// pre-shared key authentication instead of certificates.
+func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool, psk *PSK) (*dtls.Config, error) {
 	if mutualTLS && caFile == "" {
 		return nil, errors.New("mutual-tls requires a ca to be configured to verify client certificates")
 	}
@@ -40,12 +91,16 @@ func DTLSServerConfig(caFile, crtFile, keyFile string, mutualTLS bool) (*dtls.Co
 			return nil, err
 		}
 	}
+	if err := applyPSK(dtlsConfig, psk); err != nil {
+		return nil, err
+	}
 	return dtlsConfig, nil
 }
 
 // DTLSClientConfig is a convenience function that builds a dtls.Config instance for TLS clients
-// based on common options and certificate+key files.
-func DTLSClientConfig(caFile, crtFile, keyFile string) (*dtls.Config, error) {
+// based on common options and certificate+key files. A non-nil psk configures
+// pre-shared key authentication instead of certificates.
+func DTLSClientConfig(caFile, crtFile, keyFile string, psk *PSK) (*dtls.Config, error) {
 	dtlsConfig := &dtls.Config{}
 
 	// Add client key/cert if provided
@@ -69,6 +124,12 @@ func DTLSClientConfig(caFile, crtFile, keyFile string) (*dtls.Config, error) {
 			return nil, fmt.Errorf("no CA certificates found in %s", caFile)
 		}
 		dtlsConfig.RootCAs = certPool
+	}
+	if psk != nil && psk.Identity == "" {
+		return nil, errors.New("psk-identity is required when using a psk on a resolver")
+	}
+	if err := applyPSK(dtlsConfig, psk); err != nil {
+		return nil, err
 	}
 	return dtlsConfig, nil
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -25,6 +27,26 @@ func idleTimeout(id string, r resolver) (time.Duration, error) {
 		return 0, fmt.Errorf("resolver '%s': idle-timeout must not be negative", id)
 	}
 	return time.Duration(seconds) * time.Second, nil
+}
+
+// parsePSK turns the hex-encoded psk options into an rdns.PSK, or nil when no
+// key is configured. An identity without a key is a config error rather than a
+// silently ignored option.
+func parsePSK(key, identity string) (*rdns.PSK, error) {
+	if key == "" {
+		if identity != "" {
+			return nil, errors.New("psk-identity requires psk to be set")
+		}
+		return nil, nil
+	}
+	b, err := hex.DecodeString(key)
+	if err != nil {
+		return nil, fmt.Errorf("psk must be hex-encoded: %w", err)
+	}
+	if len(b) == 0 {
+		return nil, errors.New("psk must not be empty")
+	}
+	return &rdns.PSK{Key: b, Identity: identity}, nil
 }
 
 // Instantiates an rdns.Resolver from a resolver config
@@ -97,9 +119,13 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	case "dtls":
 		r.Address = rdns.AddressWithDefault(r.Address, rdns.DTLSPort)
 
-		dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey)
+		psk, err := parsePSK(r.PSK, r.PSKIdentity)
 		if err != nil {
-			return err
+			return fmt.Errorf("resolver '%s': %w", id, err)
+		}
+		dtlsConfig, err := rdns.DTLSClientConfig(r.CA, r.ClientCrt, r.ClientKey, psk)
+		if err != nil {
+			return fmt.Errorf("resolver '%s': %w", id, err)
 		}
 		opt := rdns.DTLSClientOptions{
 			BootstrapAddr: r.BootstrapAddr,

@@ -1,0 +1,15 @@
+# DTLS resolver authenticating with a pre-shared key instead of a certificate.
+# The key has to match the one on the server. Unlike on a listener,
+# psk-identity is required here: it names the key and is sent during the
+# handshake so the server can select the right one.
+
+[resolvers.dtls-psk]
+address      = "127.0.0.1:853"
+protocol     = "dtls"
+psk          = "0102030405060708090a0b0c0d0e0f10"
+psk-identity = "routedns-client"
+
+[listeners.local-udp]
+address  = "127.0.0.1:53"
+protocol = "udp"
+resolver = "dtls-psk"
