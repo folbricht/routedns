@@ -9,9 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// check runs the config through --check.
+// check runs the config through --check. A config with a [bootstrap-resolver]
+// makes run() replace the process-wide net.DefaultResolver, which would
+// otherwise outlive the test and point every later lookup in the package at
+// whatever address that config used.
 func check(t *testing.T, content string) error {
 	t.Helper()
+	defaultResolver := net.DefaultResolver
+	t.Cleanup(func() { net.DefaultResolver = defaultResolver })
 	name := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(name, []byte(content), 0600))
 	return run(options{check: true}, []string{name})
