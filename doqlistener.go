@@ -268,6 +268,16 @@ func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, c
 		a.SetRcode(q, dns.RcodeServerFailure)
 	}
 
+	// A nil response from the resolvers means "drop", close the stream without
+	// answering. The deferred Close above ends the stream, which is all a DoQ
+	// client sees. Without this the Pack below dereferences a nil message and
+	// the panic, being in this per-stream goroutine, takes the process down.
+	if a == nil {
+		log.Debug("dropping query")
+		s.metrics.drop.Add(1)
+		return
+	}
+
 	p, err := a.Pack()
 	if err != nil {
 		log.Warn("failed to encode response", "error", err)
