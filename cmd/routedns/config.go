@@ -62,6 +62,7 @@ type resolver struct {
 	LocalAddrV6   string `toml:"local-address-v6"`
 	EDNS0UDPSize  uint16 `toml:"edns0-udp-size"` // UDP resolver option
 	QueryTimeout  int    `toml:"query-timeout"`  // Query timeout in seconds
+	IdleTimeout   int    `toml:"idle-timeout"`   // Idle connection timeout in seconds. 0 uses the protocol default.
 	NetNS         string `toml:"netns"`          // Linux network namespace name or absolute path
 	XSocket       string `toml:"xsocket"`        // xsocket-server Unix socket path; alternative to netns that avoids CAP_SYS_ADMIN
 	FWMark        uint32 `toml:"fwmark"`         // Linux firewall mark (SO_MARK) for outbound connections
@@ -83,8 +84,10 @@ type resolver struct {
 
 // DoH-specific resolver options
 type doh struct {
-	Method      string
-	IdleTimeout int `toml:"idle-timeout"` // Idle connection timeout in seconds. TCP default: 30s. QUIC: uses library default if not set.
+	Method string
+	// Deprecated: use the resolver-level idle-timeout, which applies to every
+	// protocol. Still honoured on its own; setting both is an error.
+	IdleTimeout int `toml:"idle-timeout"`
 }
 
 // Cache backend options

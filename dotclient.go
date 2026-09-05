@@ -32,6 +32,10 @@ type DoTClientOptions struct {
 
 	QueryTimeout time.Duration
 
+	// IdleTimeout is how long an upstream connection is kept without any
+	// traffic before it is torn down. Zero applies the default.
+	IdleTimeout time.Duration
+
 	// Optional dialer, e.g. proxy
 	Dialer Dialer
 
@@ -75,7 +79,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 	return &DoTClient{
 		id:       id,
 		endpoint: endpoint,
-		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout),
+		pipeline: NewPipeline(id, endpoint, client, opt.QueryTimeout, opt.IdleTimeout),
 	}, nil
 }
 

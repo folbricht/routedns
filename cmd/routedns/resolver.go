@@ -8,6 +8,25 @@ import (
 	rdns "github.com/folbricht/routedns"
 )
 
+// idleTimeout returns the idle connection timeout for a resolver, reconciling
+// the resolver-level option with the deprecated DoH-specific one. A zero value
+// means the protocol applies its own default. Since zero is indistinguishable
+// from unset, setting both is an error rather than picking a winner silently.
+func idleTimeout(id string, r resolver) (time.Duration, error) {
+	if r.IdleTimeout != 0 && r.DoH.IdleTimeout != 0 {
+		return 0, fmt.Errorf("resolver '%s': idle-timeout is set both at the resolver level and under doh, use only the resolver-level option", id)
+	}
+	seconds := r.IdleTimeout
+	if r.DoH.IdleTimeout != 0 {
+		rdns.Log.Warn("doh = { idle-timeout } is deprecated, use the resolver-level idle-timeout", "id", id)
+		seconds = r.DoH.IdleTimeout
+	}
+	if seconds < 0 {
+		return 0, fmt.Errorf("resolver '%s': idle-timeout must not be negative", id)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 // Instantiates an rdns.Resolver from a resolver config
 func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolver) error {
 	var err error
@@ -15,6 +34,11 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 	netns, err := buildNetNS(r.NetNS, r.XSocket)
 	if err != nil {
 		return fmt.Errorf("resolver '%s': %w", id, err)
+	}
+
+	idle, err := idleTimeout(id, r)
+	if err != nil {
+		return err
 	}
 
 	sockOpts := rdns.SocketOptions{
@@ -38,6 +62,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   idle,
 			Use0RTT:       r.Use0RTT,
 			NetNS:         netns,
 			SocketOptions: sockOpts,
@@ -60,6 +85,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			TLSConfig:     tlsConfig,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   idle,
 			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			NetNS:         netns,
 			SocketOptions: sockOpts,
@@ -83,6 +109,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			DTLSConfig:    dtlsConfig,
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   idle,
 			NetNS:         netns,
 			SocketOptions: sockOpts,
 		}
@@ -106,7 +133,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
-			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
+			IdleTimeout:   idle,
 			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			Use0RTT:       r.Use0RTT,
 			NetNS:         netns,
@@ -130,7 +157,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV4:   net.ParseIP(r.LocalAddrV4),
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
-			IdleTimeout:   time.Duration(r.DoH.IdleTimeout) * time.Second,
+			IdleTimeout:   idle,
 			NetNS:         netns,
 			SocketOptions: sockOpts,
 		}
@@ -147,6 +174,7 @@ func instantiateResolver(id string, r resolver, resolvers map[string]rdns.Resolv
 			LocalAddrV6:   net.ParseIP(r.LocalAddrV6),
 			UDPSize:       r.EDNS0UDPSize,
 			QueryTimeout:  time.Duration(r.QueryTimeout) * time.Second,
+			IdleTimeout:   idle,
 			Dialer:        socks5DialerFromConfig(r, netns, sockOpts),
 			NetNS:         netns,
 			SocketOptions: sockOpts,

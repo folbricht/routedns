@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestPipelineQueryTimeout(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		return nil, errors.New("failed")
 	}
-	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second, 0)
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
@@ -56,7 +57,7 @@ func TestPipelineInFlightCleanup(t *testing.T) {
 	df := func(address string) (*dns.Conn, error) {
 		return &dns.Conn{Conn: client}, nil
 	}
-	p := NewPipeline("test", "localhost:53", testDialer(df), 50*time.Millisecond)
+	p := NewPipeline("test", "localhost:53", testDialer(df), 50*time.Millisecond, 0)
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
@@ -100,7 +101,7 @@ func TestPipelineQuestionMatch(t *testing.T) {
 	df := func(address string) (*dns.Conn, error) {
 		return &dns.Conn{Conn: client}, nil
 	}
-	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second, 0)
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
@@ -136,11 +137,69 @@ func TestPipelineRejectEmptyQuestion(t *testing.T) {
 	df := func(address string) (*dns.Conn, error) {
 		return &dns.Conn{Conn: client}, nil
 	}
-	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second)
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second, 0)
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 
 	_, err := p.Resolve(q)
 	require.Error(t, err, "response with empty question section must be rejected")
+}
+
+// The idle timeout tears down a connection that has gone quiet, so the next
+// query has to dial again. Without a configurable value this could only be
+// exercised by waiting out the 10s default.
+func TestPipelineIdleTimeout(t *testing.T) {
+	var dials atomic.Int64
+	var mu sync.Mutex
+	var servers []net.Conn
+	t.Cleanup(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range servers {
+			c.Close()
+		}
+	})
+
+	df := func(address string) (*dns.Conn, error) {
+		dials.Add(1)
+		server, client := net.Pipe()
+		mu.Lock()
+		servers = append(servers, server)
+		mu.Unlock()
+		go func() { // upstream that reads queries but never answers
+			buf := make([]byte, 4096)
+			for {
+				if _, err := server.Read(buf); err != nil {
+					return
+				}
+			}
+		}()
+		return &dns.Conn{Conn: client}, nil
+	}
+	p := NewPipeline("test", "localhost:53", testDialer(df), 20*time.Millisecond, 10*time.Millisecond)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	_, err := p.Resolve(q)
+	require.Error(t, err, "upstream never answers")
+	require.Equal(t, int64(1), dials.Load())
+
+	// Wait out the idle timeout, which closes the connection. The next query
+	// has to establish a new one.
+	require.Eventually(t, func() bool {
+		_, _ = p.Resolve(q)
+		return dials.Load() > 1
+	}, time.Second, 10*time.Millisecond, "idle connection was not torn down")
+}
+
+// A zero idle timeout keeps the package default rather than expiring
+// connections immediately.
+func TestPipelineIdleTimeoutDefault(t *testing.T) {
+	p := NewPipeline("test", "localhost:53", testDialer(func(string) (*dns.Conn, error) {
+		return nil, errors.New("not dialed")
+	}), 0, 0)
+	require.Equal(t, defaultIdleTimeout, p.idle)
+	require.Equal(t, defaultQueryTimeout, p.timeout)
 }

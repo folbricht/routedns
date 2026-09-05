@@ -241,3 +241,22 @@ func (r *doqEarlyRecorder) last(t *testing.T) doqRecordedQuery {
 	require.NotEmpty(t, r.seen, "server received no queries")
 	return r.seen[len(r.seen)-1]
 }
+
+// idle-timeout has to reach the QUIC config as MaxIdleTimeout. Zero leaves it
+// unset so quic-go applies its own default.
+func TestDoQClientIdleTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opt  time.Duration
+		want time.Duration
+	}{
+		{"set", 45 * time.Second, 45 * time.Second},
+		{"unset keeps the library default", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := NewDoQClient("test-doq", "127.0.0.1:8853", DoQClientOptions{IdleTimeout: tc.opt})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, c.connection.config.MaxIdleTimeout)
+		})
+	}
+}
