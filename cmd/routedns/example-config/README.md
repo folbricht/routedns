@@ -39,6 +39,7 @@ Every option used here is described in the [Configuration Guide](../../../doc/co
 | [doh-quic-client.toml](doh-quic-client.toml) | DoH over QUIC transport, with 0-RTT. | [DoH resolver](../../../doc/resolvers.md#dns-over-https-resolver) |
 | [doh-quic-client-local.toml](doh-quic-client-local.toml) | DoH over QUIC against the local test server in `doh-quic-server.toml`. | [DoH resolver](../../../doc/resolvers.md#dns-over-https-resolver) |
 | [dtls-client.toml](dtls-client.toml) | Forward to a DoDTLS server. | [DTLS resolver](../../../doc/resolvers.md#dns-over-dtls-resolver) |
+| [dtls-psk-client.toml](dtls-psk-client.toml) | Forward to a DoDTLS server, authenticating with a pre-shared key instead of a certificate. | [Pre-shared keys](../../../doc/resolvers.md#pre-shared-keys) |
 | [odoh-client.toml](odoh-client.toml) | Oblivious DoH client, with target and optional proxy. | [ODoH resolver](../../../doc/resolvers.md#oblivious-dns-odoh-resolver) |
 | [bootstrap-resolver.toml](bootstrap-resolver.toml) | Resolve hostnames used elsewhere in the config (resolver endpoints, blocklist URLs) through a defined resolver. | [Bootstrap resolver](../../../doc/resolvers.md#bootstrap-resolver) |
 | [socks5-dot.toml](socks5-dot.toml) | DoT upstream reached through a SOCKS5 proxy. | [SOCKS5](../../../doc/resolvers.md#socks5-proxy-support) |
@@ -56,6 +57,7 @@ Every option used here is described in the [Configuration Guide](../../../doc/co
 | [doh-no-tls.toml](doh-no-tls.toml) | DoH server with TLS disabled, for testing or behind a terminating proxy. | [DoH listener](../../../doc/listeners.md#dns-over-https) |
 | [doh-behind-proxy.toml](doh-behind-proxy.toml) | DoH server taking the client address from `X-Forwarded-For` sent by a trusted reverse proxy. | [DoH listener](../../../doc/listeners.md#dns-over-https) |
 | [dtls-server.toml](dtls-server.toml) | DoDTLS server. | [DTLS listener](../../../doc/listeners.md#dns-over-dtls) |
+| [dtls-psk-server.toml](dtls-psk-server.toml) | DoDTLS server authenticating clients with a pre-shared key instead of a certificate. | [DTLS listener](../../../doc/listeners.md#dns-over-dtls) |
 | [odoh-listener.toml](odoh-listener.toml) | ODoH listener acting as target and proxy. | [ODoH listener](../../../doc/listeners.md#oblivious-dns-odoh) |
 | [admin.toml](admin.toml) | Admin listener exposing expvar metrics over HTTPS. | [Admin listener](../../../doc/listeners.md#admin) |
 
