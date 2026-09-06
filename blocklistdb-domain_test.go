@@ -62,8 +62,8 @@ func TestDomainDB(t *testing.T) {
 }
 
 // TestDomainDBOverlap covers exact rules that overlap with more-specific
-// rules. The trie's exact-match marker must survive regardless of the
-// order in which the overlapping rules are inserted.
+// rules. The exact-match flag must survive regardless of the order in which
+// the overlapping rules are inserted.
 func TestDomainDBOverlap(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -111,7 +111,7 @@ func TestDomainDBOverlap(t *testing.T) {
 			},
 		},
 		{
-			name:  "apex+sub rule then exact apex (shared dot sentinel untouched)",
+			name:  "apex+sub rule then exact apex",
 			rules: []string{".domain.com", "domain.com", ".other.com"},
 			tests: []struct {
 				q     string
@@ -124,7 +124,7 @@ func TestDomainDBOverlap(t *testing.T) {
 			},
 		},
 		{
-			name:  "wildcard rule then exact apex (shared star sentinel untouched)",
+			name:  "wildcard rule then exact apex",
 			rules: []string{"*.domain.com", "*.other.com", "domain.com"},
 			tests: []struct {
 				q     string
