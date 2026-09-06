@@ -22,24 +22,43 @@ import (
 // (e.g. hagezi's "Wildcard Domains" lists).
 type DomainDB struct {
 	name              string
-	root              *domainNode
+	trie              domainTrie
 	loader            BlocklistLoader
 	includeSubdomains bool
 }
 
-// A node in the trie of domain labels, holding the rules that end on it. All
-// three rule shapes describe the node of their base domain, so "domain.com",
-// ".domain.com" and "*.domain.com" all record themselves on the node for
-// domain.com and differ only in the flag they set.
-type domainNode struct {
-	children map[string]*domainNode
-	flags    uint8
+// domainTrie holds the rules as a trie of domain labels in three flat pieces:
+// every node in one array, the labels too long to sit inside a node in one
+// blob, and one open-addressed table mapping a node and a label to the child
+// under it. None of it holds a pointer, so a list of millions of rules costs
+// the garbage collector three objects to mark rather than one per node.
+type domainTrie struct {
+	nodes []domainNode
+	blob  []byte
+	slots []uint64 // tag<<32 | node index, zero when empty
 }
 
+// A node carries its label and the rules that end on it. All three rule shapes
+// describe the node of their base domain, so "domain.com", ".domain.com" and
+// "*.domain.com" all record themselves on the node for domain.com and differ
+// only in the flag they set.
+//
+// Labels of domainInlineLabel bytes or fewer, which is most of them, sit in the
+// node itself. Longer ones give up the first four bytes of the same field to an
+// offset into the blob.
+type domainNode struct {
+	label  [6]byte
+	length uint8
+	flags  uint8
+}
+
+const domainInlineLabel = 6
+
 const (
-	ruleExact   uint8 = 1 << iota // domain.com, the name itself
-	ruleApexSub                   // .domain.com, the name and everything under it
-	ruleSubOnly                   // *.domain.com, everything under it but not itself
+	ruleExact       uint8 = 1 << iota // domain.com, the name itself
+	ruleApexSub                       // .domain.com, the name and everything under it
+	ruleSubOnly                       // *.domain.com, everything under it but not itself
+	ruleHasChildren                   // more specific rules sit below this node
 )
 
 // The longest name that can arrive in a query. Presentation-format names can
@@ -64,7 +83,7 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 	if err != nil {
 		return nil, err
 	}
-	root := new(domainNode)
+	b := newDomainBuilder(len(rules))
 	for _, r := range rules {
 		// Strip a trailing dot in case the list holds FQDNs, and force the
 		// rule to lower case since queries are matched in lower case.
@@ -76,6 +95,13 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 		// A bare wildcard only ever applied to the labels under it, of which
 		// there are none here, so it's not an error, just nothing to record.
 		if r == "*" {
+			continue
+		}
+
+		// Lists carry comment lines and other noise, and a name with a label
+		// over the DNS limit could never be queried anyway, so such a rule is
+		// skipped rather than failing the list it came in.
+		if hasOverlongLabel(r) {
 			continue
 		}
 
@@ -94,7 +120,7 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 		}
 
 		// Walk the labels from the TLD inwards, building the path as needed.
-		n := root
+		n := uint32(0)
 		end := len(r)
 		for {
 			i := strings.LastIndexByte(r[:end], '.')
@@ -105,25 +131,18 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 			if strings.Contains(label, "*") {
 				return nil, fmt.Errorf("invalid blocklist item: '%s'", label)
 			}
-			child, ok := n.children[label]
-			if !ok {
-				child = new(domainNode)
-				if n.children == nil {
-					n.children = make(map[string]*domainNode)
-				}
-				// Cloned so the node doesn't pin the whole rule line, which
-				// is a slice of the same backing array.
-				n.children[strings.Clone(label)] = child
+			n, err = b.child(n, label)
+			if err != nil {
+				return nil, err
 			}
-			n = child
 			if i <= 0 {
 				break
 			}
 			end = i
 		}
-		n.flags |= flag
+		b.nodes[n].flags |= flag
 	}
-	return &DomainDB{name, root, loader, includeSubdomains}, nil
+	return &DomainDB{name, b.done(), loader, includeSubdomains}, nil
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
@@ -145,27 +164,29 @@ func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, boo
 // match walks the labels of a lower-cased query name from the TLD inwards,
 // stopping at the first rule that covers it.
 func (m *DomainDB) match(name []byte) ([]net.IP, []string, *BlocklistMatch, bool) {
-	n := m.root
+	node := uint32(0)
+	flags := m.trie.nodes[0].flags
 	end := len(name)
 	for end > 0 {
+		if flags&ruleHasChildren == 0 {
+			return nil, nil, nil, false // nothing more specific exists
+		}
 		i := bytes.LastIndexByte(name[:end], '.')
-
-		// Indexing a map with a string conversion of a byte slice doesn't
-		// allocate, so a query that doesn't match costs nothing on the heap.
-		child, ok := n.children[string(name[i+1:end])]
+		child, ok := trieFind(&m.trie, node, name[i+1:end])
 		if !ok {
 			return nil, nil, nil, false
 		}
-		if child.flags&ruleApexSub != 0 {
+		flags = m.trie.nodes[child].flags
+		if flags&ruleApexSub != 0 {
 			return nil, nil, m.matched(".", name[i+1:]), true
 		}
-		if child.flags&ruleSubOnly != 0 && i > 0 { // only if a label remains to the left
+		if flags&ruleSubOnly != 0 && i > 0 { // only if a label remains to the left
 			return nil, nil, m.matched("*.", name[i+1:]), true
 		}
-		n = child
+		node = child
 		end = i
 	}
-	if n.flags&ruleExact != 0 {
+	if flags&ruleExact != 0 {
 		return nil, nil, m.matched("", name), true
 	}
 	return nil, nil, nil, false
@@ -183,6 +204,21 @@ func (m *DomainDB) matched(prefix string, name []byte) *BlocklistMatch {
 
 func (m *DomainDB) String() string {
 	return "Domain"
+}
+
+// hasOverlongLabel reports whether any label of the rule is longer than a
+// domain label may be.
+func hasOverlongLabel(r string) bool {
+	for {
+		i := strings.IndexByte(r, '.')
+		if i < 0 {
+			return len(r) > maxDomainLabel
+		}
+		if i > maxDomainLabel {
+			return true
+		}
+		r = r[i+1:]
+	}
 }
 
 // lowerASCII copies name into b, lower-cased. Domain names are ASCII, so
