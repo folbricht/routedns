@@ -28,7 +28,7 @@ type DoQClient struct {
 	endpoint string
 	requests chan *request
 	log      *slog.Logger
-	metrics  *ListenerMetrics
+	metrics  *listenerMetrics
 
 	connection   *quicConnection
 	connectionV4 *quicConnection // IPv4-specific connection, used in dual-stack mode
@@ -100,7 +100,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	}
 	log := Log.With(
 		"id", id,
-		"protocol", "doq",
+		"upstream-protocol", "doq",
 		"endpoint", endpoint,
 	)
 	config := &quic.Config{
@@ -117,7 +117,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		DoQClientOptions: opt,
 		requests:         make(chan *request),
 		log:              log,
-		metrics:          NewListenerMetrics("client", id),
+		metrics:          newListenerMetrics("client", id),
 	}
 
 	// When both V4 and V6 local addresses are specified, create two QUIC connections
@@ -158,7 +158,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	logger(d.id, q, ci).Debug("querying upstream resolver",
 		"resolver", d.endpoint,
-		"protocol", "doq",
+		"upstream-protocol", "doq",
 	)
 
 	d.metrics.query.Add(1)
@@ -390,16 +390,16 @@ func (s *quicConnection) awaitReplaySafe(replaySafe bool) {
 func (s *quicConnection) restart(rAddr *net.UDPAddr) error {
 	_ = s.Conn.CloseWithError(DOQNoError, "")
 
-	Log.Debug("attempt reconnect", slog.String("protocol", "quic"),
+	Log.Debug("attempt reconnect", slog.String("upstream-protocol", "quic"),
 		slog.String("local", s.lAddr.String()),
 		slog.String("remote", rAddr.String()),
 	)
 	conn, err := s.dialFunc(context.TODO(), rAddr, s.tlsConfig, s.config)
 	if err != nil {
-		Log.Warn("couldn't restart quic connection", "protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String(), "error", err)
+		Log.Warn("couldn't restart quic connection", "upstream-protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String(), "error", err)
 		return err
 	}
-	Log.Debug("restarted quic connection", "protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String())
+	Log.Debug("restarted quic connection", "upstream-protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String())
 
 	s.Conn = conn
 	return nil
