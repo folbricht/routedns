@@ -35,7 +35,7 @@ type DomainDB struct {
 type domainTrie struct {
 	nodes []domainNode
 	blob  []byte
-	slots []uint64 // tag<<32 | node index, zero when empty
+	slots []uint64 // parent, child and a tag byte, zero when empty
 }
 
 // A node carries its label and the rules that end on it. All three rule shapes
@@ -84,6 +84,35 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 		return nil, err
 	}
 	b := newDomainBuilder(len(rules))
+	err = domainRules(rules, includeSubdomains, func(domain string, flag uint8) error {
+		// Walk the labels from the TLD inwards, building the path as needed.
+		n := uint32(0)
+		end := len(domain)
+		for {
+			i := strings.LastIndexByte(domain[:end], '.')
+			child, err := b.child(n, domain[i+1:end])
+			if err != nil {
+				return err
+			}
+			n = child
+			if i <= 0 {
+				break
+			}
+			end = i
+		}
+		b.nodes[n].flags |= flag
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &DomainDB{name, b.done(), loader, includeSubdomains}, nil
+}
+
+// domainRules interprets the rules of a list, handing each one to record as the
+// domain it applies to and the flag it sets there. Both storage formats build
+// from this, so the syntax is read in one place.
+func domainRules(rules []string, includeSubdomains bool, record func(domain string, flag uint8) error) error {
 	for _, r := range rules {
 		// Strip a trailing dot in case the list holds FQDNs, and force the
 		// rule to lower case since queries are matched in lower case.
@@ -119,30 +148,24 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 			flag = ruleApexSub
 		}
 
-		// Walk the labels from the TLD inwards, building the path as needed.
-		n := uint32(0)
-		end := len(r)
-		for {
-			i := strings.LastIndexByte(r[:end], '.')
-			label := r[i+1 : end]
-
-			// Wildcards are only valid as the whole first label, which the
-			// prefix above has already taken off.
-			if strings.Contains(label, "*") {
-				return nil, fmt.Errorf("invalid blocklist item: '%s'", label)
+		// Wildcards are only valid as the whole first label, which the prefix
+		// above has already taken off.
+		if i := strings.IndexByte(r, '*'); i >= 0 {
+			start := strings.LastIndexByte(r[:i], '.') + 1
+			end := strings.IndexByte(r[i:], '.')
+			if end < 0 {
+				end = len(r)
+			} else {
+				end += i
 			}
-			n, err = b.child(n, label)
-			if err != nil {
-				return nil, err
-			}
-			if i <= 0 {
-				break
-			}
-			end = i
+			return fmt.Errorf("invalid blocklist item: '%s'", r[start:end])
 		}
-		b.nodes[n].flags |= flag
+
+		if err := record(r, flag); err != nil {
+			return err
+		}
 	}
-	return &DomainDB{name, b.done(), loader, includeSubdomains}, nil
+	return nil
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
@@ -150,15 +173,20 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 }
 
 func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
-	name := strings.TrimSuffix(msg.Question[0].Name, ".")
-
-	// Lower-cased into a stack buffer, so the mixed-case names 0x20 encoding
-	// produces don't cost an allocation like strings.ToLower would.
 	var buf [maxDomainName]byte
+	return m.match(domainQueryName(msg, buf[:]))
+}
+
+// domainQueryName returns the name a query asks about, lower-cased and without
+// its trailing dot, copied into buf when it fits. Names that fit cost no
+// allocation, including the mixed-case ones 0x20 encoding produces, which
+// strings.ToLower would allocate for.
+func domainQueryName(msg *dns.Msg, buf []byte) []byte {
+	name := strings.TrimSuffix(msg.Question[0].Name, ".")
 	if len(name) <= len(buf) {
-		return m.match(lowerASCII(buf[:len(name)], name))
+		return lowerASCII(buf[:len(name)], name)
 	}
-	return m.match([]byte(strings.ToLower(name)))
+	return []byte(strings.ToLower(name))
 }
 
 // match walks the labels of a lower-cased query name from the TLD inwards,
@@ -177,29 +205,40 @@ func (m *DomainDB) match(name []byte) ([]net.IP, []string, *BlocklistMatch, bool
 			return nil, nil, nil, false
 		}
 		flags = m.trie.nodes[child].flags
-		if flags&ruleApexSub != 0 {
-			return nil, nil, m.matched(".", name[i+1:]), true
-		}
-		if flags&ruleSubOnly != 0 && i > 0 { // only if a label remains to the left
-			return nil, nil, m.matched("*.", name[i+1:]), true
+		if prefix, ok := domainRuleAt(flags, i > 0); ok {
+			return nil, nil, domainMatched(m.name, prefix, name[i+1:]), true
 		}
 		node = child
 		end = i
 	}
 	if flags&ruleExact != 0 {
-		return nil, nil, m.matched("", name), true
+		return nil, nil, domainMatched(m.name, "", name), true
 	}
 	return nil, nil, nil, false
 }
 
-// matched reports the rule that matched, rebuilt from the part of the query
-// name it matched on.
-func (m *DomainDB) matched(prefix string, name []byte) *BlocklistMatch {
+// domainRuleAt reports whether the rules recorded on a node cover a query that
+// has walked down to it, and with what prefix the rule is written. more says
+// whether the query still has labels to the left of this node, which is what
+// separates a wildcard rule from an apex one.
+func domainRuleAt(flags uint8, more bool) (string, bool) {
+	if flags&ruleApexSub != 0 { // .domain.com
+		return ".", true
+	}
+	if flags&ruleSubOnly != 0 && more { // *.domain.com
+		return "*.", true
+	}
+	return "", false
+}
+
+// domainMatched reports the rule that matched, rebuilt from the part of the
+// query name it matched on.
+func domainMatched(list, prefix string, name []byte) *BlocklistMatch {
 	var b strings.Builder
 	b.Grow(len(prefix) + len(name))
 	b.WriteString(prefix)
 	b.Write(name)
-	return &BlocklistMatch{List: m.name, Rule: b.String()}
+	return &BlocklistMatch{List: list, Rule: b.String()}
 }
 
 func (m *DomainDB) String() string {

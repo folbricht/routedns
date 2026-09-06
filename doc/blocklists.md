@@ -10,7 +10,7 @@
 
 Query blocklists can be added to resolver-chains to prevent further processing of queries (return NXDOMAIN or spoofed IP) or to send queries to different resolvers if the query name matches a rule on the blocklist. A blocklist can have multiple rule-sets, with different formats. In its simplest form, the blocklist has just one upstream resolver and forwards anything that does not match its rules. If a query matches, it'll be answered with NXDOMAIN or a spoofed IP, depending on what blocklist format is used.
 
-The blocklist group supports 5 types of blocklist formats:
+The blocklist group supports 7 types of blocklist formats:
 
 - `regexp` - The entire query string is matched against a list of regular expressions and NXDOMAIN returned if a match is found. See [Syntax](https://github.com/google/re2/wiki/Syntax) for details on what is supported.
 - `domain` - A list of domains with some wildcard capabilities. Also results in an NXDOMAIN. Entries in the list are matched as follows:
@@ -18,12 +18,39 @@ The blocklist group supports 5 types of blocklist formats:
   - `.domain.com` matches domain.com and all sub-domains.
   - `*.domain.com` matches all subdomains but not domain.com. Only one wildcard (at the start of the string) is allowed.
 - `domain-subdomain` - Like `domain`, but bare entries (e.g. `domain.com`) match the apex *and* all sub-domains. `.domain.com` is unchanged. `*.domain.com` still matches sub-domains only and can be used as a per-entry opt-out. Designed for blocklists such as hagezi's "Wildcard Domains" lists where every line is meant to block apex + sub-domains.
+- `domain-compact` - Like `domain`, and `domain-subdomain-compact` like `domain-subdomain`, but storing a fingerprint of each rule rather than the rule itself. Roughly a quarter of the memory, at the cost of a very occasional false match. See [Compact domain formats](#compact-domain-formats).
 - `hosts` - A blocklist in hosts-file format. If a non-zero IP address is provided for a record, the response is spoofed rather than returning NXDOMAIN.
 - `mac` - A blocklist of MAC addresses in the form `01:23:34:ab:bc:de` representing the MAC address of a client. The query is expected to contain the value of the client's MAC in EDNS0 option 65001.
 
 In addition to reading the blocklist rules from the configuration file, routedns supports reading from the local filesystem and from remote servers via HTTP(S). Use the `blocklist-source` property of the blocklist to provide a list of blocklists of different formats, either local files or URLs. The `blocklist-refresh` property can be used to specify a reload-period (in seconds). If no `blocklist-refresh` period is given, the blocklist will only be loaded once at startup. The following example loads a regexp blocklist via HTTP once a day.
 
 To override the blocklist filtering behavior, the properties `allowlist`, `allowlist-format`, `allowlist-source` and `allowlist-refresh` can be used to define inverse filters. They are used just like the equivalent blocklist-options, but are effectively inverting its behavior. A query matching a rule on the allowlist will be passing through the blocklist and not be blocked.
+
+### Compact domain formats
+
+`domain-compact` and `domain-subdomain-compact` accept exactly the same rules as `domain` and `domain-subdomain`, and match them the same way. The difference is that they do not store the rules. Each node of the rule tree is kept as a 60 bit fingerprint of the name it stands for, with the four bits that say what the rule matches packed alongside it, which is 8 bytes per node and no text at all. A 2 million rule list takes about 17 MB instead of about 72 MB, and a 274 thousand rule list about 3 MB instead of 11 MB. Lookups are a little quicker where a query matches and a few percent slower where it does not.
+
+The rule reported in logs is rebuilt from the query name, not read back from the database, which is why the rules themselves are not needed.
+
+Building the database is cheaper as well as the result being smaller, which matters on a device where the peak during a list refresh is what runs it out of memory: about 37 MB above the rules themselves for a 2 million rule list, against 209 MB for the exact format.
+
+**What can go wrong.** A name that is on the list can never be missed: it always hashes to its own entry, and an entry only ever gains flags, never loses them. What can happen is the reverse, a name that nobody listed whose fingerprint happens to equal one that is, and it is then treated as though it were on the list.
+
+The chance of that is the number of entries divided by 2^60, per label of the query, since a name is looked up one label at a time and each label is another chance. For a typical three or four label name:
+
+| list size | chance per query | at 100 queries/second | at 1000 queries/second |
+| --- | --- | --- | --- |
+| 274 thousand rules | 1 in 800 billion | one every 260 years | one every 26 years |
+| 2 million rules | 1 in 140 billion | one every 46 years | one every 5 years |
+
+When it does happen, one name that should have resolved is answered as a block instead, exactly as though a rule covered it. It is easy to recognise: the rule named in the log is rebuilt from the query, so it will be a suffix of the queried name that does not appear anywhere in the list.
+
+**How long it lasts.** The fingerprints are seeded afresh every time a list is loaded, so a list with `blocklist-refresh` set loses a collision at the next refresh, and any list loses it on a restart. Without a refresh interval the list is built once at startup, so a collision lasts as long as the process does. The same seeding is what stops a colliding name from being worked out in advance by someone who wants a particular name blocked.
+
+**The rarer, larger case.** The entries cover every node of the rule tree, including the interior ones a query passes through on its way down, `com` among them. If an interior node collides with a rule that covers sub-domains, everything under that node is blocked rather than a single name. This is much rarer than one wrong name, because there are far fewer interior nodes than rules: on a 274 thousand rule list it takes one build in 56 million for an interior node and one in 6 billion for a whole top-level domain, and on a 2 million rule list, where the interior nodes are only the couple of dozen top-level domains, one build in 30 billion. Two ordinary rules colliding with each other is likelier, one build in 19 million and one in 600 thousand respectively, and only widens what one of the two names blocks.
+
+**Allowlists reverse the consequence.** These formats can be used for `allowlist-format` too, and there a false match does not block a name, it lets one through: a query that no allowlist rule covers bypasses the blocklist. Same odds, opposite direction, so prefer the exact `domain` formats for an allowlist unless memory forces otherwise.
+
 
 ### Configuration
 
@@ -33,11 +60,11 @@ Options:
 
 - `resolvers` - Array of upstream resolvers, only one is supported.
 - `blocklist-resolver` - Alternative resolver for queries matching the blocklist, rather than responding with NXDOMAIN. Optional.
-- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to `regexp`.
+- `blocklist-format` - The format the blocklist is provided in. Only used if `blocklist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, `domain-compact`, `domain-subdomain-compact`, or `hosts`. Defaults to `regexp`.
 - `blocklist-refresh` - Time interval (in seconds) in which external (remote or local) blocklists are reloaded. Optional.
 - `blocklist-source` - An array of blocklists, each with `format`, `source` and optionally `name`.
 - `allowlist-resolver` - Alternative resolver for queries matching the allowlist, rather than forwarding to the default resolver.
-- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, or `hosts`. Defaults to the value of `blocklist-format`, which is itself `regexp` by default.
+- `allowlist-format` - The format the allowlist is provided in. Only used if `allowlist-source` is not provided. Can be `regexp`, `domain`, `domain-subdomain`, `domain-compact`, `domain-subdomain-compact`, or `hosts`. Defaults to the value of `blocklist-format`, which is itself `regexp` by default.
 - `allowlist-refresh` - Time interval (in seconds) in which external allowlists are reloaded. Optional.
 - `allowlist-source` - An array of allowlists, each with `format`, `source`, and optionally `cache-dir` or `allow-failure`.
 - `edns0-ede` - Optional, include an extended error code in the response if it's blocked. Only used when the response is blocked, not when it's spoofed. The value is a struct with two keys, `code` (number) and `text` (string). Possible values for `code` are defined in [rfc8914](https://datatracker.ietf.org/doc/html/rfc8914) while `text` can carry additional information that is displayed by `dig` for example. The `text` value is a template that has access to a number of fields of query to allow customizing the response based on data in the query. See [Templates](templates.md#templates) for details. Simple placeholders in `text` would be `{{ .Question }}` for the question in the query or `{{ .ID }}` to be replaced with the query ID.
