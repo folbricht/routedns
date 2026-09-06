@@ -25,19 +25,20 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 	// it still refresh. Only when none of them moved is there nothing to swap
 	// in.
 	newDBs := make([]BlocklistDB, 0, len(m.dbs))
-	unchanged := 0
+	changed := false
 	for _, db := range m.dbs {
 		n, err := db.Reload()
 		switch {
 		case errors.Is(err, ErrBlocklistUnchanged):
-			unchanged++
 			n = db
 		case err != nil:
 			return nil, err
+		default:
+			changed = true
 		}
 		newDBs = append(newDBs, n)
 	}
-	if unchanged == len(m.dbs) {
+	if !changed {
 		return nil, ErrBlocklistUnchanged
 	}
 	return NewMultiDB(newDBs...)

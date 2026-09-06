@@ -3,6 +3,8 @@ package rdns
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,9 +18,9 @@ import (
 func domainFormats(t *testing.T, rules []string, includeSubdomains bool) map[string]BlocklistDB {
 	t.Helper()
 	loader := NewStaticLoader(rules)
-	exact, err := newDomainDB("testlist", loader, includeSubdomains)
+	exact, err := newDomainDB("testlist", loader, includeSubdomains, 0, 0)
 	require.NoError(t, err)
-	compact, err := newDomainCompactDB("testlist", loader, includeSubdomains)
+	compact, err := newDomainCompactDB("testlist", loader, includeSubdomains, 0)
 	require.NoError(t, err)
 	return map[string]BlocklistDB{"exact": exact, "compact": compact}
 }
@@ -388,7 +390,7 @@ func TestDomainDBGenerated(t *testing.T) {
 func BenchmarkDomainDBMatch(b *testing.B) {
 	for _, n := range []int{1000, 100000} {
 		rules := generateDomainRules(n)
-		db, err := newDomainDB("testlist", NewStaticLoader(rules), false)
+		db, err := newDomainDB("testlist", NewStaticLoader(rules), false, 0, 0)
 		require.NoError(b, err)
 
 		// A name that matches the last rule loaded, one that shares its TLD
@@ -414,7 +416,7 @@ func BenchmarkDomainDBBuild(b *testing.B) {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := newDomainDB("testlist", loader, false); err != nil {
+				if _, err := newDomainDB("testlist", loader, false, 0, 0); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -535,4 +537,33 @@ func TestDomainDBSharedLabels(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A refresh builds into the size of the build before it. A list that shrank
+// must not leave the database holding what the larger one needed.
+func TestDomainDBShrink(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "list.txt")
+	var big strings.Builder
+	for i := range 20000 {
+		fmt.Fprintf(&big, "host%d.example.com\n", i)
+	}
+	require.NoError(t, os.WriteFile(name, []byte(big.String()), 0644))
+
+	db, err := NewDomainDB("testlist", NewFileLoader(name, FileLoaderOptions{}))
+	require.NoError(t, err)
+	require.Greater(t, cap(db.trie.nodes), 20000)
+
+	require.NoError(t, os.WriteFile(name, []byte("only.example.com\n"), 0644))
+	reloaded, err := db.Reload()
+	require.NoError(t, err)
+
+	trie := reloaded.(*DomainDB).trie
+	require.Less(t, cap(trie.nodes), 100, "the trie kept the nodes the larger list needed")
+	require.Less(t, len(trie.slots), 100, "the table kept the size the larger list needed")
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("only.example.com.", dns.TypeA)
+	_, _, _, ok := reloaded.Match(msg)
+	require.True(t, ok)
 }

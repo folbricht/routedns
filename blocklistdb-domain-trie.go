@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/bits"
+	"slices"
 )
 
 // The longest label a domain name can carry. A rule with anything longer could
@@ -145,11 +146,20 @@ type domainBuilder struct {
 	parents []uint32
 }
 
-func newDomainBuilder() *domainBuilder {
+// newDomainBuilder starts a trie of about nodes nodes holding about blob bytes
+// of long labels. A list is streamed in, so its size is not known up front; the
+// build it is replacing is the estimate, and the first one of all has none and
+// grows into what it needs.
+func newDomainBuilder(nodes, blob int) *domainBuilder {
 	b := &domainBuilder{}
-	b.nodes = make([]domainNode, 1) // node 0 is the root
-	b.parents = make([]uint32, 1)
-	b.rebuild(64)
+	b.nodes = make([]domainNode, 1, nodes+1) // node 0 is the root
+	b.parents = make([]uint32, 1, nodes+1)
+	b.blob = make([]byte, 0, blob)
+	size := domainTableSize(uint64(nodes)) + 8
+	if size < 64 {
+		size = 64
+	}
+	b.rebuild(size)
 	return b
 }
 
@@ -195,11 +205,24 @@ func (b *domainBuilder) rebuild(size uint64) {
 }
 
 // done returns the finished trie, sized to what it holds rather than to the
-// rule count it was guessed from.
+// estimate it was started from or the doubling it grew by. Anything left over
+// would be held for as long as the trie serves queries.
 func (b *domainBuilder) done() domainTrie {
 	if want := domainTableSize(uint64(len(b.nodes))) + 8; uint64(len(b.slots)) > want*4/3 {
 		b.rebuild(want)
 	}
+	if cap(b.nodes) > len(b.nodes)+len(b.nodes)/3+8 {
+		b.nodes = slices.Clone(b.nodes)
+	}
+	if cap(b.blob) > len(b.blob)+len(b.blob)/3 {
+		b.blob = slices.Clone(b.blob)
+	}
 	b.parents = nil
 	return b.domainTrie
+}
+
+// sizes says what the trie holds, which is what the next build of the same list
+// starts from.
+func (t *domainTrie) sizes() (nodes, blob int) {
+	return len(t.nodes), len(t.blob)
 }

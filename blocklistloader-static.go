@@ -17,7 +17,7 @@ func NewStaticLoader(rules []string) *StaticLoader {
 func (l *StaticLoader) Load(_ func(), fn func(rule string) error) error {
 	for _, rule := range l.rules {
 		if err := fn(rule); err != nil {
-			return err
+			return ruleError{err}
 		}
 	}
 	return nil

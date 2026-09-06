@@ -69,18 +69,21 @@ var _ BlocklistDB = &DomainDB{}
 
 // NewDomainDB returns a new instance of a matcher for a list of domain rules.
 func NewDomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
-	return newDomainDB(name, loader, false)
+	return newDomainDB(name, loader, false, 0, 0)
 }
 
 // NewDomainSubdomainDB is like NewDomainDB but treats bare entries as matching
 // the apex and all sub-domains. See DomainDB for details.
 func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error) {
-	return newDomainDB(name, loader, true)
+	return newDomainDB(name, loader, true, 0, 0)
 }
 
-func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
-	b := newDomainBuilder()
-	err := domainRules(loader, includeSubdomains, func() { b = newDomainBuilder() }, func(domain string, flag uint8) error {
+// nodes and blob are the size of the trie this one is replacing, which is what
+// a refresh builds into rather than growing towards. See newDomainBuilder.
+func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool, nodes, blob int) (*DomainDB, error) {
+	b := newDomainBuilder(nodes, blob)
+	reset := func() { b = newDomainBuilder(nodes, blob) }
+	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, building the path as needed.
 		n := uint32(0)
 		end := len(domain)
@@ -162,7 +165,8 @@ func domainRules(loader BlocklistLoader, includeSubdomains bool, reset func(), r
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
-	return newDomainDB(m.name, m.loader, m.includeSubdomains)
+	nodes, blob := m.trie.sizes()
+	return newDomainDB(m.name, m.loader, m.includeSubdomains, nodes, blob)
 }
 
 func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {

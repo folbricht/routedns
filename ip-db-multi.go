@@ -24,36 +24,44 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	// nothing to change is carried across as a copy that owns whatever it
 	// holds rather than as the instance the old group is about to close.
 	newDBs := make([]IPBlocklistDB, 0, len(m.dbs))
-	closeAll := func() {
-		for _, db := range newDBs {
-			db.Close()
+	// Every way out of here but the last one leaves the group unbuilt, and the
+	// databases gathered for it are then nobody's to close but ours.
+	keep := false
+	defer func() {
+		if !keep {
+			for _, db := range newDBs {
+				db.Close()
+			}
 		}
-	}
-	unchanged := 0
+	}()
+	changed := false
 	for _, db := range m.dbs {
 		n, err := db.Reload()
-		if errors.Is(err, ErrBlocklistUnchanged) {
+		switch {
+		case errors.Is(err, ErrBlocklistUnchanged):
 			r, ok := db.(reusableIPDB)
 			if !ok {
-				closeAll()
 				return MultiIPDB{}, err
 			}
 			if n, err = r.reuse(); err != nil {
-				closeAll()
 				return MultiIPDB{}, err
 			}
-			unchanged++
-		} else if err != nil {
-			closeAll()
+		case err != nil:
 			return MultiIPDB{}, err
+		default:
+			changed = true
 		}
 		newDBs = append(newDBs, n)
 	}
-	if unchanged == len(m.dbs) { // nothing moved, so there is nothing to swap in
-		closeAll()
+	if !changed { // nothing moved, so there is nothing to swap in
 		return MultiIPDB{}, ErrBlocklistUnchanged
 	}
-	return NewMultiIPDB(newDBs...)
+	group, err := NewMultiIPDB(newDBs...)
+	if err != nil {
+		return MultiIPDB{}, err
+	}
+	keep = true
+	return group, nil
 }
 
 // An IP database that can produce an equivalent of itself, holding the same
