@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,10 +29,7 @@ type HTTPLoaderOptions struct {
 	AllowFailure bool
 }
 
-var (
-	_ BlocklistLoader = &HTTPLoader{}
-	_ streamingLoader = &HTTPLoader{}
-)
+var _ BlocklistLoader = &HTTPLoader{}
 
 const httpTimeout = 30 * time.Minute
 
@@ -46,27 +42,15 @@ func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
 	return l
 }
 
-func (l *HTTPLoader) Load() ([]string, error) {
-	var rules []string
-	err := l.loadEach(func(rule string) error {
-		rules = append(rules, rule)
-		return nil
-	})
-	if errors.Is(err, errBlocklistEmpty) {
-		return nil, nil // an incomplete list is no list, as it always was
-	}
-	return rules, err
-}
-
-// loadEach passes the rules on as they arrive over the wire, so a list of
-// millions of them is never held in memory as a whole. See FileLoader.loadEach
-// for what a failure means, which is the same here.
-func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
+// Load passes the rules on as they arrive over the wire, so a list of millions
+// of them is never held in memory as a whole. See FileLoader.Load for what a
+// failure means, which is the same here.
+func (l *HTTPLoader) Load(reset func(), fn func(rule string) error) error {
 	log := Log.With("url", l.url)
 	log.Debug("loading blocklist")
 
 	start := time.Now()
-	err := l.read(log, fn)
+	err := l.read(log, reset, fn)
 	if err == nil {
 		l.loaded = true
 		log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
@@ -75,19 +59,21 @@ func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
 	if !l.opt.AllowFailure || !loadFailure(err) {
 		return err
 	}
-	if !l.loaded { // nothing loaded yet, carry on with an empty list
-		log.Warn("failed to load blocklist, continuing without it", "error", err)
-		return errBlocklistEmpty
+	if l.loaded {
+		log.Warn("failed to load blocklist, continuing with the previous ruleset",
+			"error", err)
+		return ErrBlocklistUnchanged
 	}
-	log.Warn("failed to load blocklist, continuing with the previous ruleset",
-		"error", err)
-	return ErrBlocklistUnchanged
+	log.Warn("failed to load blocklist, continuing without it", "error", err)
+	reset()
+	return nil
 }
 
-func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
-	// If a cache-dir was given, try to load the list from disk on first load.
-	// Only fall back to the network if nothing was passed on yet, since the
-	// rules already handed over cannot be taken back.
+func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) error) error {
+	// If a cache-dir was given, try to load the list from disk on first load,
+	// and fall back to the network when that fails. A cached copy that breaks
+	// off part way through has already handed some of itself over, so drop
+	// that before the list arrives again from upstream.
 	if l.fromDisk {
 		l.fromDisk = false
 		var served int
@@ -99,8 +85,11 @@ func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
 			log.Debug("loaded blocklist from cache-dir")
 			return nil
 		}
-		if served > 0 || !loadFailure(err) {
-			return err
+		if !loadFailure(err) {
+			return err // the database refused a rule, another copy will not help
+		}
+		if served > 0 {
+			reset()
 		}
 		log.Warn("unable to load cached list from disk, loading from upstream",
 			"error", err)

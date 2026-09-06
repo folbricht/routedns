@@ -6,20 +6,15 @@ type StaticLoader struct {
 	rules []string
 }
 
-var (
-	_ BlocklistLoader = &StaticLoader{}
-	_ streamingLoader = &StaticLoader{}
-)
+var _ BlocklistLoader = &StaticLoader{}
 
 func NewStaticLoader(rules []string) *StaticLoader {
 	return &StaticLoader{rules}
 }
 
-func (l *StaticLoader) Load() ([]string, error) {
-	return l.rules, nil
-}
-
-func (l *StaticLoader) loadEach(fn func(rule string) error) error {
+// Load hands over the rules it was given. They are already in memory and there
+// is nothing that can fail to read, so there is never anything to reset.
+func (l *StaticLoader) Load(_ func(), fn func(rule string) error) error {
 	for _, rule := range l.rules {
 		if err := fn(rule); err != nil {
 			return err

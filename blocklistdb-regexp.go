@@ -20,7 +20,7 @@ var _ BlocklistDB = &RegexpDB{}
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
 func NewRegexpDB(name string, loader BlocklistLoader) (*RegexpDB, error) {
 	var filters []*regexp.Regexp
-	err := loadRules(loader, func() { filters = nil }, func(r string) error {
+	err := loader.Load(func() { filters = nil }, func(r string) error {
 		r = strings.TrimSpace(r)
 		if r == "" || strings.HasPrefix(r, "#") {
 			return nil

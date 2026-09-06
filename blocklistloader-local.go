@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"bufio"
-	"errors"
 	"os"
 )
 
@@ -20,38 +19,22 @@ type FileLoaderOptions struct {
 	AllowFailure bool
 }
 
-var (
-	_ BlocklistLoader = &FileLoader{}
-	_ streamingLoader = &FileLoader{}
-)
+var _ BlocklistLoader = &FileLoader{}
 
 func NewFileLoader(filename string, opt FileLoaderOptions) *FileLoader {
 	return &FileLoader{filename, opt, false}
 }
 
-func (l *FileLoader) Load() ([]string, error) {
-	var rules []string
-	err := l.loadEach(func(rule string) error {
-		rules = append(rules, rule)
-		return nil
-	})
-	if errors.Is(err, errBlocklistEmpty) {
-		return nil, nil // an incomplete list is no list, as it always was
-	}
-	return rules, err
-}
-
-// loadEach reads the file a line at a time, so the whole list is never held at
+// Load reads the file a line at a time, so the whole list is never held at
 // once.
 //
-// What a failure means depends on how far it got. Without AllowFailure it is
-// simply an error. With it, a list that could not be opened is no rules at all
-// when none have ever loaded, and ErrBlocklistUnchanged once some have, which
-// leaves the database already serving queries in place. A list that broke off
-// part way through is an error either way: what has been passed on cannot be
-// taken back, so the fragment must not be built into a database and served as
-// though it were the list.
-func (l *FileLoader) loadEach(fn func(rule string) error) error {
+// What a failure means depends on AllowFailure. Without it a list that could
+// not be read is simply an error. With it, a list that has never loaded starts
+// empty, dropping whatever part of it arrived before it broke off so that a
+// fragment is not served as though it were the list, and a list that has loaded
+// before is ErrBlocklistUnchanged, which leaves the database already serving
+// queries in place and discards the one being built.
+func (l *FileLoader) Load(reset func(), fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
 
@@ -64,13 +47,14 @@ func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	if !l.opt.AllowFailure || !loadFailure(err) {
 		return err
 	}
-	if !l.loaded { // nothing loaded yet, carry on with an empty list
-		log.Warn("failed to load blocklist, continuing without it", "error", err)
-		return errBlocklistEmpty
+	if l.loaded {
+		log.Warn("failed to load blocklist, continuing with the previous ruleset",
+			"error", err)
+		return ErrBlocklistUnchanged
 	}
-	log.Warn("failed to load blocklist, continuing with the previous ruleset",
-		"error", err)
-	return ErrBlocklistUnchanged
+	log.Warn("failed to load blocklist, continuing without it", "error", err)
+	reset()
+	return nil
 }
 
 func (l *FileLoader) read(fn func(rule string) error) error {

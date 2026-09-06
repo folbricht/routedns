@@ -38,7 +38,7 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		filters = make(map[string]ipRecords)
 		ptrMap = make(map[string][]string)
 	}
-	err := loadRules(loader, reset, func(r string) error {
+	err := loader.Load(reset, func(r string) error {
 		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
 		if len(fields) == 0 {

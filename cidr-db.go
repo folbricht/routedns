@@ -24,7 +24,7 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 		ip6:    new(ipBlocklistTrie),
 		loader: loader,
 	}
-	err := loadRules(loader, func() {
+	err := loader.Load(func() {
 		db.ip4, db.ip6 = new(ipBlocklistTrie), new(ipBlocklistTrie)
 	}, func(r string) error {
 		r = strings.TrimSpace(r)

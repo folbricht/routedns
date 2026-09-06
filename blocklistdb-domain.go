@@ -109,7 +109,7 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 // domain it applies to and the flag it sets there. Both storage formats build
 // from this, so the syntax is read in one place.
 func domainRules(loader BlocklistLoader, includeSubdomains bool, reset func(), record func(domain string, flag uint8) error) error {
-	return loadRules(loader, reset, func(r string) error {
+	return loader.Load(reset, func(r string) error {
 		// Strip a trailing dot in case the list holds FQDNs, and force the
 		// rule to lower case since queries are matched in lower case.
 		r = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r), "."))

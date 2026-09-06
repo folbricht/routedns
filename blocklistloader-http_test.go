@@ -14,6 +14,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// collectRules loads a list into a slice, which is how these tests read what a
+// loader hands over. Rules arrive one at a time, and a loader that gives up on
+// a list resets what it already passed on.
+func collectRules(l BlocklistLoader) ([]string, error) {
+	var rules []string
+	err := l.Load(
+		func() { rules = nil },
+		func(rule string) error {
+			rules = append(rules, rule)
+			return nil
+		})
+	return rules, err
+}
+
 // A list read from the server is cached to disk as it arrives, and the next
 // loader started against the same cache-dir reads it from there. A second
 // download replaces the previous content rather than leaving a longer file's
@@ -29,21 +43,21 @@ func TestHTTPLoaderDiskCache(t *testing.T) {
 
 	served = []string{"a.example.com", "b.example.com", "c.example.com"}
 	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
-	got, err := l.Load()
+	got, err := collectRules(l)
 	require.NoError(t, err)
 	require.Equal(t, served, got)
 
 	// A new loader with the same cache-dir starts from the file on disk.
-	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	cached, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 	require.Equal(t, served, cached)
 
 	// A shorter list must not leave the tail of the previous one behind.
 	served = []string{"only.example.com"}
-	got, err = l.Load()
+	got, err = collectRules(l)
 	require.NoError(t, err)
 	require.Equal(t, served, got)
-	cached, err = NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	cached, err = collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 	require.Equal(t, served, cached)
 
@@ -66,18 +80,38 @@ func TestHTTPLoaderCacheKeptOnFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	_, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 
 	good = false
 	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
 	l.fromDisk = false // force it to the network
-	_, err = l.Load()
+	_, err = collectRules(l)
 	require.Error(t, err)
 
-	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	cached, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
+}
+
+// A cached copy that breaks off part way through is dropped and the list read
+// again from upstream, rather than the fragment being served as the list.
+func TestHTTPLoaderCorruptCacheFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	// A cache file holding a rule and then a line longer than the scanner can
+	// take, so the read fails only after part of the list was handed over.
+	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
+	corrupt := "cached.example.com\n" + strings.Repeat("x", 100_000)
+	require.NoError(t, os.WriteFile(l.cacheFilename(), []byte(corrupt), 0644))
+
+	rules, err := collectRules(l)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
 }
 
 // With AllowFailure set, a list that has never loaded starts empty, while one
@@ -87,21 +121,21 @@ func TestLoaderAllowFailure(t *testing.T) {
 	name := filepath.Join(dir, "list.txt")
 
 	l := NewFileLoader(name, FileLoaderOptions{AllowFailure: true})
-	rules, err := l.Load()
+	rules, err := collectRules(l)
 	require.NoError(t, err, "a list that never loaded starts empty")
 	require.Empty(t, rules)
 
 	require.NoError(t, os.WriteFile(name, []byte("a.example.com\n"), 0644))
-	rules, err = l.Load()
+	rules, err = collectRules(l)
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.example.com"}, rules)
 
 	require.NoError(t, os.Remove(name))
-	_, err = l.Load()
+	_, err = collectRules(l)
 	require.ErrorIs(t, err, ErrBlocklistUnchanged, "a loaded list keeps what it has")
 
 	// Without AllowFailure the error surfaces as it always did.
-	_, err = NewFileLoader(name, FileLoaderOptions{}).Load()
+	_, err = collectRules(NewFileLoader(name, FileLoaderOptions{}))
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 }
@@ -123,13 +157,13 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	_, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 
 	truncate = true
 	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
 	l.fromDisk = false // force it to the network
-	_, err = l.Load()
+	_, err = collectRules(l)
 	require.Error(t, err, "without allow-failure a partial list is an error")
 	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 
@@ -137,20 +171,20 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	// the list is empty, which is what an unreadable list has always done.
 	allow := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir, AllowFailure: true})
 	allow.fromDisk = false
-	rules, err := allow.Load()
+	rules, err := collectRules(allow)
 	require.NoError(t, err)
 	require.Empty(t, rules, "a fragment of a list must not be served as the list")
 
 	// Once a list has loaded, a later fragment leaves it in place instead.
 	truncate = false
-	rules, err = allow.Load()
+	rules, err = collectRules(allow)
 	require.NoError(t, err)
 	require.Len(t, rules, 2)
 	truncate = true
-	_, err = allow.Load()
+	_, err = collectRules(allow)
 	require.ErrorIs(t, err, ErrBlocklistUnchanged)
 
-	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	cached, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
 }
@@ -192,7 +226,7 @@ func TestHTTPLoaderUnwritableCache(t *testing.T) {
 
 	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: notADir})
 	l.fromDisk = false
-	rules, err := l.Load()
+	rules, err := collectRules(l)
 	require.NoError(t, err, "the download worked, only the cache did not")
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
 }
@@ -211,7 +245,7 @@ func TestHTTPLoaderCacheWriteFails(t *testing.T) {
 	// A directory where the cache file belongs: the rename at the end fails.
 	require.NoError(t, os.Mkdir(l.cacheFilename(), 0755))
 
-	rules, err := l.Load()
+	rules, err := collectRules(l)
 	require.NoError(t, err, "the list arrived, only the cache write failed")
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
 }
@@ -262,7 +296,7 @@ func TestHTTPLoaderOverlongLine(t *testing.T) {
 	for _, dir := range []string{"", t.TempDir()} {
 		l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
 		l.fromDisk = false
-		rules, err := l.Load()
+		rules, err := collectRules(l)
 		require.Error(t, err, "cache-dir=%q", dir)
 		require.Empty(t, rules)
 	}

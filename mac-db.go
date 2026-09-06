@@ -26,7 +26,7 @@ func NewMACDB(name string, loader BlocklistLoader) (*MACDB, error) {
 		name:   name,
 		loader: loader,
 	}
-	err := loadRules(loader, func() { db.macs = nil }, func(r string) error {
+	err := loader.Load(func() { db.macs = nil }, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
 			return nil
