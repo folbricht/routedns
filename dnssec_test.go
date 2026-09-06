@@ -389,3 +389,30 @@ func TestFilterDNSSECRR(t *testing.T) {
 		require.Nil(t, filtered)
 	})
 }
+
+func TestDNSSECValidatorDroppedDNSKEYLookup(t *testing.T) {
+	// The chain answers the client query but drops the DNSKEY/DS lookups the
+	// validator makes, for example when a blocklist or rate-limiter sits below
+	// the validator.
+	upstream := &TestResolver{
+		ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+			switch q.Question[0].Qtype {
+			case dns.TypeDNSKEY, dns.TypeDS:
+				return nil, nil
+			}
+			a := new(dns.Msg)
+			a.SetReply(q)
+			return a, nil
+		},
+	}
+
+	v, err := NewDNSSECValidator("test", upstream, DNSSECValidatorOptions{})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	a, err := v.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.NotNil(t, a)
+	require.Equal(t, dns.RcodeServerFailure, a.Rcode)
+}

@@ -3,6 +3,7 @@ package rdns
 import (
 	"errors"
 	"expvar"
+	"fmt"
 
 	"github.com/folbricht/routedns/dnssec"
 	"github.com/miekg/dns"
@@ -65,7 +66,17 @@ var defaultTrustAnchors = []TrustAnchor{
 func NewDNSSECValidator(id string, resolver Resolver, opt DNSSECValidatorOptions) (*DNSSECValidator, error) {
 	v := dnssec.NewValidator(
 		dnssec.WithResolver(func(q *dns.Msg) (*dns.Msg, error) {
-			return resolver.Resolve(q, ClientInfo{})
+			a, err := resolver.Resolve(q, ClientInfo{})
+			if err != nil {
+				return nil, err
+			}
+			// A nil response means the DNSKEY/DS lookup was dropped upstream.
+			// The validator expects a message or an error, so turn it into one
+			// rather than let it dereference a nil message.
+			if a == nil {
+				return nil, fmt.Errorf("%s lookup for %q dropped by resolver", dns.TypeToString[q.Question[0].Qtype], qName(q))
+			}
+			return a, nil
 		}),
 	)
 
