@@ -401,3 +401,112 @@ func BenchmarkDomainDBBuild(b *testing.B) {
 		})
 	}
 }
+
+// TestDomainDBLabelStorage covers the two ways a label is stored, in the node
+// itself or in the blob, either side of the boundary between them, and rules
+// that no valid query could reach.
+func TestDomainDBLabelStorage(t *testing.T) {
+	short := strings.Repeat("a", domainInlineLabel)   // stored in the node
+	long := strings.Repeat("b", domainInlineLabel+1)  // stored in the blob
+	longest := strings.Repeat("c", maxDomainLabel)    // the longest allowed
+	overlong := strings.Repeat("d", maxDomainLabel+1) // longer than any query
+
+	rules := []string{
+		short + ".com",
+		long + ".com",
+		longest + ".com",
+		overlong + ".com",                // skipped, unreachable
+		"# Comment line, as lists carry", // skipped, no label could be queried
+		"sub." + long + ".net",
+		"." + long + ".net",
+	}
+	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
+	require.NoError(t, err)
+
+	tests := []struct {
+		q     string
+		match bool
+	}{
+		{short + ".com.", true},
+		{long + ".com.", true},
+		{longest + ".com.", true},
+		{overlong + ".com.", false},
+		{strings.Repeat("d", maxDomainLabel) + ".com.", false},
+		{short + "a.com.", false}, // one byte longer than a rule
+		{long[:domainInlineLabel] + ".com.", false},
+		{"sub." + long + ".net.", true},
+		{"other." + long + ".net.", true}, // covered by the .prefix rule
+	}
+	for _, test := range tests {
+		msg := new(dns.Msg)
+		msg.SetQuestion(test.q, dns.TypeA)
+		_, _, _, ok := m.Match(msg)
+		require.Equal(t, test.match, ok, "query: %s", test.q)
+	}
+}
+
+// TestDomainDBGrowth loads enough rules to rebuild the lookup table several
+// times over, and checks every one of them still matches afterwards.
+func TestDomainDBGrowth(t *testing.T) {
+	rules := generateDomainRules(20000)
+	parsed := parseDomainRules(rules, false)
+	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
+	require.NoError(t, err)
+
+	msg := new(dns.Msg)
+	for _, p := range parsed {
+		q := p.domain
+		if !p.apex { // a sub-domains-only rule needs one to match
+			q = "www." + q
+		}
+		msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
+		_, _, _, ok := m.Match(msg)
+		require.True(t, ok, "rule %q, query %q", p.reported, q)
+	}
+}
+
+func TestDomainDBEmpty(t *testing.T) {
+	m, err := NewDomainDB("testlist", NewStaticLoader(nil))
+	require.NoError(t, err)
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	_, _, match, ok := m.Match(msg)
+	require.False(t, ok)
+	require.Nil(t, match)
+}
+
+// TestDomainDBSharedLabels covers the same label sitting under several parents,
+// which the lookup table has to keep apart.
+func TestDomainDBSharedLabels(t *testing.T) {
+	rules := []string{
+		"www.one.com",
+		".www.two.com",
+		"*.www.three.com",
+		"www.four.net",
+		"deep.www.one.com",
+	}
+	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
+	require.NoError(t, err)
+
+	tests := []struct {
+		q     string
+		match bool
+	}{
+		{"www.one.com.", true},
+		{"www.two.com.", true},
+		{"www.three.com.", false}, // wildcard covers sub-domains only
+		{"sub.www.three.com.", true},
+		{"www.four.net.", true},
+		{"deep.www.one.com.", true},
+		{"www.four.com.", false}, // right labels, wrong parents
+		{"www.one.net.", false},
+		{"www.five.com.", false},
+		{"deep.www.four.net.", false},
+	}
+	for _, test := range tests {
+		msg := new(dns.Msg)
+		msg.SetQuestion(test.q, dns.TypeA)
+		_, _, _, ok := m.Match(msg)
+		require.Equal(t, test.match, ok, "query: %s", test.q)
+	}
+}
