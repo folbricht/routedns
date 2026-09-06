@@ -1,7 +1,9 @@
 package rdns
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
@@ -103,4 +105,37 @@ func TestBlocklistAllow(t *testing.T) {
 	_, err = b.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 3, r.HitCount())
+}
+
+// Queries keep matching while the blocklist and allowlist databases are
+// replaced underneath them. Run with -race to verify the matching is
+// synchronized with the swap.
+func TestBlocklistConcurrentRefresh(t *testing.T) {
+	blockDB, err := NewDomainDB("blocklist", NewStaticLoader([]string{"blocked.com."}))
+	require.NoError(t, err)
+	allowDB, err := NewDomainDB("allowlist", NewStaticLoader([]string{"allowed.com."}))
+	require.NoError(t, err)
+
+	b, err := NewBlocklist("test-bl", &TestResolver{}, BlocklistOptions{
+		BlocklistDB:      blockDB,
+		BlocklistRefresh: time.Millisecond,
+		AllowlistDB:      allowDB,
+		AllowlistRefresh: time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for _, name := range []string{"blocked.com.", "allowed.com.", "neither.com."} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			q := new(dns.Msg)
+			q.SetQuestion(name, dns.TypeA)
+			for range 200 {
+				_, err := b.Resolve(q, ClientInfo{})
+				require.NoError(t, err)
+			}
+		}()
+	}
+	wg.Wait()
 }

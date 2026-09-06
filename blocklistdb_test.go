@@ -12,6 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// refreshDatabase runs until the process ends, which in a test means until the
+// package's last test does. A gate lets a finished test leave its loop blocked
+// in Reload rather than reloading every millisecond for the rest of the run.
+type gate struct {
+	closed atomic.Bool
+	block  chan struct{} // never closed, so a receive parks the caller
+}
+
+// Opens a gate for the duration of the test.
+func openGate(t *testing.T) *gate {
+	t.Helper()
+	g := &gate{block: make(chan struct{})}
+	t.Cleanup(func() { g.closed.Store(true) })
+	return g
+}
+
+func (g *gate) pass() {
+	if g.closed.Load() {
+		<-g.block
+	}
+}
+
 // A blocklist database that counts reloads and hands out a new instance every
 // time, so a test can watch the swap happen.
 type countingDB struct {
@@ -19,14 +41,16 @@ type countingDB struct {
 	reloads    *atomic.Int64
 	closes     *atomic.Int64
 	failReload bool
+	gate       *gate
 }
 
 func (d *countingDB) Reload() (BlocklistDB, error) {
+	d.gate.pass()
 	d.reloads.Add(1)
 	if d.failReload {
 		return nil, errors.New("no rules today")
 	}
-	return &countingDB{generation: d.generation + 1, reloads: d.reloads, closes: d.closes}, nil
+	return &countingDB{generation: d.generation + 1, reloads: d.reloads, closes: d.closes, gate: d.gate}, nil
 }
 
 func (d *countingDB) Match(*dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
@@ -42,11 +66,13 @@ type closingDB struct {
 }
 
 func (d *closingDB) Reload() (BlocklistDB, error) {
+	d.gate.pass()
 	d.reloads.Add(1)
 	next := &closingDB{}
 	next.generation = d.generation + 1
 	next.reloads = d.reloads
 	next.closes = d.closes
+	next.gate = d.gate
 	return next, nil
 }
 
@@ -60,7 +86,7 @@ func (d *closingDB) Close() error {
 func TestRefreshDatabaseSwaps(t *testing.T) {
 	var reloads, closes atomic.Int64
 	var mu sync.RWMutex
-	var db BlocklistDB = &countingDB{reloads: &reloads, closes: &closes}
+	var db BlocklistDB = &countingDB{reloads: &reloads, closes: &closes, gate: openGate(t)}
 
 	go refreshDatabase("test", "blocklist", time.Millisecond, &mu, &db)
 
@@ -81,6 +107,7 @@ func TestRefreshDatabaseClosesReplaced(t *testing.T) {
 	first := &closingDB{}
 	first.reloads = &reloads
 	first.closes = &closes
+	first.gate = openGate(t)
 	var db BlocklistDB = first
 
 	go refreshDatabase("test", "blocklist", time.Millisecond, &mu, &db)
@@ -98,7 +125,7 @@ func TestRefreshDatabaseClosesReplaced(t *testing.T) {
 func TestRefreshDatabaseKeepsFailedDatabase(t *testing.T) {
 	var reloads, closes atomic.Int64
 	var mu sync.RWMutex
-	original := &countingDB{reloads: &reloads, closes: &closes, failReload: true}
+	original := &countingDB{reloads: &reloads, closes: &closes, failReload: true, gate: openGate(t)}
 	var db BlocklistDB = original
 
 	go refreshDatabase("test", "blocklist", time.Millisecond, &mu, &db)

@@ -91,31 +91,24 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	question := q.Question[0]
 	log := logger(r.id, q, ci)
 
-	r.mu.RLock()
-	blocklistDB := r.BlocklistDB
-	allowlistDB := r.AllowlistDB
-	r.mu.RUnlock()
-
 	// Forward to upstream or the optional allowlist-resolver immediately if there's a match in the allowlist
-	if allowlistDB != nil {
-		if _, _, match, ok := allowlistDB.Match(q); ok {
-			log = log.With(
-				slog.String("list", match.List),
-				slog.String("rule", match.Rule),
-			)
-			r.metrics.allowed.Add(1)
-			if r.AllowListResolver != nil {
-				log.Debug("matched allowlist, forwarding",
-					"resolver", r.AllowListResolver.String())
-				return r.AllowListResolver.Resolve(q, ci)
-			}
+	if match, ok := r.matchAllowlist(q); ok {
+		log = log.With(
+			slog.String("list", match.List),
+			slog.String("rule", match.Rule),
+		)
+		r.metrics.allowed.Add(1)
+		if r.AllowListResolver != nil {
 			log.Debug("matched allowlist, forwarding",
-				"resolver", r.resolver.String())
-			return r.resolver.Resolve(q, ci)
+				"resolver", r.AllowListResolver.String())
+			return r.AllowListResolver.Resolve(q, ci)
 		}
+		log.Debug("matched allowlist, forwarding",
+			"resolver", r.resolver.String())
+		return r.resolver.Resolve(q, ci)
 	}
 
-	ips, names, match, ok := blocklistDB.Match(q)
+	ips, names, match, ok := r.matchBlocklist(q)
 	if !ok {
 		log.Debug("forwarding unmodified query to resolver",
 			"resolver", r.resolver.String())
@@ -191,4 +184,24 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 func (r *Blocklist) String() string {
 	return r.id
+}
+
+// Match the query against the allowlist while holding the lock. The refresh
+// loop closes a database it has replaced, so the match must complete under
+// the lock to never use a closed database.
+func (r *Blocklist) matchAllowlist(q *dns.Msg) (*BlocklistMatch, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.AllowlistDB == nil {
+		return nil, false
+	}
+	_, _, match, ok := r.AllowlistDB.Match(q)
+	return match, ok
+}
+
+// The same for the blocklist, which also yields what to answer a match with.
+func (r *Blocklist) matchBlocklist(q *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.BlocklistDB.Match(q)
 }
