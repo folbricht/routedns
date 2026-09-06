@@ -2,6 +2,7 @@ package rdns
 
 import (
 	"bufio"
+	"errors"
 	"os"
 )
 
@@ -34,6 +35,9 @@ func (l *FileLoader) Load() ([]string, error) {
 		rules = append(rules, rule)
 		return nil
 	})
+	if errors.Is(err, errBlocklistEmpty) {
+		return nil, nil // an incomplete list is no list, as it always was
+	}
 	return rules, err
 }
 
@@ -64,14 +68,9 @@ func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	if !l.opt.AllowFailure || !loadFailure(err) {
 		return err
 	}
-	if served > 0 {
-		// Part of the list is already through, so what is being built holds a
-		// fragment of the rules and has to be thrown away rather than served.
-		return err
-	}
 	if !l.loaded { // nothing loaded yet, carry on with an empty list
 		log.Warn("failed to load blocklist, continuing without it", "error", err)
-		return nil
+		return errBlocklistEmpty
 	}
 	log.Warn("failed to load blocklist, continuing with the previous ruleset",
 		"error", err)

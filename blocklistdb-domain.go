@@ -80,7 +80,7 @@ func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error
 
 func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
 	b := newDomainBuilder()
-	err := domainRules(loader, includeSubdomains, func(domain string, flag uint8) error {
+	err := domainRules(loader, includeSubdomains, func() { b = newDomainBuilder() }, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, building the path as needed.
 		n := uint32(0)
 		end := len(domain)
@@ -108,8 +108,8 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 // domainRules interprets the rules of a list, handing each one to record as the
 // domain it applies to and the flag it sets there. Both storage formats build
 // from this, so the syntax is read in one place.
-func domainRules(loader BlocklistLoader, includeSubdomains bool, record func(domain string, flag uint8) error) error {
-	return loadRules(loader, func(r string) error {
+func domainRules(loader BlocklistLoader, includeSubdomains bool, reset func(), record func(domain string, flag uint8) error) error {
+	return loadRules(loader, reset, func(r string) error {
 		// Strip a trailing dot in case the list holds FQDNs, and force the
 		// rule to lower case since queries are matched in lower case.
 		r = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r), "."))

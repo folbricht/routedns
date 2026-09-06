@@ -74,7 +74,10 @@ func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains b
 	f := domainFingerprints{seed: rand.Uint64()}
 	var entries []uint64
 	recent := new(domainRecent)
-	err := domainRules(loader, includeSubdomains, func(domain string, flag uint8) error {
+	reset := func() {
+		entries, recent = entries[:0], new(domainRecent)
+	}
+	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, hashing each suffix as it goes.
 		// Every node above the last one has a child by definition, which is
 		// what lets a query stop as soon as it reaches a node without one.

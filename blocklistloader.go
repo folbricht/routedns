@@ -40,10 +40,30 @@ func loadFailure(err error) bool {
 	return err != nil && !errors.As(err, &re)
 }
 
+// errBlocklistEmpty says a list broke off part way through but the loader is
+// willing to carry on without it, so whatever was handed over is a fragment
+// that has to be dropped. It never leaves loadRules.
+var errBlocklistEmpty = errors.New("blocklist incomplete")
+
 // loadRules calls fn for every rule of a list, streaming them from the loader
 // when it can do that and reading the whole list first when it cannot. An
 // error from fn stops the load and comes back unchanged.
-func loadRules(loader BlocklistLoader, fn func(rule string) error) error {
+//
+// Rules are handed over as they are read, so a list that breaks off half way
+// has already put a fragment of itself into whatever is being built. When the
+// loader is set to carry on regardless, reset is called to drop that fragment
+// and the load reports success with nothing in it, which is what a list that
+// could not be read at all has always done.
+func loadRules(loader BlocklistLoader, reset func(), fn func(rule string) error) error {
+	err := readRules(loader, fn)
+	if errors.Is(err, errBlocklistEmpty) {
+		reset()
+		return nil
+	}
+	return err
+}
+
+func readRules(loader BlocklistLoader, fn func(rule string) error) error {
 	if s, ok := loader.(streamingLoader); ok {
 		return s.loadEach(fn)
 	}

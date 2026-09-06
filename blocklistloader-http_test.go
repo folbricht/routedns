@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
 )
 
@@ -104,8 +105,10 @@ func TestLoaderAllowFailure(t *testing.T) {
 	require.NotErrorIs(t, err, errBlocklistUnchanged)
 }
 
-// A body that stops short of what was promised is a partial list. It must not
-// be reported as a loaded one, and the cached copy must survive it.
+// A body that stops short of what was promised is a partial list. Whether that
+// fails the load or is carried on without depends on AllowFailure, exactly as
+// a list that could not be read at all does, and either way the cached copy
+// survives it and no part of the fragment is served.
 func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	dir := t.TempDir()
 	truncate := false
@@ -123,17 +126,57 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	require.NoError(t, err)
 
 	truncate = true
-	for _, allowFailure := range []bool{false, true} {
-		l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir, AllowFailure: allowFailure})
-		l.fromDisk = false // force it to the network
-		_, err = l.Load()
-		require.Error(t, err, "allow-failure=%v: a partial list is not a list", allowFailure)
-		require.NotErrorIs(t, err, errBlocklistUnchanged)
-	}
+	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
+	l.fromDisk = false // force it to the network
+	_, err = l.Load()
+	require.Error(t, err, "without allow-failure a partial list is an error")
+	require.NotErrorIs(t, err, errBlocklistUnchanged)
+
+	// With allow-failure and nothing loaded yet, the fragment is dropped and
+	// the list is empty, which is what an unreadable list has always done.
+	allow := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir, AllowFailure: true})
+	allow.fromDisk = false
+	rules, err := allow.Load()
+	require.NoError(t, err)
+	require.Empty(t, rules, "a fragment of a list must not be served as the list")
+
+	// Once a list has loaded, a later fragment leaves it in place instead.
+	truncate = false
+	rules, err = allow.Load()
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	truncate = true
+	_, err = allow.Load()
+	require.ErrorIs(t, err, errBlocklistUnchanged)
 
 	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
+}
+
+// The database built from a list that broke off must hold none of it, not the
+// part that arrived before it broke.
+func TestPartialListDiscarded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		fmt.Fprint(w, "half.example.com\nalso.example.com\n")
+	}))
+	defer srv.Close()
+
+	loader := NewHTTPLoader(srv.URL, HTTPLoaderOptions{AllowFailure: true})
+	for _, db := range map[string]func() (BlocklistDB, error){
+		"domain":  func() (BlocklistDB, error) { return NewDomainDB("l", loader) },
+		"compact": func() (BlocklistDB, error) { return NewDomainCompactDB("l", loader) },
+	} {
+		m, err := db()
+		require.NoError(t, err)
+		for _, q := range []string{"half.example.com.", "also.example.com."} {
+			msg := new(dns.Msg)
+			msg.SetQuestion(q, dns.TypeA)
+			_, _, _, ok := m.Match(msg)
+			require.False(t, ok, "query %s came from a list that never finished loading", q)
+		}
+	}
 }
 
 // A cache-dir that cannot be written to is worth a warning, not a failed load.
