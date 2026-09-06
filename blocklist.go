@@ -77,10 +77,10 @@ func NewBlocklist(id string, resolver Resolver, opt BlocklistOptions) (*Blocklis
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
-		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
+		go refreshDatabase(id, "blocklist", blocklist.BlocklistRefresh, &blocklist.mu, &blocklist.BlocklistDB)
 	}
 	if blocklist.AllowlistDB != nil && blocklist.AllowlistRefresh > 0 {
-		go blocklist.refreshLoopAllowlist(blocklist.AllowlistRefresh)
+		go refreshDatabase(id, "allowlist", blocklist.AllowlistRefresh, &blocklist.mu, &blocklist.AllowlistDB)
 	}
 	return blocklist, nil
 }
@@ -191,35 +191,4 @@ func (r *Blocklist) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 func (r *Blocklist) String() string {
 	return r.id
-}
-
-func (r *Blocklist) refreshLoopBlocklist(refresh time.Duration) {
-	for {
-		time.Sleep(refresh)
-		log := Log.With(slog.String("id", r.id))
-		log.Debug("reloading blocklist")
-		db, err := r.BlocklistDB.Reload()
-		if err != nil {
-			log.Error("failed to load rules", "error", err)
-			continue
-		}
-		r.mu.Lock()
-		r.BlocklistDB = db
-		r.mu.Unlock()
-	}
-}
-func (r *Blocklist) refreshLoopAllowlist(refresh time.Duration) {
-	for {
-		time.Sleep(refresh)
-		log := Log.With(slog.String("id", r.id))
-		log.Debug("reloading allowlist")
-		db, err := r.AllowlistDB.Reload()
-		if err != nil {
-			log.Error("failed to load rules", "error", err)
-			continue
-		}
-		r.mu.Lock()
-		r.AllowlistDB = db
-		r.mu.Unlock()
-	}
 }

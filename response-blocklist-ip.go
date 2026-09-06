@@ -57,7 +57,7 @@ func NewResponseBlocklistIP(id string, resolver Resolver, opt ResponseBlocklistI
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
-		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
+		go refreshDatabase(id, "blocklist", blocklist.BlocklistRefresh, &blocklist.mu, &blocklist.BlocklistDB)
 	}
 	return blocklist, nil
 }
@@ -89,28 +89,6 @@ func (r *ResponseBlocklistIP) match(ip net.IP) (*BlocklistMatch, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.BlocklistDB.Match(ip)
-}
-
-func (r *ResponseBlocklistIP) refreshLoopBlocklist(refresh time.Duration) {
-	for {
-		time.Sleep(refresh)
-		log := Log.With("id", r.id)
-		log.Debug("reloading blocklist")
-		db, err := r.BlocklistDB.Reload()
-		if err != nil {
-			log.Error("failed to load rules",
-				"error", err)
-			continue
-		}
-		// Swap the database before closing the old one. Queries match
-		// under a read-lock, so no query can still be using the old
-		// database once the write-lock was acquired here.
-		r.mu.Lock()
-		old := r.BlocklistDB
-		r.BlocklistDB = db
-		r.mu.Unlock()
-		old.Close()
-	}
 }
 
 func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
