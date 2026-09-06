@@ -43,7 +43,7 @@ type DoHListener struct {
 	r    Resolver
 	opt  DoHListenerOptions
 
-	metrics *DoHListenerMetrics
+	metrics *dohListenerMetrics
 }
 
 var _ Listener = &DoHListener{}
@@ -66,17 +66,17 @@ type DoHListenerOptions struct {
 	customMux *http.ServeMux
 }
 
-type DoHListenerMetrics struct {
-	ListenerMetrics
+type dohListenerMetrics struct {
+	listenerMetrics
 
 	// HTTP method used for query.
 	get  *expvar.Int
 	post *expvar.Int
 }
 
-func NewDoHListenerMetrics(id string) *DoHListenerMetrics {
-	return &DoHListenerMetrics{
-		ListenerMetrics: ListenerMetrics{
+func newDohListenerMetrics(id string) *dohListenerMetrics {
+	return &dohListenerMetrics{
+		listenerMetrics: listenerMetrics{
 			query:    getVarInt("listener", id, "query"),
 			response: getVarMap("listener", id, "response"),
 			err:      getVarMap("listener", id, "error"),
@@ -103,7 +103,7 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 		addr:    addr,
 		r:       resolver,
 		opt:     opt,
-		metrics: NewDoHListenerMetrics(id),
+		metrics: newDohListenerMetrics(id),
 	}
 
 	if opt.customMux == nil {

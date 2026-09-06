@@ -19,7 +19,7 @@ type RateLimiter struct {
 	mu        sync.RWMutex
 	currWinID int64
 	counters  map[string]*uint
-	metrics   *RateLimiterMetrics
+	metrics   *rateLimiterMetrics
 }
 
 var _ Resolver = &RateLimiter{}
@@ -32,7 +32,7 @@ type RateLimiterOptions struct {
 	LimitResolver Resolver // Alternate resolver for rate-limited requests
 }
 
-type RateLimiterMetrics struct {
+type rateLimiterMetrics struct {
 	// Count of queries.
 	query *expvar.Int
 	// Count of queries that have exceeded the rate limit.
@@ -56,7 +56,7 @@ func NewRateLimiter(id string, resolver Resolver, opt RateLimiterOptions) *RateL
 		id:                 id,
 		resolver:           resolver,
 		RateLimiterOptions: opt,
-		metrics: &RateLimiterMetrics{
+		metrics: &rateLimiterMetrics{
 			query:  getVarInt("router", id, "query"),
 			exceed: getVarInt("router", id, "exceed"),
 			drop:   getVarInt("router", id, "drop"),

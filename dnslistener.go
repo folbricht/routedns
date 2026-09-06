@@ -82,7 +82,7 @@ func (s DNSListener) String() string {
 
 // DNS handler to forward all incoming requests to a given resolver.
 func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNet) dns.HandlerFunc {
-	metrics := NewListenerMetrics("listener", id)
+	metrics := newListenerMetrics("listener", id)
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		var err error
 

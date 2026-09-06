@@ -16,7 +16,7 @@ type FailRotate struct {
 	resolvers []Resolver
 	mu        sync.RWMutex
 	active    int
-	metrics   *FailRouterMetrics
+	metrics   *failRouterMetrics
 	opt       FailRotateOptions
 }
 
@@ -39,7 +39,7 @@ func NewFailRotate(id string, opt FailRotateOptions, resolvers ...Resolver) *Fai
 		id:        id,
 		resolvers: resolvers,
 		opt:       opt,
-		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+		metrics:   newFailRouterMetrics(id, len(resolvers)),
 	}
 }
 

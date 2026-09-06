@@ -18,11 +18,11 @@ type Cache struct {
 	CacheOptions
 	id       string
 	resolver Resolver
-	metrics  *CacheMetrics
+	metrics  *cacheMetrics
 	backend  CacheBackend
 }
 
-type CacheMetrics struct {
+type cacheMetrics struct {
 	// Cache hit count.
 	hit *expvar.Int
 	// Cache miss count.
@@ -170,7 +170,7 @@ func NewCache(id string, resolver Resolver, opt CacheOptions) *Cache {
 		CacheOptions: opt,
 		id:           id,
 		resolver:     resolver,
-		metrics: &CacheMetrics{
+		metrics: &cacheMetrics{
 			hit:     getVarInt("cache", id, "hit"),
 			miss:    getVarInt("cache", id, "miss"),
 			entries: getVarInt("cache", id, "entries"),

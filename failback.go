@@ -22,7 +22,7 @@ type FailBack struct {
 	failCh    chan struct{} // signal the timer to reset on failure
 	active    int
 	opt       FailBackOptions
-	metrics   *FailRouterMetrics
+	metrics   *failRouterMetrics
 }
 
 // FailBackOptions contain group-specific options.
@@ -42,17 +42,17 @@ type FailBackOptions struct {
 
 var _ Resolver = &FailBack{}
 
-type FailRouterMetrics struct {
-	RouterMetrics
+type failRouterMetrics struct {
+	routerMetrics
 	// Failover count
 	failover *expvar.Int
 }
 
-func NewFailRouterMetrics(id string, available int) *FailRouterMetrics {
+func newFailRouterMetrics(id string, available int) *failRouterMetrics {
 	avail := getVarInt("router", id, "available")
 	avail.Set(int64(available))
-	return &FailRouterMetrics{
-		RouterMetrics: RouterMetrics{
+	return &failRouterMetrics{
+		routerMetrics: routerMetrics{
 			route:     getVarMap("router", id, "route"),
 			failure:   getVarMap("router", id, "failure"),
 			available: avail,
@@ -67,7 +67,7 @@ func NewFailBack(id string, opt FailBackOptions, resolvers ...Resolver) *FailBac
 		id:        id,
 		resolvers: resolvers,
 		opt:       opt,
-		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+		metrics:   newFailRouterMetrics(id, len(resolvers)),
 	}
 }
 

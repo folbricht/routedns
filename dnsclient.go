@@ -85,7 +85,7 @@ func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(d.id, q, ci)
 	log.Debug("querying upstream resolver",
 		slog.String("resolver", d.endpoint),
-		slog.String("protocol", d.net),
+		slog.String("upstream-protocol", d.net),
 	)
 
 	q = setUDPSize(q, d.opt.UDPSize)

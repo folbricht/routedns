@@ -88,7 +88,7 @@ func (d *DoTClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// Packing a message is not always a read-only operation, make a copy
 	q = q.Copy()
 	log := logger(d.id, q, ci)
-	log.Debug("querying upstream resolver", "resolver", d.endpoint, "protocol", "dot")
+	log.Debug("querying upstream resolver", "resolver", d.endpoint, "upstream-protocol", "dot")
 
 	// Add padding to the query before sending over TLS
 	padQuery(q)

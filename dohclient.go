@@ -98,7 +98,7 @@ type DoHClient struct {
 	template *uritemplates.UriTemplate
 	client   *http.Client
 	opt      DoHClientOptions
-	metrics  *ListenerMetrics
+	metrics  *listenerMetrics
 }
 
 var _ Resolver = &DoHClient{}
@@ -172,7 +172,7 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 		template: template,
 		client:   client,
 		opt:      opt,
-		metrics:  NewListenerMetrics("client", id),
+		metrics:  newListenerMetrics("client", id),
 	}, nil
 }
 
@@ -184,7 +184,7 @@ func (d *DoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	log.Debug("querying upstream resolver",
 		slog.String("resolver", d.endpoint),
-		slog.String("protocol", "doh"),
+		slog.String("upstream-protocol", "doh"),
 		slog.String("method", d.opt.Method),
 	)
 

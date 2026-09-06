@@ -13,7 +13,7 @@ type RoundRobin struct {
 	resolvers []Resolver
 	mu        sync.Mutex
 	current   int
-	metrics   *RouterMetrics
+	metrics   *routerMetrics
 }
 
 var _ Resolver = &RoundRobin{}
@@ -23,7 +23,7 @@ func NewRoundRobin(id string, resolvers ...Resolver) *RoundRobin {
 	return &RoundRobin{
 		id:        id,
 		resolvers: resolvers,
-		metrics:   NewRouterMetrics(id, len(resolvers)),
+		metrics:   newRouterMetrics(id, len(resolvers)),
 	}
 }
 

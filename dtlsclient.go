@@ -120,7 +120,7 @@ func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	log := logger(d.id, q, ci)
 	log.Debug("querying upstream resolver",
 		"resolver", d.endpoint,
-		"protocol", "dtls",
+		"upstream-protocol", "dtls",
 	)
 
 	q = setUDPSize(q, d.opt.UDPSize)
