@@ -71,18 +71,10 @@ func NewDomainSubdomainCompactDB(name string, loader BlocklistLoader) (*DomainCo
 }
 
 func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainCompactDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
 	f := domainFingerprints{seed: rand.Uint64()}
-
-	// With the repeats below dropped a list appends a little over one entry per
-	// rule, so start there with room to spare: growing the slice means holding
-	// the old one and the new one at once, which is where a build peaks.
-	entries := make([]uint64, 0, len(rules)+len(rules)/4)
+	var entries []uint64
 	recent := new(domainRecent)
-	err = domainRules(rules, includeSubdomains, func(domain string, flag uint8) error {
+	err := domainRules(loader, includeSubdomains, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, hashing each suffix as it goes.
 		// Every node above the last one has a child by definition, which is
 		// what lets a query stop as soon as it reaches a node without one.

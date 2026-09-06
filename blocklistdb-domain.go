@@ -79,12 +79,8 @@ func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error
 }
 
 func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
-	b := newDomainBuilder(len(rules))
-	err = domainRules(rules, includeSubdomains, func(domain string, flag uint8) error {
+	b := newDomainBuilder()
+	err := domainRules(loader, includeSubdomains, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, building the path as needed.
 		n := uint32(0)
 		end := len(domain)
@@ -112,26 +108,26 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 // domainRules interprets the rules of a list, handing each one to record as the
 // domain it applies to and the flag it sets there. Both storage formats build
 // from this, so the syntax is read in one place.
-func domainRules(rules []string, includeSubdomains bool, record func(domain string, flag uint8) error) error {
-	for _, r := range rules {
+func domainRules(loader BlocklistLoader, includeSubdomains bool, record func(domain string, flag uint8) error) error {
+	return loadRules(loader, func(r string) error {
 		// Strip a trailing dot in case the list holds FQDNs, and force the
 		// rule to lower case since queries are matched in lower case.
 		r = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r), "."))
 		if r == "" {
-			continue
+			return nil
 		}
 
 		// A bare wildcard only ever applied to the labels under it, of which
 		// there are none here, so it's not an error, just nothing to record.
 		if r == "*" {
-			continue
+			return nil
 		}
 
 		// Lists carry comment lines and other noise, and a name with a label
 		// over the DNS limit could never be queried anyway, so such a rule is
 		// skipped rather than failing the list it came in.
 		if hasOverlongLabel(r) {
-			continue
+			return nil
 		}
 
 		// The prefix decides what the rule matches, the remainder is the base
@@ -161,11 +157,8 @@ func domainRules(rules []string, includeSubdomains bool, record func(domain stri
 			return fmt.Errorf("invalid blocklist item: '%s'", r[start:end])
 		}
 
-		if err := record(r, flag); err != nil {
-			return err
-		}
-	}
-	return nil
+		return record(r, flag)
+	})
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {

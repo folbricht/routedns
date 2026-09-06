@@ -29,25 +29,21 @@ var _ BlocklistDB = &HostsDB{}
 
 // NewHostsDB returns a new instance of a matcher for a list of hosts-file entries.
 func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
 	filters := make(map[string]ipRecords)
 	ptrMap := make(map[string][]string)
-	for _, r := range rules {
+	err := loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
 		if len(fields) == 0 {
-			continue
+			return nil
 		}
 		ipString := fields[0]
 		names := fields[1:]
 		if strings.HasPrefix(ipString, "#") {
-			continue
+			return nil
 		}
 		if len(names) == 0 {
-			continue
+			return nil
 		}
 		ip := net.ParseIP(ipString)
 		var isIP4 bool
@@ -75,9 +71,13 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		}
 		reverseAddr, err := dns.ReverseAddr(ipString)
 		if err != nil {
-			continue
+			return nil
 		}
 		ptrMap[reverseAddr] = append(ptrMap[reverseAddr], names...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &HostsDB{name, filters, ptrMap, loader}, nil
 }

@@ -22,25 +22,24 @@ var _ BlocklistDB = &MACDB{}
 
 // NewMACDB returns a new instance of a matcher for a list of MAC addresses.
 func NewMACDB(name string, loader BlocklistLoader) (*MACDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
 	db := &MACDB{
 		name:   name,
-		macs:   make([][]byte, 0, len(rules)),
 		loader: loader,
 	}
-	for _, r := range rules {
+	err := loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
-			continue
+			return nil
 		}
 		mac, err := parseMAC(r)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		db.macs = append(db.macs, mac)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return db, nil
 }

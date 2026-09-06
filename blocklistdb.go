@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -63,6 +64,10 @@ func refreshDatabase[T reloadable[T]](id, what string, refresh time.Duration, mu
 		time.Sleep(refresh)
 		log.Debug("reloading " + what)
 		reloaded, err := (*db).Reload()
+		if errors.Is(err, errBlocklistUnchanged) {
+			log.Debug("keeping the " + what + " already loaded")
+			continue
+		}
 		if err != nil {
 			log.Error("failed to load rules", "error", err)
 			continue

@@ -19,23 +19,22 @@ var _ BlocklistDB = &RegexpDB{}
 
 // NewRegexpDB returns a new instance of a matcher for a list of regular expressions.
 func NewRegexpDB(name string, loader BlocklistLoader) (*RegexpDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
 	var filters []*regexp.Regexp
-	for _, r := range rules {
+	err := loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		if r == "" || strings.HasPrefix(r, "#") {
-			continue
+			return nil
 		}
 		re, err := regexp.Compile(r)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		filters = append(filters, re)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	return &RegexpDB{name, filters, loader}, nil
 }
 

@@ -8,9 +8,9 @@ import (
 // FileLoader reads blocklist rules from a local file. Used to refresh blocklists
 // from a file on the local machine.
 type FileLoader struct {
-	filename    string
-	opt         FileLoaderOptions
-	lastSuccess []string
+	filename string
+	opt      FileLoaderOptions
+	loaded   bool // a load has succeeded before, so there is a ruleset to keep
 }
 
 // FileLoaderOptions holds options for file blocklist loaders.
@@ -19,43 +19,61 @@ type FileLoaderOptions struct {
 	AllowFailure bool
 }
 
-var _ BlocklistLoader = &FileLoader{}
+var (
+	_ BlocklistLoader = &FileLoader{}
+	_ streamingLoader = &FileLoader{}
+)
 
 func NewFileLoader(filename string, opt FileLoaderOptions) *FileLoader {
-	return &FileLoader{filename, opt, nil}
+	return &FileLoader{filename, opt, false}
 }
 
-func (l *FileLoader) Load() (rules []string, err error) {
+func (l *FileLoader) Load() ([]string, error) {
+	var rules []string
+	err := l.loadEach(func(rule string) error {
+		rules = append(rules, rule)
+		return nil
+	})
+	return rules, err
+}
+
+// loadEach reads the file a line at a time, so the whole list is never held at
+// once. A failed load with AllowFailure set is reported as no rules at all
+// rather than an error, which leaves whatever database is already serving
+// queries in place.
+func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
 
-	// If AllowFailure is enabled, return the last successfully loaded list
-	// and nil. Without it there's nothing to fall back to, so the rules are
-	// not kept: for a large list that copy would be held for the life of the
-	// process.
-	defer func() {
-		if !l.opt.AllowFailure {
-			return
-		}
-		if err != nil {
-			log.Warn("failed to load blocklist, continuing with previous ruleset",
-				"error", err)
-			rules = l.lastSuccess
-			err = nil
-			return
-		}
-		l.lastSuccess = rules
-	}()
+	err := l.read(fn)
+	if err == nil {
+		l.loaded = true
+		log.Debug("completed loading blocklist")
+		return nil
+	}
+	if !l.opt.AllowFailure || !loadFailure(err) {
+		return err
+	}
+	if !l.loaded { // nothing loaded yet, carry on with an empty list
+		log.Warn("failed to load blocklist, continuing without it", "error", err)
+		return nil
+	}
+	log.Warn("failed to load blocklist, continuing with the previous ruleset",
+		"error", err)
+	return errBlocklistUnchanged
+}
 
+func (l *FileLoader) read(fn func(rule string) error) error {
 	f, err := os.Open(l.filename)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		rules = append(rules, scanner.Text())
+		if err := fn(scanner.Text()); err != nil {
+			return ruleError{err}
+		}
 	}
-	log.Debug("completed loading blocklist")
-	return rules, scanner.Err()
+	return scanner.Err()
 }

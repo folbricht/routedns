@@ -18,20 +18,16 @@ var _ IPBlocklistDB = &CidrDB{}
 
 // NewCidrDB returns a new instance of a matcher for a list of networks.
 func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
 	db := &CidrDB{
 		name:   name,
 		ip4:    new(ipBlocklistTrie),
 		ip6:    new(ipBlocklistTrie),
 		loader: loader,
 	}
-	for _, r := range rules {
+	err := loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
-			continue
+			return nil
 		}
 		// Append a mask suffix if there isn't one already
 		if !strings.Contains(r, "/") {
@@ -43,13 +39,17 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 		}
 		ip, n, err := net.ParseCIDR(r)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if addr := ip.To4(); addr == nil {
 			db.ip6.add(n)
 		} else {
 			db.ip4.add(n)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return db, nil
 }

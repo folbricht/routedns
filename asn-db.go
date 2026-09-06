@@ -32,24 +32,23 @@ func NewASNDB(name string, loader BlocklistLoader, geoDBFile string) (*ASNDB, er
 		return nil, fmt.Errorf("failed to open geo asn database file: %w", err)
 	}
 
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
-
 	db := make(map[uint64]struct{})
-	for _, r := range rules {
+	err = loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
-			continue
+			return nil
 		}
 		r = strings.Split(r, "#")[0] // possible comment at the end of the line
 		r = strings.TrimSpace(r)
 		value, err := strconv.ParseUint(r, 10, 64) // GeoNames ID
 		if err != nil {
-			return nil, fmt.Errorf("unable to parse asn id in rule '%s': %w", r, err)
+			return fmt.Errorf("unable to parse asn id in rule '%s': %w", r, err)
 		}
 		db[value] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &ASNDB{
 		name:      name,

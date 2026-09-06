@@ -145,11 +145,11 @@ type domainBuilder struct {
 	parents []uint32
 }
 
-func newDomainBuilder(rules int) *domainBuilder {
+func newDomainBuilder() *domainBuilder {
 	b := &domainBuilder{}
-	b.nodes = make([]domainNode, 1, rules+1) // node 0 is the root
-	b.parents = make([]uint32, 1, rules+1)
-	b.rebuild(domainTableSize(uint64(rules)) + 8)
+	b.nodes = make([]domainNode, 1) // node 0 is the root
+	b.parents = make([]uint32, 1)
+	b.rebuild(64)
 	return b
 }
 
