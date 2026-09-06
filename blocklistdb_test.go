@@ -174,3 +174,40 @@ func TestMultiDBReloadUnchanged(t *testing.T) {
 	_, err = onlyFailing.Reload()
 	require.ErrorIs(t, err, errBlocklistUnchanged)
 }
+
+// The IP group behaves like the name-based one: a source that cannot be read
+// keeps its rules while the sources beside it refresh. It cannot carry the
+// database itself across, since it closes what it replaces, so it carries a
+// copy that owns whatever needs closing.
+func TestMultiIPDBReloadUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "list.txt")
+	require.NoError(t, os.WriteFile(name, []byte("10.0.0.0/8\n"), 0644))
+
+	failing := NewFileLoader(name, FileLoaderOptions{AllowFailure: true})
+	unreadable, err := NewCidrDB("unreadable", failing)
+	require.NoError(t, err)
+	steady, err := NewCidrDB("steady", NewStaticLoader([]string{"192.168.0.0/16"}))
+	require.NoError(t, err)
+
+	multi, err := NewMultiIPDB(unreadable, steady)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(name))
+	reloaded, err := multi.Reload()
+	require.NoError(t, err, "one unreadable source must not stall the group")
+	for _, ip := range []string{"10.1.2.3", "192.168.1.1"} {
+		_, ok := reloaded.Match(net.ParseIP(ip))
+		require.True(t, ok, "address %s", ip)
+	}
+
+	// Closing the group it came from must leave the carried database working.
+	require.NoError(t, multi.Close())
+	_, ok := reloaded.Match(net.ParseIP("10.1.2.3"))
+	require.True(t, ok, "the carried database was closed with the old group")
+
+	onlyFailing, err := NewMultiIPDB(unreadable)
+	require.NoError(t, err)
+	_, err = onlyFailing.Reload()
+	require.ErrorIs(t, err, errBlocklistUnchanged)
+}

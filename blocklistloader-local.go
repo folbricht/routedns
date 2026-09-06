@@ -55,11 +55,7 @@ func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
 
-	var served int
-	err := l.read(func(rule string) error {
-		served++
-		return fn(rule)
-	})
+	err := l.read(fn)
 	if err == nil {
 		l.loaded = true
 		log.Debug("completed loading blocklist")

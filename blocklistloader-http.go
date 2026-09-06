@@ -66,11 +66,7 @@ func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
 	log.Debug("loading blocklist")
 
 	start := time.Now()
-	var served int
-	err := l.read(log, func(rule string) error {
-		served++
-		return fn(rule)
-	})
+	err := l.read(log, fn)
 	if err == nil {
 		l.loaded = true
 		log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
@@ -134,22 +130,31 @@ func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
 	// write afterwards. The file is only renamed into place if the whole body
 	// arrives, so a failed download leaves the previous cache alone.
 	log.Debug("writing rules to cache-dir")
-	var served int
+	var scanErr error
+	var opened bool
 	err = writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
-		return scanRules(io.TeeReader(resp.Body, w), func(rule string) error {
-			served++
-			return fn(rule)
-		})
+		opened = true
+		scanErr = scanRules(io.TeeReader(resp.Body, w), fn)
+		return scanErr
 	})
 
-	// A cache that cannot be written is worth a warning, not a failed load, so
-	// long as nothing has been read yet: the body is still there to be read
-	// without it. Once rules are through, the failure is the read itself.
-	if err != nil && served == 0 && loadFailure(err) {
-		log.Warn("failed to write rules to cache-dir", "error", err)
+	// A cache that cannot be written is worth reporting, not failing the load
+	// over: the rules are in hand either way. The two have to be told apart by
+	// which one failed rather than by how far the read got, because the file
+	// is buffered and its flush, sync and rename all happen after the body has
+	// been read and every rule passed on.
+	switch {
+	case !opened:
+		// Nothing has been read yet, so the body is still there to take
+		// without a cache to write it to.
+		log.Error("failed to write rules to cache-dir", "error", err)
 		return scanRules(resp.Body, fn)
+	case scanErr != nil:
+		return scanErr
+	case err != nil:
+		log.Error("failed to write rules to cache-dir", "error", err)
 	}
-	return err
+	return nil
 }
 
 func (l *HTTPLoader) readFile(name string, fn func(rule string) error) error {

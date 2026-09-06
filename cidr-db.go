@@ -74,6 +74,13 @@ func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	return &BlocklistMatch{List: m.name, Rule: rule}, ok
 }
 
+// reuse hands this database to a new group while the group it came from is
+// closed. It holds no resource that closing releases, so the same instance
+// serves both.
+func (m *CidrDB) reuse() (IPBlocklistDB, error) {
+	return m, nil
+}
+
 func (m *CidrDB) Close() error {
 	return nil
 }

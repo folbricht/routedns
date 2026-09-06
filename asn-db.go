@@ -87,6 +87,23 @@ func (m *ASNDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	return nil, false
 }
 
+// reuse hands this database to a new group while the group it came from is
+// closed. The rules are immutable and shared, but the map file is opened again
+// so the copy has a handle of its own to close.
+func (m *ASNDB) reuse() (IPBlocklistDB, error) {
+	geoDB, err := maxminddb.Open(m.geoDBFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open geo asn database file: %w", err)
+	}
+	return &ASNDB{
+		name:      m.name,
+		loader:    m.loader,
+		geoDB:     geoDB,
+		geoDBFile: m.geoDBFile,
+		db:        m.db,
+	}, nil
+}
+
 func (m *ASNDB) Close() error {
 	return m.geoDB.Close()
 }

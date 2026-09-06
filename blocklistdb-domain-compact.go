@@ -75,7 +75,10 @@ func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains b
 	var entries []uint64
 	recent := new(domainRecent)
 	reset := func() {
-		entries, recent = entries[:0], new(domainRecent)
+		// Not entries[:0]: an empty slice still points at the array behind it,
+		// and so does the clone build makes of it, which would keep every
+		// entry of a list that broke off reachable for good.
+		entries, recent = nil, new(domainRecent)
 	}
 	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, hashing each suffix as it goes.

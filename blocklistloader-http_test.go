@@ -195,3 +195,39 @@ func TestHTTPLoaderUnwritableCache(t *testing.T) {
 	require.NoError(t, err, "the download worked, only the cache did not")
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
 }
+
+// Writing the cache fails after the body has been read and every rule passed
+// on, since the file is buffered and only flushed and renamed at the end. That
+// must not turn a list that arrived into a list that failed.
+func TestHTTPLoaderCacheWriteFails(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
+	// A directory where the cache file belongs: the rename at the end fails.
+	require.NoError(t, os.Mkdir(l.cacheFilename(), 0755))
+
+	rules, err := l.Load()
+	require.NoError(t, err, "the list arrived, only the cache write failed")
+	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+}
+
+// A line longer than the scanner's buffer is a failed read of the list, not a
+// cache problem, and must not be retried on a body already partly consumed.
+func TestHTTPLoaderOverlongLine(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, strings.Repeat("x", 100_000)+"\na.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	for _, dir := range []string{"", t.TempDir()} {
+		l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
+		l.fromDisk = false
+		rules, err := l.Load()
+		require.Error(t, err, "cache-dir=%q", dir)
+		require.Empty(t, rules)
+	}
+}
