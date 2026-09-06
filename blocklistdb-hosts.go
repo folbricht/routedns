@@ -27,7 +27,7 @@ type ipRecords struct {
 
 var _ BlocklistDB = &HostsDB{}
 
-// NewHostsDB returns a new instance of a matcher for a list of regular expressions.
+// NewHostsDB returns a new instance of a matcher for a list of hosts-file entries.
 func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 	rules, err := loader.Load()
 	if err != nil {

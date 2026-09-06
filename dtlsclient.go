@@ -51,7 +51,7 @@ type DTLSClientOptions struct {
 
 var _ Resolver = &DTLSClient{}
 
-// NewDTLSClient instantiates a new DNS-over-TLS resolver.
+// NewDTLSClient instantiates a new DNS-over-DTLS resolver.
 func NewDTLSClient(id, endpoint string, opt DTLSClientOptions) (*DTLSClient, error) {
 	if err := validEndpoint(endpoint); err != nil {
 		return nil, err

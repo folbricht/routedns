@@ -82,7 +82,7 @@ func refused(q *dns.Msg) *dns.Msg {
 	return responseWithCode(q, dns.RcodeRefused)
 }
 
-// Build a response for a query with the given responce code.
+// Build a response for a query with the given response code.
 func responseWithCode(q *dns.Msg, rcode int) *dns.Msg {
 	a := new(dns.Msg)
 	a.SetRcode(q, rcode)

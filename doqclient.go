@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -12,7 +14,6 @@ import (
 	"log/slog"
 
 	"github.com/miekg/dns"
-	"github.com/pkg/errors"
 	quic "github.com/quic-go/quic-go"
 )
 
@@ -80,7 +81,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	// replace the name in the endpoint with the bootstrap IP.
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse dot endpoint '%s'", endpoint)
+		return nil, fmt.Errorf("failed to parse doq endpoint '%s': %w", endpoint, err)
 	}
 	if opt.BootstrapAddr != "" {
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)

@@ -390,14 +390,8 @@ func run(opt options, args []string) error {
 
 		var build func() (rdns.Listener, error)
 		switch l.Protocol {
-		case "tcp":
-			network := networkForIPVersion("tcp", l.IPVersion)
-			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
-			build = func() (rdns.Listener, error) {
-				return rdns.NewDNSListener(id, l.Address, network, opt, resolver), nil
-			}
-		case "udp":
-			network := networkForIPVersion("udp", l.IPVersion)
+		case "tcp", "udp":
+			network := networkForIPVersion(l.Protocol, l.IPVersion)
 			l.Address = rdns.AddressWithDefault(l.Address, rdns.PlainDNSPort)
 			build = func() (rdns.Listener, error) {
 				return rdns.NewDNSListener(id, l.Address, network, opt, resolver), nil
@@ -439,10 +433,10 @@ func run(opt options, args []string) error {
 				return rdns.NewDTLSListener(id, l.Address, rdns.DTLSListenerOptions{DTLSConfig: dtlsConfig, ListenOptions: opt}, resolver), nil
 			}
 		case "doh":
-			if l.Transport != "quic" {
-				l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
-			} else if l.Transport == "quic" {
+			if l.Transport == "quic" {
 				l.Address = rdns.AddressWithDefault(l.Address, rdns.DohQuicPort)
+			} else {
+				l.Address = rdns.AddressWithDefault(l.Address, rdns.DoHPort)
 			}
 			var tlsConfig *tls.Config
 			if l.NoTLS {

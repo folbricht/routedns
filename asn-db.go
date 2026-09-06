@@ -22,7 +22,7 @@ type ASNDB struct {
 
 var _ IPBlocklistDB = &ASNDB{}
 
-// NewASN returns a new instance of a matcher for a ASN rules.
+// NewASNDB returns a new instance of a matcher for a list of ASN rules.
 func NewASNDB(name string, loader BlocklistLoader, geoDBFile string) (*ASNDB, error) {
 	if geoDBFile == "" {
 		geoDBFile = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"

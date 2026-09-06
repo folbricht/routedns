@@ -2,11 +2,11 @@ package rdns
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/pkg/errors"
 )
 
 // DoTClient is a DNS-over-TLS resolver.
@@ -71,7 +71,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 	if opt.BootstrapAddr != "" {
 		host, port, err := net.SplitHostPort(endpoint)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse dot endpoint '%s'", endpoint)
+			return nil, fmt.Errorf("failed to parse dot endpoint '%s': %w", endpoint, err)
 		}
 		client.TLSConfig.ServerName = host
 		endpoint = net.JoinHostPort(opt.BootstrapAddr, port)
