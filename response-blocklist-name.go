@@ -42,7 +42,7 @@ func NewResponseBlocklistName(id string, resolver Resolver, opt ResponseBlocklis
 
 	// Start the refresh goroutines if we have a list and a refresh period was given
 	if blocklist.BlocklistDB != nil && blocklist.BlocklistRefresh > 0 {
-		go blocklist.refreshLoopBlocklist(blocklist.BlocklistRefresh)
+		go refreshDatabase(id, "blocklist", blocklist.BlocklistRefresh, &blocklist.mu, &blocklist.BlocklistDB)
 	}
 	return blocklist, nil
 }
@@ -68,22 +68,6 @@ func (r *ResponseBlocklistName) match(msg *dns.Msg) (*BlocklistMatch, bool) {
 	defer r.mu.RUnlock()
 	_, _, match, ok := r.BlocklistDB.Match(msg)
 	return match, ok
-}
-
-func (r *ResponseBlocklistName) refreshLoopBlocklist(refresh time.Duration) {
-	for {
-		time.Sleep(refresh)
-		log := Log.With("id", r.id)
-		log.Debug("reloading blocklist")
-		db, err := r.BlocklistDB.Reload()
-		if err != nil {
-			log.Error("failed to load rules", "error", err)
-			continue
-		}
-		r.mu.Lock()
-		r.BlocklistDB = db
-		r.mu.Unlock()
-	}
 }
 
 func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
