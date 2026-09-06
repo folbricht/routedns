@@ -30,16 +30,21 @@ func (l *FileLoader) Load() (rules []string, err error) {
 	log.Debug("loading blocklist")
 
 	// If AllowFailure is enabled, return the last successfully loaded list
-	// and nil
+	// and nil. Without it there's nothing to fall back to, so the rules are
+	// not kept: for a large list that copy would be held for the life of the
+	// process.
 	defer func() {
-		if err != nil && l.opt.AllowFailure {
+		if !l.opt.AllowFailure {
+			return
+		}
+		if err != nil {
 			log.Warn("failed to load blocklist, continuing with previous ruleset",
 				"error", err)
 			rules = l.lastSuccess
 			err = nil
-		} else {
-			l.lastSuccess = rules
+			return
 		}
+		l.lastSuccess = rules
 	}()
 
 	f, err := os.Open(l.filename)

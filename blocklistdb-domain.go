@@ -1,8 +1,8 @@
 package rdns
 
 import (
+	"bytes"
 	"fmt"
-	"maps"
 	"net"
 	"strings"
 
@@ -22,21 +22,29 @@ import (
 // (e.g. hagezi's "Wildcard Domains" lists).
 type DomainDB struct {
 	name              string
-	root              node
+	root              *domainNode
 	loader            BlocklistLoader
 	includeSubdomains bool
 }
 
-type node map[string]node
+// A node in the trie of domain labels, holding the rules that end on it. All
+// three rule shapes describe the node of their base domain, so "domain.com",
+// ".domain.com" and "*.domain.com" all record themselves on the node for
+// domain.com and differ only in the flag they set.
+type domainNode struct {
+	children map[string]*domainNode
+	flags    uint8
+}
 
-// exactKey marks a node as an exact-match terminal that must also act
-// as an interior node for more-specific rules. A nil/empty node still
-// means an exact terminal on its own; exactKey is only added when the
-// same node additionally carries children or other sentinels so the
-// marker isn't masked. The value can never collide with a real label
-// (rules are split on ".", so labels never contain ".") nor with the
-// "" (apex+sub) or "*" (sub-only) sentinels.
-const exactKey = "."
+const (
+	ruleExact   uint8 = 1 << iota // domain.com, the name itself
+	ruleApexSub                   // .domain.com, the name and everything under it
+	ruleSubOnly                   // *.domain.com, everything under it but not itself
+)
+
+// The longest name that can arrive in a query. Presentation-format names can
+// exceed it when they carry escapes, which the match path handles separately.
+const maxDomainName = 255
 
 var _ BlocklistDB = &DomainDB{}
 
@@ -52,128 +60,70 @@ func NewDomainSubdomainDB(name string, loader BlocklistLoader) (*DomainDB, error
 }
 
 func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainDB, error) {
-	// Large lists (e.g. hagezi NRD) produce huge numbers of identical
-	// terminal nodes: empty leaves, "{"": empty}" (.X.tld), and
-	// "{"*": empty}" (*.X.tld). Empty leaves are represented as the nil
-	// node so they cost zero allocations. The two depth-1 shapes share
-	// a single map instance per build. Any later rule that descends
-	// through one of them clones first so it doesn't corrupt sibling
-	// paths that share the same instance.
-	dotNode := node{"": nil}
-	starNode := node{"*": nil}
-
 	rules, err := loader.Load()
 	if err != nil {
 		return nil, err
 	}
-	root := make(node)
+	root := new(domainNode)
 	for _, r := range rules {
-		r = strings.TrimSpace(r)
-
-		// Strip trailing . in case the list has FQDN names with . suffixes.
-		r = strings.TrimSuffix(r, ".")
-
-		// Force all domain names to lower case
-		r = strings.ToLower(r)
-
-		// In subdomain-matching mode, treat bare entries as ".entry" so they
-		// match the apex and all sub-domains. Leave entries that already
-		// start with "." or "*." alone.
-		if includeSubdomains && r != "" && !strings.HasPrefix(r, ".") && !strings.HasPrefix(r, "*.") {
-			r = "." + r
+		// Strip a trailing dot in case the list holds FQDNs, and force the
+		// rule to lower case since queries are matched in lower case.
+		r = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r), "."))
+		if r == "" {
+			continue
 		}
 
-		// Break up the domain into its parts and iterate backwards over them, building
-		// a graph of maps
-		parts := strings.Split(r, ".")
+		// A bare wildcard only ever applied to the labels under it, of which
+		// there are none here, so it's not an error, just nothing to record.
+		if r == "*" {
+			continue
+		}
+
+		// The prefix decides what the rule matches, the remainder is the base
+		// domain that carries the flag. In subdomain mode a bare entry covers
+		// the apex and everything under it, while entries that bring their own
+		// prefix keep their meaning.
+		flag := ruleExact
+		switch {
+		case strings.HasPrefix(r, "*."):
+			r, flag = r[2:], ruleSubOnly
+		case strings.HasPrefix(r, "."):
+			r, flag = r[1:], ruleApexSub
+		case includeSubdomains:
+			flag = ruleApexSub
+		}
+
+		// Walk the labels from the TLD inwards, building the path as needed.
 		n := root
-		for i := len(parts) - 1; i >= 0; i-- {
-			part := parts[i]
+		end := len(r)
+		for {
+			i := strings.LastIndexByte(r[:end], '.')
+			label := r[i+1 : end]
 
-			// Only allow wildcards as the first domain part, and not in a string
-			if strings.Contains(part, "*") && (i > 0 || len(part) != 1) {
-				return nil, fmt.Errorf("invalid blocklist item: '%s'", part)
+			// Wildcards are only valid as the whole first label, which the
+			// prefix above has already taken off.
+			if strings.Contains(label, "*") {
+				return nil, fmt.Errorf("invalid blocklist item: '%s'", label)
 			}
-
-			subNode, ok := n[part]
+			child, ok := n.children[label]
 			if !ok {
-				switch {
-				case i == 0:
-					subNode = nil
-				case i == 1 && parts[0] == "":
-					subNode = dotNode
-				case i == 1 && parts[0] == "*":
-					subNode = starNode
-				default:
-					subNode = make(node)
+				child = new(domainNode)
+				if n.children == nil {
+					n.children = make(map[string]*domainNode)
 				}
-				n[part] = subNode
-				n = subNode
-				continue
+				// Cloned so the node doesn't pin the whole rule line, which
+				// is a slice of the same backing array.
+				n.children[strings.Clone(label)] = child
 			}
-
-			// The path segment already exists.
-			if i == 0 {
-				// This rule is an exact match terminating here. A
-				// nil/empty leaf already means an exact terminal, and a
-				// "" sentinel already matches the apex, so in both
-				// cases there's nothing to add. Otherwise the node also
-				// acts as an interior node for more-specific rules, so
-				// record an explicit exact marker that survives
-				// alongside the children. Clone shared shapes before
-				// mutating so siblings sharing the instance aren't
-				// corrupted.
-				if len(subNode) == 0 {
-					break
-				}
-				if _, apex := subNode[""]; apex {
-					break
-				}
-				if isSharedShape(subNode) {
-					subNode = maps.Clone(subNode)
-					n[part] = subNode
-				}
-				subNode[exactKey] = nil
+			n = child
+			if i <= 0 {
 				break
 			}
-
-			// Descending through an existing segment. Clone/expand
-			// shared shapes so sibling paths that share the instance
-			// aren't corrupted, preserving an exact terminal that a
-			// shorter rule stored here as a nil leaf.
-			if isSharedShape(subNode) {
-				if subNode == nil {
-					subNode = node{exactKey: nil}
-				} else {
-					subNode = maps.Clone(subNode)
-				}
-				n[part] = subNode
-			}
-			n = subNode
+			end = i
 		}
+		n.flags |= flag
 	}
 	return &DomainDB{name, root, loader, includeSubdomains}, nil
-}
-
-// isSharedShape reports whether n looks like one of the build-time
-// sentinels: a nil empty leaf, {"": nil} (the .X dot-sentinel), or
-// {"*": nil} (the *.X star-sentinel). The build path never produces
-// nodes of these shapes outside the sentinel paths, so a shape match
-// safely identifies a (possibly shared) instance that must be cloned
-// before mutation.
-func isSharedShape(n node) bool {
-	switch len(n) {
-	case 0:
-		return n == nil
-	case 1:
-		if v, ok := n[""]; ok {
-			return v == nil
-		}
-		if v, ok := n["*"]; ok {
-			return v == nil
-		}
-	}
-	return false
 }
 
 func (m *DomainDB) Reload() (BlocklistDB, error) {
@@ -181,57 +131,69 @@ func (m *DomainDB) Reload() (BlocklistDB, error) {
 }
 
 func (m *DomainDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {
-	q := msg.Question[0]
-	s := strings.ToLower(strings.TrimSuffix(q.Name, "."))
-	var matched []string
-	parts := strings.Split(s, ".")
+	name := strings.TrimSuffix(msg.Question[0].Name, ".")
+
+	// Lower-cased into a stack buffer, so the mixed-case names 0x20 encoding
+	// produces don't cost an allocation like strings.ToLower would.
+	var buf [maxDomainName]byte
+	if len(name) <= len(buf) {
+		return m.match(lowerASCII(buf[:len(name)], name))
+	}
+	return m.match([]byte(strings.ToLower(name)))
+}
+
+// match walks the labels of a lower-cased query name from the TLD inwards,
+// stopping at the first rule that covers it.
+func (m *DomainDB) match(name []byte) ([]net.IP, []string, *BlocklistMatch, bool) {
 	n := m.root
-	for i := len(parts) - 1; i >= 0; i-- {
-		part := parts[i]
-		subNode, ok := n[part]
+	end := len(name)
+	for end > 0 {
+		i := bytes.LastIndexByte(name[:end], '.')
+
+		// Indexing a map with a string conversion of a byte slice doesn't
+		// allocate, so a query that doesn't match costs nothing on the heap.
+		child, ok := n.children[string(name[i+1:end])]
 		if !ok {
 			return nil, nil, nil, false
 		}
-		matched = append(matched, part)
-		if _, ok := subNode[""]; ok { // exact and sub-domain match
-			return nil,
-				nil,
-				&BlocklistMatch{
-					List: m.name,
-					Rule: matchedDomainParts(".", matched),
-				},
-				true
+		if child.flags&ruleApexSub != 0 {
+			return nil, nil, m.matched(".", name[i+1:]), true
 		}
-		if _, ok := subNode["*"]; ok && i > 0 { // wildcard match on sub-domains
-			return nil,
-				nil,
-				&BlocklistMatch{
-					List: m.name,
-					Rule: matchedDomainParts("*.", matched),
-				},
-				true
+		if child.flags&ruleSubOnly != 0 && i > 0 { // only if a label remains to the left
+			return nil, nil, m.matched("*.", name[i+1:]), true
 		}
-		n = subNode
+		n = child
+		end = i
 	}
-	_, exact := n[exactKey]
-	return nil,
-		nil,
-		&BlocklistMatch{
-			List: m.name,
-			Rule: matchedDomainParts("", matched),
-		},
-		len(n) == 0 || exact // exact match
+	if n.flags&ruleExact != 0 {
+		return nil, nil, m.matched("", name), true
+	}
+	return nil, nil, nil, false
+}
+
+// matched reports the rule that matched, rebuilt from the part of the query
+// name it matched on.
+func (m *DomainDB) matched(prefix string, name []byte) *BlocklistMatch {
+	var b strings.Builder
+	b.Grow(len(prefix) + len(name))
+	b.WriteString(prefix)
+	b.Write(name)
+	return &BlocklistMatch{List: m.name, Rule: b.String()}
 }
 
 func (m *DomainDB) String() string {
 	return "Domain"
 }
 
-// Turn a list of matched domain fragments into a domain (rule)
-func matchedDomainParts(prefix string, p []string) string {
-	for i := len(p)/2 - 1; i >= 0; i-- {
-		opp := len(p) - 1 - i
-		p[i], p[opp] = p[opp], p[i]
+// lowerASCII copies name into b, lower-cased. Domain names are ASCII, so
+// byte-wise lowering is all that's needed.
+func lowerASCII(b []byte, name string) []byte {
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
 	}
-	return prefix + strings.Join(p, ".")
+	return b
 }

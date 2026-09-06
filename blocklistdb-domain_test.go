@@ -1,6 +1,9 @@
 package rdns
 
 import (
+	"fmt"
+	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -62,8 +65,8 @@ func TestDomainDB(t *testing.T) {
 }
 
 // TestDomainDBOverlap covers exact rules that overlap with more-specific
-// rules. The trie's exact-match marker must survive regardless of the
-// order in which the overlapping rules are inserted.
+// rules. The exact-match flag must survive regardless of the order in which
+// the overlapping rules are inserted.
 func TestDomainDBOverlap(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -111,7 +114,7 @@ func TestDomainDBOverlap(t *testing.T) {
 			},
 		},
 		{
-			name:  "apex+sub rule then exact apex (shared dot sentinel untouched)",
+			name:  "apex+sub rule then exact apex",
 			rules: []string{".domain.com", "domain.com", ".other.com"},
 			tests: []struct {
 				q     string
@@ -124,7 +127,7 @@ func TestDomainDBOverlap(t *testing.T) {
 			},
 		},
 		{
-			name:  "wildcard rule then exact apex (shared star sentinel untouched)",
+			name:  "wildcard rule then exact apex",
 			rules: []string{"*.domain.com", "*.other.com", "domain.com"},
 			tests: []struct {
 				q     string
@@ -242,5 +245,159 @@ func TestDomainDBError(t *testing.T) {
 		loader := NewStaticLoader([]string{test.name})
 		_, err := NewDomainDB("testlist", loader)
 		require.Error(t, err)
+	}
+}
+
+// generateDomainRules builds a deterministic ruleset shaped like a real
+// blocklist: mostly two-label entries, some deeper, in all three rule forms.
+func generateDomainRules(n int) []string {
+	rnd := rand.New(rand.NewSource(42))
+	words := []string{"ads", "track", "cdn", "api", "metrics", "cloud", "static",
+		"pixel", "log", "stats", "img", "click", "promo", "banner", "beacon"}
+	tlds := []string{"com", "net", "org", "io", "xyz", "top", "info", "biz"}
+	rules := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		domain := fmt.Sprintf("%s%d.%s", words[rnd.Intn(len(words))], i, tlds[rnd.Intn(len(tlds))])
+		if rnd.Intn(4) == 0 { // a quarter of the rules sit a level deeper
+			domain = words[rnd.Intn(len(words))] + "." + domain
+		}
+		switch rnd.Intn(3) {
+		case 0:
+			rules = append(rules, domain) // the name itself
+		case 1:
+			rules = append(rules, "."+domain) // the name and everything under it
+		default:
+			rules = append(rules, "*."+domain) // everything under it
+		}
+	}
+	return rules
+}
+
+// A rule reduced to the base domain it applies to and what it covers.
+type parsedDomainRule struct {
+	domain    string
+	apex, sub bool
+	reported  string // the rule string a match on it reports
+}
+
+func parseDomainRules(rules []string, includeSubdomains bool) []parsedDomainRule {
+	parsed := make([]parsedDomainRule, 0, len(rules))
+	for _, r := range rules {
+		r = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r), "."))
+		if r == "" || r == "*" {
+			continue
+		}
+		p := parsedDomainRule{}
+		switch {
+		case strings.HasPrefix(r, "*."):
+			p.domain, p.sub = r[2:], true
+			p.reported = "*." + p.domain
+		case strings.HasPrefix(r, "."):
+			p.domain, p.apex, p.sub = r[1:], true, true
+			p.reported = "." + p.domain
+		case includeSubdomains:
+			p.domain, p.apex, p.sub = r, true, true
+			p.reported = "." + p.domain
+		default:
+			p.domain, p.apex = r, true
+			p.reported = p.domain
+		}
+		parsed = append(parsed, p)
+	}
+	return parsed
+}
+
+// referenceDomainMatch applies the rule semantics from the DomainDB doc
+// comment one rule at a time. A rule can only ever add a match, never take one
+// away, so checking each independently is a valid oracle for what the trie
+// does in one pass.
+func referenceDomainMatch(parsed []parsedDomainRule, name string) bool {
+	name = strings.ToLower(strings.TrimSuffix(name, "."))
+	for _, p := range parsed {
+		if p.apex && name == p.domain {
+			return true
+		}
+		if p.sub && strings.HasSuffix(name, "."+p.domain) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDomainDBGenerated checks the trie against the rule semantics applied
+// directly, over a generated list and queries derived from it.
+func TestDomainDBGenerated(t *testing.T) {
+	for _, includeSubdomains := range []bool{false, true} {
+		rules := generateDomainRules(500)
+		parsed := parseDomainRules(rules, includeSubdomains)
+		reported := make(map[string]bool, len(parsed))
+		for _, p := range parsed {
+			reported[p.reported] = true
+		}
+
+		db, err := newDomainDB("testlist", NewStaticLoader(rules), includeSubdomains)
+		require.NoError(t, err)
+
+		var queries []string
+		for _, p := range parsed {
+			queries = append(queries, p.domain, "www."+p.domain, "a.b."+p.domain)
+			if i := strings.IndexByte(p.domain, '.'); i > 0 {
+				queries = append(queries, p.domain[i+1:]) // the parent domain
+			}
+		}
+		for i := 0; i < 200; i++ {
+			queries = append(queries, fmt.Sprintf("unlisted%d.example.net", i))
+		}
+
+		msg := new(dns.Msg)
+		for _, q := range queries {
+			msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
+			_, _, match, ok := db.Match(msg)
+			require.Equal(t, referenceDomainMatch(parsed, q), ok,
+				"subdomain-mode=%v query=%s", includeSubdomains, q)
+			if !ok {
+				require.Nil(t, match, "a miss must not build a match")
+				continue
+			}
+			require.True(t, reported[match.Rule],
+				"reported rule %q is not one of the rules loaded", match.Rule)
+		}
+	}
+}
+
+func BenchmarkDomainDBMatch(b *testing.B) {
+	for _, n := range []int{1000, 100000} {
+		rules := generateDomainRules(n)
+		db, err := newDomainDB("testlist", NewStaticLoader(rules), false)
+		require.NoError(b, err)
+
+		// A name that matches the last rule loaded, one that shares its TLD
+		// but nothing else, and a mixed-case name to cover the lowering path.
+		hit := "www." + strings.TrimPrefix(strings.TrimPrefix(rules[len(rules)-1], "*."), ".")
+		for _, q := range []string{hit, "www.example.com", "WWW.ExAmPlE.CoM"} {
+			b.Run(fmt.Sprintf("rules=%d/name=%s", n, q), func(b *testing.B) {
+				msg := new(dns.Msg)
+				msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
+				b.ReportAllocs()
+				for b.Loop() {
+					_, _, _, _ = db.Match(msg)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkDomainDBBuild(b *testing.B) {
+	for _, n := range []int{10000, 100000} {
+		rules := generateDomainRules(n)
+		loader := NewStaticLoader(rules)
+		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := newDomainDB("testlist", loader, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
