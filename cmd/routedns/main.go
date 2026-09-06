@@ -647,7 +647,14 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if err != nil {
 			return err
 		}
-		allowlistDB, err := buildBlocklistDB(id, g.BlocklistFormat, g.Allowlist, g.AllowlistSource)
+		// A static allowlist is in allowlist-format when one is given, and in
+		// the blocklist's format otherwise, which is the format such a list
+		// has always been read in.
+		allowlistFormat := g.AllowlistFormat
+		if allowlistFormat == "" {
+			allowlistFormat = g.BlocklistFormat
+		}
+		allowlistDB, err := buildBlocklistDB(id, allowlistFormat, g.Allowlist, g.AllowlistSource)
 		if err != nil {
 			return err
 		}
