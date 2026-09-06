@@ -643,45 +643,13 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Allowlist) > 0 && len(g.AllowlistSource) > 0 {
 			return fmt.Errorf("static allowlist can't be used with 'source' in '%s'", id)
 		}
-		var blocklistDB rdns.BlocklistDB
-		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.Blocklist)
-			if err != nil {
-				return err
-			}
-		} else {
-			var dbs []rdns.BlocklistDB
-			for _, s := range g.BlocklistSource {
-				db, err := newBlocklistDB(s, nil)
-				if err != nil {
-					return fmt.Errorf("%s: %w", id, err)
-				}
-				dbs = append(dbs, db)
-			}
-			blocklistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+		blocklistDB, err := buildBlocklistDB(id, g.BlocklistFormat, g.Blocklist, g.BlocklistSource)
+		if err != nil {
+			return err
 		}
-		var allowlistDB rdns.BlocklistDB
-		if len(g.Allowlist) > 0 {
-			allowlistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Allowlist)
-			if err != nil {
-				return err
-			}
-		} else {
-			var dbs []rdns.BlocklistDB
-			for _, s := range g.AllowlistSource {
-				db, err := newBlocklistDB(s, nil)
-				if err != nil {
-					return fmt.Errorf("%s: %w", id, err)
-				}
-				dbs = append(dbs, db)
-			}
-			allowlistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+		allowlistDB, err := buildBlocklistDB(id, g.BlocklistFormat, g.Allowlist, g.AllowlistSource)
+		if err != nil {
+			return err
 		}
 		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
 		if err != nil {
@@ -936,25 +904,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
 			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
 		}
-		var blocklistDB rdns.IPBlocklistDB
-		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
-			if err != nil {
-				return err
-			}
-		} else {
-			var dbs []rdns.IPBlocklistDB
-			for _, s := range g.BlocklistSource {
-				db, err := newIPBlocklistDB(s, g.LocationDB, nil)
-				if err != nil {
-					return fmt.Errorf("%s: %w", id, err)
-				}
-				dbs = append(dbs, db)
-			}
-			blocklistDB, err = rdns.NewMultiIPDB(dbs...)
-			if err != nil {
-				return err
-			}
+		blocklistDB, err := buildIPBlocklistDB(id, g.BlocklistFormat, g.LocationDB, g.Blocklist, g.BlocklistSource)
+		if err != nil {
+			return err
 		}
 		edeTpl, err := rdns.NewEDNS0EDETemplate(g.EDNS0EDE.Code, g.EDNS0EDE.Text)
 		if err != nil {
@@ -979,25 +931,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
 			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
 		}
-		var blocklistDB rdns.BlocklistDB
-		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newBlocklistDB(list{Format: g.BlocklistFormat}, g.Blocklist)
-			if err != nil {
-				return err
-			}
-		} else {
-			var dbs []rdns.BlocklistDB
-			for _, s := range g.BlocklistSource {
-				db, err := newBlocklistDB(s, nil)
-				if err != nil {
-					return fmt.Errorf("%s: %w", id, err)
-				}
-				dbs = append(dbs, db)
-			}
-			blocklistDB, err = rdns.NewMultiDB(dbs...)
-			if err != nil {
-				return err
-			}
+		blocklistDB, err := buildBlocklistDB(id, g.BlocklistFormat, g.Blocklist, g.BlocklistSource)
+		if err != nil {
+			return err
 		}
 		opt := rdns.ResponseBlocklistNameOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
@@ -1016,25 +952,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		if len(g.Blocklist) > 0 && len(g.BlocklistSource) > 0 {
 			return fmt.Errorf("static blocklist can't be used with 'blocklist-source' in '%s'", id)
 		}
-		var blocklistDB rdns.IPBlocklistDB
-		if len(g.Blocklist) > 0 {
-			blocklistDB, err = newIPBlocklistDB(list{Name: id, Format: g.BlocklistFormat}, g.LocationDB, g.Blocklist)
-			if err != nil {
-				return err
-			}
-		} else {
-			var dbs []rdns.IPBlocklistDB
-			for _, s := range g.BlocklistSource {
-				db, err := newIPBlocklistDB(s, g.LocationDB, nil)
-				if err != nil {
-					return fmt.Errorf("%s: %w", id, err)
-				}
-				dbs = append(dbs, db)
-			}
-			blocklistDB, err = rdns.NewMultiIPDB(dbs...)
-			if err != nil {
-				return err
-			}
+		blocklistDB, err := buildIPBlocklistDB(id, g.BlocklistFormat, g.LocationDB, g.Blocklist, g.BlocklistSource)
+		if err != nil {
+			return err
 		}
 		opt := rdns.ClientBlocklistOptions{
 			BlocklistResolver: resolvers[g.BlockListResolver],
@@ -1205,35 +1125,80 @@ func instantiateRouter(id string, r router, resolvers map[string]rdns.Resolver) 
 	return nil
 }
 
-func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
+// The blocklist database for a group, built from the rules given inline in the
+// config, or from every source it names combined into one.
+func buildBlocklistDB(id, format string, rules []string, sources []list) (rdns.BlocklistDB, error) {
+	if len(rules) > 0 {
+		return newBlocklistDB(list{Name: id, Format: format}, rules)
+	}
+	dbs := make([]rdns.BlocklistDB, 0, len(sources))
+	for _, s := range sources {
+		db, err := newBlocklistDB(s, nil)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", id, err)
+		}
+		dbs = append(dbs, db)
+	}
+	return rdns.NewMultiDB(dbs...)
+}
+
+// The same for the databases that match on IP rather than name.
+func buildIPBlocklistDB(id, format, locationDB string, rules []string, sources []list) (rdns.IPBlocklistDB, error) {
+	if len(rules) > 0 {
+		return newIPBlocklistDB(list{Name: id, Format: format}, locationDB, rules)
+	}
+	dbs := make([]rdns.IPBlocklistDB, 0, len(sources))
+	for _, s := range sources {
+		db, err := newIPBlocklistDB(s, locationDB, nil)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", id, err)
+		}
+		dbs = append(dbs, db)
+	}
+	return rdns.NewMultiIPDB(dbs...)
+}
+
+// Loads a list from the rules given inline in the config, or from the file or
+// URL it names.
+func newBlocklistLoader(l list, rules []string) (rdns.BlocklistLoader, error) {
 	loc, err := url.Parse(l.Source)
 	if err != nil {
 		return nil, err
 	}
-	name := l.Name
-	if name == "" {
-		name = l.Source
-	}
-	var loader rdns.BlocklistLoader
 	if len(rules) > 0 {
-		loader = rdns.NewStaticLoader(rules)
-	} else {
-		switch loc.Scheme {
-		case "http", "https":
-			opt := rdns.HTTPLoaderOptions{
-				CacheDir:     l.CacheDir,
-				AllowFailure: l.AllowFailure,
-			}
-			loader = rdns.NewHTTPLoader(l.Source, opt)
-		case "":
-			opt := rdns.FileLoaderOptions{
-				AllowFailure: l.AllowFailure,
-			}
-			loader = rdns.NewFileLoader(l.Source, opt)
-		default:
-			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
-		}
+		return rdns.NewStaticLoader(rules), nil
 	}
+	switch loc.Scheme {
+	case "http", "https":
+		opt := rdns.HTTPLoaderOptions{
+			CacheDir:     l.CacheDir,
+			AllowFailure: l.AllowFailure,
+		}
+		return rdns.NewHTTPLoader(l.Source, opt), nil
+	case "":
+		opt := rdns.FileLoaderOptions{
+			AllowFailure: l.AllowFailure,
+		}
+		return rdns.NewFileLoader(l.Source, opt), nil
+	default:
+		return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
+	}
+}
+
+// The name a list is known by in logs and in the match it returns.
+func listName(l list) string {
+	if l.Name == "" {
+		return l.Source
+	}
+	return l.Name
+}
+
+func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
+	loader, err := newBlocklistLoader(l, rules)
+	if err != nil {
+		return nil, err
+	}
+	name := listName(l)
 	switch l.Format {
 	case "regexp", "":
 		return rdns.NewRegexpDB(name, loader)
@@ -1251,35 +1216,11 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 }
 
 func newIPBlocklistDB(l list, locationDB string, rules []string) (rdns.IPBlocklistDB, error) {
-	loc, err := url.Parse(l.Source)
+	loader, err := newBlocklistLoader(l, rules)
 	if err != nil {
 		return nil, err
 	}
-	name := l.Name
-	if name == "" {
-		name = l.Source
-	}
-	var loader rdns.BlocklistLoader
-	if len(rules) > 0 {
-		loader = rdns.NewStaticLoader(rules)
-	} else {
-		switch loc.Scheme {
-		case "http", "https":
-			opt := rdns.HTTPLoaderOptions{
-				CacheDir:     l.CacheDir,
-				AllowFailure: l.AllowFailure,
-			}
-			loader = rdns.NewHTTPLoader(l.Source, opt)
-		case "":
-			opt := rdns.FileLoaderOptions{
-				AllowFailure: l.AllowFailure,
-			}
-			loader = rdns.NewFileLoader(l.Source, opt)
-		default:
-			return nil, fmt.Errorf("unsupported scheme '%s' in '%s'", loc.Scheme, l.Source)
-		}
-	}
-
+	name := listName(l)
 	switch l.Format {
 	case "cidr", "":
 		return rdns.NewCidrDB(name, loader)
