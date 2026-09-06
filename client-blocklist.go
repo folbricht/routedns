@@ -16,7 +16,7 @@ type ClientBlocklist struct {
 	ClientBlocklistOptions
 	resolver Resolver
 	mu       sync.RWMutex
-	metrics  *BlocklistMetrics
+	metrics  *blocklistMetrics
 }
 
 var _ Resolver = &ClientBlocklist{}
@@ -42,7 +42,7 @@ func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions
 		id:                     id,
 		resolver:               resolver,
 		ClientBlocklistOptions: opt,
-		metrics:                NewBlocklistMetrics(id),
+		metrics:                newBlocklistMetrics(id),
 	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given

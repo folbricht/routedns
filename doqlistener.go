@@ -28,7 +28,7 @@ type DoQListener struct {
 	transport *quic.Transport
 	conn      *net.UDPConn
 	log       *slog.Logger
-	metrics   *DoQListenerMetrics
+	metrics   *doqListenerMetrics
 }
 
 var _ Listener = &DoQListener{}
@@ -40,8 +40,8 @@ type DoQListenerOptions struct {
 	TLSConfig *tls.Config
 }
 
-type DoQListenerMetrics struct {
-	ListenerMetrics
+type doqListenerMetrics struct {
+	listenerMetrics
 
 	// Count of connections initiated.
 	connection *expvar.Int
@@ -49,9 +49,9 @@ type DoQListenerMetrics struct {
 	stream *expvar.Int
 }
 
-func NewDoQListenerMetrics(id string) *DoQListenerMetrics {
-	return &DoQListenerMetrics{
-		ListenerMetrics: ListenerMetrics{
+func newDoqListenerMetrics(id string) *doqListenerMetrics {
+	return &doqListenerMetrics{
+		listenerMetrics: listenerMetrics{
 			query:    getVarInt("listener", id, "query"),
 			response: getVarMap("listener", id, "response"),
 			drop:     getVarInt("listener", id, "drop"),
@@ -74,7 +74,7 @@ func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver)
 		r:       resolver,
 		opt:     opt,
 		log:     Log.With("id", id, "protocol", "doq", "addr", addr),
-		metrics: NewDoQListenerMetrics(id),
+		metrics: newDoqListenerMetrics(id),
 	}
 	return l
 }

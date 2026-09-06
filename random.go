@@ -17,7 +17,7 @@ type Random struct {
 	resolvers []Resolver
 	mu        sync.RWMutex
 	opt       RandomOptions
-	metrics   *FailRouterMetrics
+	metrics   *failRouterMetrics
 }
 
 var _ Resolver = &Random{}
@@ -42,7 +42,7 @@ func NewRandom(id string, opt RandomOptions, resolvers ...Resolver) *Random {
 		id:        id,
 		resolvers: resolvers,
 		opt:       opt,
-		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+		metrics:   newFailRouterMetrics(id, len(resolvers)),
 	}
 }
 

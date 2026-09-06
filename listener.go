@@ -38,7 +38,7 @@ type ClientInfo struct {
 }
 
 // Metrics that are available from listeners and clients.
-type ListenerMetrics struct {
+type listenerMetrics struct {
 	// DNS query count.
 	query *expvar.Int
 	// DNS response type counts.
@@ -51,8 +51,8 @@ type ListenerMetrics struct {
 	maxQueueLen *expvar.Int
 }
 
-func NewListenerMetrics(base string, id string) *ListenerMetrics {
-	return &ListenerMetrics{
+func newListenerMetrics(base string, id string) *listenerMetrics {
+	return &listenerMetrics{
 		query:       getVarInt(base, id, "query"),
 		response:    getVarMap(base, id, "response"),
 		drop:        getVarInt(base, id, "drop"),

@@ -17,7 +17,7 @@ type Blocklist struct {
 	BlocklistOptions
 	resolver Resolver
 	mu       sync.RWMutex
-	metrics  *BlocklistMetrics
+	metrics  *blocklistMetrics
 }
 
 var _ Resolver = &Blocklist{}
@@ -47,7 +47,7 @@ type BlocklistOptions struct {
 	EDNS0EDETemplate *EDNS0EDETemplate
 }
 
-type BlocklistMetrics struct {
+type blocklistMetrics struct {
 	// Blocked queries count.
 	blocked *expvar.Int
 	// Allowed queries count.
@@ -59,8 +59,8 @@ const (
 	maxPTRResponses = 10
 )
 
-func NewBlocklistMetrics(id string) *BlocklistMetrics {
-	return &BlocklistMetrics{
+func newBlocklistMetrics(id string) *blocklistMetrics {
+	return &blocklistMetrics{
 		allowed: getVarInt("router", id, "allow"),
 		blocked: getVarInt("router", id, "deny"),
 	}
@@ -72,7 +72,7 @@ func NewBlocklist(id string, resolver Resolver, opt BlocklistOptions) (*Blocklis
 		id:               id,
 		resolver:         resolver,
 		BlocklistOptions: opt,
-		metrics:          NewBlocklistMetrics(id),
+		metrics:          newBlocklistMetrics(id),
 	}
 
 	// Start the refresh goroutines if we have a list and a refresh period was given

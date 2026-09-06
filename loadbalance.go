@@ -39,7 +39,7 @@ type LoadBalance struct {
 	mu        sync.RWMutex
 	stats     []loadBalanceStats
 	opt       LoadBalanceOptions
-	metrics   *FailRouterMetrics
+	metrics   *failRouterMetrics
 	// Per-resolver current rttEMA in microseconds, published under
 	// routedns.router.<id>.rtt keyed by resolver String().
 	rttVars   []*expvar.Float
@@ -91,7 +91,7 @@ func NewLoadBalance(id string, opt LoadBalanceOptions, resolvers ...Resolver) *L
 		resolvers: resolvers,
 		stats:     make([]loadBalanceStats, len(resolvers)),
 		opt:       opt,
-		metrics:   NewFailRouterMetrics(id, len(resolvers)),
+		metrics:   newFailRouterMetrics(id, len(resolvers)),
 		rttVars:   rttVars,
 		randFloat: rand.Float64,
 	}

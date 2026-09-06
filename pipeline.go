@@ -27,7 +27,7 @@ type Pipeline struct {
 	client   DNSDialer
 	requests chan *request
 	inFlight inFlightQueue
-	metrics  *ListenerMetrics
+	metrics  *listenerMetrics
 	timeout  time.Duration
 	idle     time.Duration
 }
@@ -50,7 +50,7 @@ func NewPipeline(id string, addr string, client DNSDialer, timeout, idle time.Du
 		addr:     addr,
 		client:   client,
 		requests: make(chan *request),
-		metrics:  NewListenerMetrics("client", id),
+		metrics:  newListenerMetrics("client", id),
 		timeout:  timeout,
 		idle:     idle,
 	}

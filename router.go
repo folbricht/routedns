@@ -11,12 +11,12 @@ import (
 type Router struct {
 	id      string
 	routes  []*route
-	metrics *RouterMetrics
+	metrics *routerMetrics
 }
 
 var _ Resolver = &Router{}
 
-type RouterMetrics struct {
+type routerMetrics struct {
 	// Next route counts.
 	route *expvar.Map
 	// Next route failure counts.
@@ -25,10 +25,10 @@ type RouterMetrics struct {
 	available *expvar.Int
 }
 
-func NewRouterMetrics(id string, available int) *RouterMetrics {
+func newRouterMetrics(id string, available int) *routerMetrics {
 	avail := getVarInt("router", id, "available")
 	avail.Set(int64(available))
-	return &RouterMetrics{
+	return &routerMetrics{
 		route:     getVarMap("router", id, "route"),
 		failure:   getVarMap("router", id, "failure"),
 		available: avail,
@@ -40,7 +40,7 @@ func NewRouterMetrics(id string, available int) *RouterMetrics {
 func NewRouter(id string) *Router {
 	return &Router{
 		id:      id,
-		metrics: NewRouterMetrics(id, 0),
+		metrics: newRouterMetrics(id, 0),
 	}
 }
 
