@@ -10,712 +10,125 @@ import (
 
 // EDNS0 functions
 
+// RegisterEDNS0Types makes the supported EDNS0 options available to scripts,
+// each as a global type with a "new" constructor and named fields.
+//
+// A type is described by the value its constructor builds and its fields, in
+// the order "new" takes them as arguments. Every field can also be read and
+// written by name, alongside "option" which gives the option code.
 func (s *LuaScript) RegisterEDNS0Types() {
-	s.registerEDNS0COOKIEType()
-	s.registerEDNS0DAUType()
-	s.registerEDNS0DHUType()
-	s.registerEDNS0EDEType()
-	s.registerEDNS0ESUType()
-	s.registerEDNS0EXPIREType()
-	s.registerEDNS0LLQType()
-	s.registerEDNS0LOCALType()
-	s.registerEDNS0N3UType()
-	s.registerEDNS0NSIDType()
-	s.registerEDNS0PADDINGType()
-	s.registerEDNS0SUBNETType()
-	s.registerEDNS0TCPKEEPALIVEType()
-	s.registerEDNS0ULType()
+	registerEDNS0Type(s, "EDNS0_COOKIE",
+		func() *dns.EDNS0_COOKIE { return &dns.EDNS0_COOKIE{Code: dns.EDNS0COOKIE} },
+		stringField("cookie", func(e *dns.EDNS0_COOKIE) *string { return &e.Cookie }),
+	)
+	registerEDNS0Type(s, "EDNS0_DAU",
+		func() *dns.EDNS0_DAU { return &dns.EDNS0_DAU{Code: dns.EDNS0DAU} },
+		numberSliceField("algcode", func(e *dns.EDNS0_DAU) *[]uint8 { return &e.AlgCode }),
+	)
+	registerEDNS0Type(s, "EDNS0_DHU",
+		func() *dns.EDNS0_DHU { return &dns.EDNS0_DHU{Code: dns.EDNS0DHU} },
+		numberSliceField("algcode", func(e *dns.EDNS0_DHU) *[]uint8 { return &e.AlgCode }),
+	)
+	registerEDNS0Type(s, "EDNS0_EDE",
+		func() *dns.EDNS0_EDE { return new(dns.EDNS0_EDE) },
+		numberField("infocode", func(e *dns.EDNS0_EDE) *uint16 { return &e.InfoCode }),
+		stringField("extratext", func(e *dns.EDNS0_EDE) *string { return &e.ExtraText }),
+	)
+	registerEDNS0Type(s, "EDNS0_ESU",
+		func() *dns.EDNS0_ESU { return &dns.EDNS0_ESU{Code: dns.EDNS0ESU} },
+		stringField("uri", func(e *dns.EDNS0_ESU) *string { return &e.Uri }),
+	)
+	registerEDNS0Type(s, "EDNS0_EXPIRE",
+		func() *dns.EDNS0_EXPIRE { return &dns.EDNS0_EXPIRE{Code: dns.EDNS0EXPIRE} },
+		numberField("expire", func(e *dns.EDNS0_EXPIRE) *uint32 { return &e.Expire }),
+	)
+	registerEDNS0Type(s, "EDNS0_LLQ",
+		func() *dns.EDNS0_LLQ { return &dns.EDNS0_LLQ{Code: dns.EDNS0LLQ} },
+		numberField("version", func(e *dns.EDNS0_LLQ) *uint16 { return &e.Version }),
+		numberField("opcode", func(e *dns.EDNS0_LLQ) *uint16 { return &e.Opcode }),
+		numberField("error", func(e *dns.EDNS0_LLQ) *uint16 { return &e.Error }),
+		numberField("id", func(e *dns.EDNS0_LLQ) *uint64 { return &e.Id }),
+		numberField("leaselife", func(e *dns.EDNS0_LLQ) *uint32 { return &e.LeaseLife }),
+	)
+	registerEDNS0Type(s, "EDNS0_LOCAL",
+		func() *dns.EDNS0_LOCAL { return new(dns.EDNS0_LOCAL) },
+		numberField("code", func(e *dns.EDNS0_LOCAL) *uint16 { return &e.Code }),
+		bytesField("data", func(e *dns.EDNS0_LOCAL) *[]byte { return &e.Data }),
+	)
+	registerEDNS0Type(s, "EDNS0_N3U",
+		func() *dns.EDNS0_N3U { return &dns.EDNS0_N3U{Code: dns.EDNS0N3U} },
+		numberSliceField("algcode", func(e *dns.EDNS0_N3U) *[]uint8 { return &e.AlgCode }),
+	)
+	registerEDNS0Type(s, "EDNS0_NSID",
+		func() *dns.EDNS0_NSID { return &dns.EDNS0_NSID{Code: dns.EDNS0NSID} },
+		stringField("nsid", func(e *dns.EDNS0_NSID) *string { return &e.Nsid }),
+	)
+	registerEDNS0Type(s, "EDNS0_PADDING",
+		func() *dns.EDNS0_PADDING { return new(dns.EDNS0_PADDING) },
+		bytesField("padding", func(e *dns.EDNS0_PADDING) *[]byte { return &e.Padding }),
+	)
+	registerEDNS0Type(s, "EDNS0_SUBNET",
+		func() *dns.EDNS0_SUBNET { return &dns.EDNS0_SUBNET{Code: dns.EDNS0SUBNET} },
+		numberField("family", func(e *dns.EDNS0_SUBNET) *uint16 { return &e.Family }),
+		numberField("sourcenetmask", func(e *dns.EDNS0_SUBNET) *uint8 { return &e.SourceNetmask }),
+		numberField("sourcescope", func(e *dns.EDNS0_SUBNET) *uint8 { return &e.SourceScope }),
+		ipField("address", func(e *dns.EDNS0_SUBNET) *net.IP { return &e.Address }),
+	)
+	registerEDNS0Type(s, "EDNS0_TCP_KEEPALIVE",
+		func() *dns.EDNS0_TCP_KEEPALIVE {
+			return &dns.EDNS0_TCP_KEEPALIVE{Code: dns.EDNS0TCPKEEPALIVE}
+		},
+		numberField("timeout", func(e *dns.EDNS0_TCP_KEEPALIVE) *uint16 { return &e.Timeout }),
+	)
+	registerEDNS0Type(s, "EDNS0_UL",
+		func() *dns.EDNS0_UL { return &dns.EDNS0_UL{Code: dns.EDNS0UL} },
+		numberField("lease", func(e *dns.EDNS0_UL) *uint32 { return &e.Lease }),
+		numberField("keylease", func(e *dns.EDNS0_UL) *uint32 { return &e.KeyLease }),
+	)
 }
 
-func (s *LuaScript) registerEDNS0COOKIEType() {
+// edns0Field is one named field of an EDNS0 option type as scripts see it. The
+// setter takes the stack index to read the value from, which is the argument
+// position in a constructor call and always 3 in an assignment.
+type edns0Field[T dns.EDNS0] struct {
+	name string
+	get  func(L *lua.LState, e T) lua.LValue
+	set  func(L *lua.LState, e T, n int)
+}
+
+// Registers a global Lua type for one EDNS0 option: a "new" constructor taking
+// the fields as positional arguments, all of them optional, and metamethods to
+// read and write them by name.
+func registerEDNS0Type[T dns.EDNS0](s *LuaScript, mtName string, newOption func() T, fields ...edns0Field[T]) {
 	L := s.L
-	mtName := "EDNS0_COOKIE"
 	mt := L.NewTypeMetatable(mtName)
 	L.SetGlobal(mtName, mt)
+
+	byName := make(map[string]edns0Field[T], len(fields))
+	for _, field := range fields {
+		byName[field.name] = field
+	}
+	// Reports the field being read or written, having raised a Lua error if
+	// the type doesn't have it. ArgError does not return.
+	lookup := func(L *lua.LState) (edns0Field[T], bool) {
+		fieldName := L.CheckString(2)
+		field, ok := byName[fieldName]
+		if !ok {
+			L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
+		}
+		return field, ok
+	}
+
 	// static attributes
 	L.SetField(mt, "new", L.NewFunction(
 		func(L *lua.LState) int {
-			e := new(dns.EDNS0_COOKIE)
-			e.Code = dns.EDNS0COOKIE
+			e := newOption()
 			nArgs := L.GetTop()
-			if nArgs >= 1 { // Cookie
-				e.Cookie = L.CheckString(1)
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_COOKIE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "cookie":
-				L.Push(lua.LString(e.Cookie))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_COOKIE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "cookie":
-				e.Cookie = L.CheckString(3)
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0DAUType() {
-	L := s.L
-	mtName := "EDNS0_DAU"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_DAU)
-			e.Code = dns.EDNS0DAU
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Alg Codes
-				values, _ := getNumberSlice[uint8](L, 1)
-				e.AlgCode = values
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_DAU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "algcode":
-				L.Push(numberSliceToTable(L, e.AlgCode))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_DAU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "algcode":
-				values, _ := getNumberSlice[uint8](L, 3)
-				e.AlgCode = values
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0DHUType() {
-	L := s.L
-	mtName := "EDNS0_DHU"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_DHU)
-			e.Code = dns.EDNS0DHU
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Alg Codes
-				values, _ := getNumberSlice[uint8](L, 1)
-				e.AlgCode = values
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_DHU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "algcode":
-				L.Push(numberSliceToTable(L, e.AlgCode))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_DHU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "algcode":
-				values, _ := getNumberSlice[uint8](L, 3)
-				e.AlgCode = values
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0EDEType() {
-	L := s.L
-	mtName := "EDNS0_EDE"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_EDE)
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Code
-				e.InfoCode = uint16(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // Extra Text
-				e.ExtraText = L.CheckString(2)
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_EDE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "infocode":
-				L.Push(lua.LNumber(e.InfoCode))
-			case "extratext":
-				L.Push(lua.LString(e.ExtraText))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_EDE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "infocode":
-				e.InfoCode = uint16(L.CheckNumber(3))
-			case "extratext":
-				e.ExtraText = L.CheckString(3)
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0ESUType() {
-	L := s.L
-	mtName := "EDNS0_ESU"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_ESU)
-			e.Code = dns.EDNS0ESU
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // URI
-				e.Uri = L.CheckString(1)
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_ESU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "uri":
-				L.Push(lua.LString(e.Uri))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_ESU](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "uri":
-				e.Uri = L.CheckString(3)
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0EXPIREType() {
-	L := s.L
-	mtName := "EDNS0_EXPIRE"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_EXPIRE)
-			e.Code = dns.EDNS0EXPIRE
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Expire
-				e.Expire = uint32(L.CheckNumber(1))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_EXPIRE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "expire":
-				L.Push(lua.LNumber(e.Expire))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_EXPIRE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "expire":
-				e.Expire = uint32(L.CheckNumber(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0LLQType() {
-	L := s.L
-	mtName := "EDNS0_LLQ"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_LLQ)
-			e.Code = dns.EDNS0LLQ
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Version
-				e.Version = uint16(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // Opcode
-				e.Opcode = uint16(L.CheckNumber(2))
-			}
-			if nArgs >= 3 { // Error
-				e.Error = uint16(L.CheckNumber(3))
-			}
-			if nArgs >= 4 { // Id
-				e.Id = uint64(L.CheckNumber(4))
-			}
-			if nArgs >= 5 { // LeaseLife
-				e.LeaseLife = uint32(L.CheckNumber(5))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_LLQ](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "version":
-				L.Push(lua.LNumber(e.Version))
-			case "opcode":
-				L.Push(lua.LNumber(e.Opcode))
-			case "error":
-				L.Push(lua.LNumber(e.Error))
-			case "id":
-				L.Push(lua.LNumber(e.Id))
-			case "leaselife":
-				L.Push(lua.LNumber(e.LeaseLife))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_LLQ](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "version":
-				e.Version = uint16(L.CheckNumber(3))
-			case "opcode":
-				e.Opcode = uint16(L.CheckNumber(3))
-			case "error":
-				e.Error = uint16(L.CheckNumber(3))
-			case "id":
-				e.Id = uint64(L.CheckNumber(3))
-			case "leaselife":
-				e.LeaseLife = uint32(L.CheckNumber(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0LOCALType() {
-	L := s.L
-	mtName := "EDNS0_LOCAL"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_LOCAL)
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Code
-				e.Code = uint16(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // Data
-				e.Data = []byte(L.CheckString(2))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_LOCAL](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "code":
-				L.Push(lua.LNumber(e.Code))
-			case "data":
-				L.Push(lua.LString(e.Data))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_LOCAL](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "code":
-				e.Code = uint16(L.CheckNumber(3))
-			case "data":
-				e.Data = []byte(L.CheckString(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0N3UType() {
-	L := s.L
-	mtName := "EDNS0_N3U"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_N3U)
-			e.Code = dns.EDNS0N3U
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Alg Codes
-				values, _ := getNumberSlice[uint8](L, 1)
-				e.AlgCode = values
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_N3U](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "algcode":
-				L.Push(numberSliceToTable(L, e.AlgCode))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_N3U](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "algcode":
-				values, _ := getNumberSlice[uint8](L, 3)
-				e.AlgCode = values
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0NSIDType() {
-	L := s.L
-	mtName := "EDNS0_NSID"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_NSID)
-			e.Code = dns.EDNS0NSID
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // NSID
-				e.Nsid = L.CheckString(1)
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_NSID](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "nsid":
-				L.Push(lua.LString(e.Nsid))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_NSID](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "nsid":
-				e.Nsid = L.CheckString(3)
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0PADDINGType() {
-	L := s.L
-	mtName := "EDNS0_PADDING"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_PADDING)
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // NSID
-				e.Padding = []byte(L.CheckString(1))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_PADDING](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "padding":
-				L.Push(lua.LString(e.Padding))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_PADDING](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "padding":
-				e.Padding = []byte(L.CheckString(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func (s *LuaScript) registerEDNS0SUBNETType() {
-	L := s.L
-	mtName := "EDNS0_SUBNET"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_SUBNET)
-			e.Code = dns.EDNS0SUBNET
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Family
-				e.Family = uint16(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // SourceNetmask
-				e.SourceNetmask = uint8(L.CheckNumber(2))
-			}
-			if nArgs >= 3 { // SourceScope
-				e.SourceScope = uint8(L.CheckNumber(3))
-			}
-			if nArgs >= 4 { // Address
-				value := L.CheckString(4)
-				ip := net.ParseIP(value)
-				if ip == nil {
-					L.ArgError(4, fmt.Sprintf("expected IP address, got %q", value))
-					return 0
+			for i, field := range fields {
+				if nArgs < i+1 {
+					break
 				}
-				e.Address = ip
+				field.set(L, e, i+1)
 			}
 			L.Push(userDataWithMetatable(L, mtName, e))
 			return 1
@@ -724,177 +137,87 @@ func (s *LuaScript) registerEDNS0SUBNETType() {
 	// methods
 	L.SetField(mt, "__index", L.NewFunction(
 		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_SUBNET](L, 1)
+			e, ok := getUserDataArg[T](L, 1)
 			if !ok {
 				return 0
 			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
+			if L.CheckString(2) == "option" {
 				L.Push(lua.LNumber(e.Option()))
 				return 1
-			case "family":
-				L.Push(lua.LNumber(e.Family))
-			case "sourcenetmask":
-				L.Push(lua.LNumber(e.SourceNetmask))
-			case "sourcescope":
-				L.Push(lua.LNumber(e.SourceScope))
-			case "address":
-				L.Push(lua.LString(e.Address.String()))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
+			}
+			field, ok := lookup(L)
+			if !ok {
 				return 0
 			}
+			L.Push(field.get(L, e))
 			return 1
 		}))
 	L.SetField(mt, "__newindex", L.NewFunction(
 		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_SUBNET](L, 1)
+			e, ok := getUserDataArg[T](L, 1)
 			if !ok {
 				return 0
 			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "family":
-				e.Family = uint16(L.CheckNumber(3))
-			case "sourcenetmask":
-				e.SourceNetmask = uint8(L.CheckNumber(3))
-			case "sourcescope":
-				e.SourceScope = uint8(L.CheckNumber(3))
-			case "address":
-				value := L.CheckString(3)
-				ip := net.ParseIP(value)
-				if ip == nil {
-					L.ArgError(4, fmt.Sprintf("expected IP address, got %q", value))
-					return 0
-				}
-				e.Address = ip
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
+			field, ok := lookup(L)
+			if !ok {
 				return 0
 			}
+			field.set(L, e, 3)
 			return 0
 		}))
 }
 
-func (s *LuaScript) registerEDNS0TCPKEEPALIVEType() {
-	L := s.L
-	mtName := "EDNS0_TCP_KEEPALIVE"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_TCP_KEEPALIVE)
-			e.Code = dns.EDNS0TCPKEEPALIVE
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Timeout
-				e.Timeout = uint16(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // Length
-				e.Length = uint16(L.CheckNumber(2))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_TCP_KEEPALIVE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "timeout":
-				L.Push(lua.LNumber(e.Timeout))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_TCP_KEEPALIVE](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "timeout":
-				e.Timeout = uint16(L.CheckNumber(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
+// A numeric field, converted between Lua numbers and the field's own width.
+func numberField[T dns.EDNS0, V numbers](name string, field func(T) *V) edns0Field[T] {
+	return edns0Field[T]{
+		name: name,
+		get:  func(L *lua.LState, e T) lua.LValue { return lua.LNumber(*field(e)) },
+		set:  func(L *lua.LState, e T, n int) { *field(e) = V(L.CheckNumber(n)) },
+	}
 }
 
-func (s *LuaScript) registerEDNS0ULType() {
-	L := s.L
-	mtName := "EDNS0_UL"
-	mt := L.NewTypeMetatable(mtName)
-	L.SetGlobal(mtName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			e := new(dns.EDNS0_UL)
-			e.Code = dns.EDNS0UL
-			nArgs := L.GetTop()
-			if nArgs >= 1 { // Lease
-				e.Lease = uint32(L.CheckNumber(1))
-			}
-			if nArgs >= 2 { // KeyLease
-				e.KeyLease = uint32(L.CheckNumber(2))
-			}
-			L.Push(userDataWithMetatable(L, mtName, e))
-			return 1
-		}))
+// A field of numbers, exposed as a Lua table.
+func numberSliceField[T dns.EDNS0, V numbers](name string, field func(T) *[]V) edns0Field[T] {
+	return edns0Field[T]{
+		name: name,
+		get:  func(L *lua.LState, e T) lua.LValue { return numberSliceToTable(L, *field(e)) },
+		set: func(L *lua.LState, e T, n int) {
+			values, _ := getNumberSlice[V](L, n)
+			*field(e) = values
+		},
+	}
+}
 
-	// methods
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_UL](L, 1)
-			if !ok {
-				return 0
+func stringField[T dns.EDNS0](name string, field func(T) *string) edns0Field[T] {
+	return edns0Field[T]{
+		name: name,
+		get:  func(L *lua.LState, e T) lua.LValue { return lua.LString(*field(e)) },
+		set:  func(L *lua.LState, e T, n int) { *field(e) = L.CheckString(n) },
+	}
+}
+
+// A byte-slice field, exposed to scripts as a string.
+func bytesField[T dns.EDNS0](name string, field func(T) *[]byte) edns0Field[T] {
+	return edns0Field[T]{
+		name: name,
+		get:  func(L *lua.LState, e T) lua.LValue { return lua.LString(*field(e)) },
+		set:  func(L *lua.LState, e T, n int) { *field(e) = []byte(L.CheckString(n)) },
+	}
+}
+
+// An IP address field, exposed as a string and rejected if it doesn't parse.
+func ipField[T dns.EDNS0](name string, field func(T) *net.IP) edns0Field[T] {
+	return edns0Field[T]{
+		name: name,
+		get:  func(L *lua.LState, e T) lua.LValue { return lua.LString(field(e).String()) },
+		set: func(L *lua.LState, e T, n int) {
+			value := L.CheckString(n)
+			ip := net.ParseIP(value)
+			if ip == nil {
+				L.ArgError(n, fmt.Sprintf("expected IP address, got %q", value))
+				return
 			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "option":
-				L.Push(lua.LNumber(e.Option()))
-				return 1
-			case "lease":
-				L.Push(lua.LNumber(e.Lease))
-			case "keylease":
-				L.Push(lua.LNumber(e.KeyLease))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			e, ok := getUserDataArg[*dns.EDNS0_UL](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "lease":
-				e.Lease = uint32(L.CheckNumber(3))
-			case "keylease":
-				e.KeyLease = uint32(L.CheckNumber(3))
-			default:
-				L.ArgError(2, fmt.Sprintf("%s does not have field %q", mtName, fieldName))
-				return 0
-			}
-			return 0
-		}))
+			*field(e) = ip
+		},
+	}
 }
