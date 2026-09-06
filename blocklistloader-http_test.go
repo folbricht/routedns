@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -97,12 +98,12 @@ func TestLoaderAllowFailure(t *testing.T) {
 
 	require.NoError(t, os.Remove(name))
 	_, err = l.Load()
-	require.ErrorIs(t, err, errBlocklistUnchanged, "a loaded list keeps what it has")
+	require.ErrorIs(t, err, ErrBlocklistUnchanged, "a loaded list keeps what it has")
 
 	// Without AllowFailure the error surfaces as it always did.
 	_, err = NewFileLoader(name, FileLoaderOptions{}).Load()
 	require.Error(t, err)
-	require.NotErrorIs(t, err, errBlocklistUnchanged)
+	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 }
 
 // A body that stops short of what was promised is a partial list. Whether that
@@ -130,7 +131,7 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	l.fromDisk = false // force it to the network
 	_, err = l.Load()
 	require.Error(t, err, "without allow-failure a partial list is an error")
-	require.NotErrorIs(t, err, errBlocklistUnchanged)
+	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 
 	// With allow-failure and nothing loaded yet, the fragment is dropped and
 	// the list is empty, which is what an unreadable list has always done.
@@ -147,7 +148,7 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	require.Len(t, rules, 2)
 	truncate = true
 	_, err = allow.Load()
-	require.ErrorIs(t, err, errBlocklistUnchanged)
+	require.ErrorIs(t, err, ErrBlocklistUnchanged)
 
 	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
 	require.NoError(t, err)
@@ -213,6 +214,41 @@ func TestHTTPLoaderCacheWriteFails(t *testing.T) {
 	rules, err := l.Load()
 	require.NoError(t, err, "the list arrived, only the cache write failed")
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+}
+
+// A cache write that fails part way through a download is what a cache-dir
+// filling up looks like, since the file is buffered and flushes as it fills.
+// The body still arrives in full, so every rule has to be passed on and only
+// the cache write reported as failed.
+func TestCacheWriteFailsMidList(t *testing.T) {
+	body := strings.Repeat("a.example.com\n", 5000)
+	var rules []string
+	scanErr, cacheErr := cacheWhileReading(
+		strings.NewReader(body),
+		&failingWriter{after: 100},
+		func(rule string) error {
+			rules = append(rules, rule)
+			return nil
+		})
+	require.NoError(t, scanErr, "the list read fine, only the cache did not")
+	require.Error(t, cacheErr)
+	require.Len(t, rules, 5000, "every rule of the list must still be passed on")
+}
+
+// failingWriter takes `after` bytes and then fails, as a full disk does.
+type failingWriter struct{ after int }
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if w.after <= 0 {
+		return 0, errors.New("no space left on device")
+	}
+	if len(p) > w.after {
+		n := w.after
+		w.after = 0
+		return n, errors.New("no space left on device")
+	}
+	w.after -= len(p)
+	return len(p), nil
 }
 
 // A line longer than the scanner's buffer is a failed read of the list, not a

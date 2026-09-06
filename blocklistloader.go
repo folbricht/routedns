@@ -18,11 +18,12 @@ type streamingLoader interface {
 	loadEach(func(rule string) error) error
 }
 
-// errBlocklistUnchanged says a list could not be read but a previous version of
+// ErrBlocklistUnchanged says a list could not be read but a previous version of
 // it is already loaded, so whatever is serving queries should stay as it is.
 // Only loaders with AllowFailure set report it, and only once they have loaded
-// something successfully.
-var errBlocklistUnchanged = errors.New("blocklist unchanged")
+// something successfully. A caller of Load that sets AllowFailure has to expect
+// it: it means there are no new rules, not that anything went wrong.
+var ErrBlocklistUnchanged = errors.New("blocklist unchanged")
 
 // ruleError marks an error as coming from the database rejecting a rule rather
 // than from the list failing to load. AllowFailure is about a list being

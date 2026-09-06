@@ -46,7 +46,7 @@ func (l *FileLoader) Load() ([]string, error) {
 //
 // What a failure means depends on how far it got. Without AllowFailure it is
 // simply an error. With it, a list that could not be opened is no rules at all
-// when none have ever loaded, and errBlocklistUnchanged once some have, which
+// when none have ever loaded, and ErrBlocklistUnchanged once some have, which
 // leaves the database already serving queries in place. A list that broke off
 // part way through is an error either way: what has been passed on cannot be
 // taken back, so the fragment must not be built into a database and served as
@@ -70,7 +70,7 @@ func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	}
 	log.Warn("failed to load blocklist, continuing with the previous ruleset",
 		"error", err)
-	return errBlocklistUnchanged
+	return ErrBlocklistUnchanged
 }
 
 func (l *FileLoader) read(fn func(rule string) error) error {

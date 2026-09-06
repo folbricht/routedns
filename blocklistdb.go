@@ -64,7 +64,7 @@ func refreshDatabase[T reloadable[T]](id, what string, refresh time.Duration, mu
 		time.Sleep(refresh)
 		log.Debug("reloading " + what)
 		reloaded, err := (*db).Reload()
-		if errors.Is(err, errBlocklistUnchanged) {
+		if errors.Is(err, ErrBlocklistUnchanged) {
 			log.Debug("keeping the " + what + " already loaded")
 			continue
 		}

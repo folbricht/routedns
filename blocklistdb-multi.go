@@ -21,7 +21,7 @@ func NewMultiDB(dbs ...BlocklistDB) (MultiDB, error) {
 
 func (m MultiDB) Reload() (BlocklistDB, error) {
 	// A list that could not be read keeps the rules it already has, which is
-	// what its loader means by errBlocklistUnchanged, while the lists beside
+	// what its loader means by ErrBlocklistUnchanged, while the lists beside
 	// it still refresh. Only when none of them moved is there nothing to swap
 	// in.
 	newDBs := make([]BlocklistDB, 0, len(m.dbs))
@@ -29,7 +29,7 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 	for _, db := range m.dbs {
 		n, err := db.Reload()
 		switch {
-		case errors.Is(err, errBlocklistUnchanged):
+		case errors.Is(err, ErrBlocklistUnchanged):
 			unchanged++
 			n = db
 		case err != nil:
@@ -38,7 +38,7 @@ func (m MultiDB) Reload() (BlocklistDB, error) {
 		newDBs = append(newDBs, n)
 	}
 	if unchanged == len(m.dbs) {
-		return nil, errBlocklistUnchanged
+		return nil, ErrBlocklistUnchanged
 	}
 	return NewMultiDB(newDBs...)
 }

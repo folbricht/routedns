@@ -32,7 +32,7 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	unchanged := 0
 	for _, db := range m.dbs {
 		n, err := db.Reload()
-		if errors.Is(err, errBlocklistUnchanged) {
+		if errors.Is(err, ErrBlocklistUnchanged) {
 			r, ok := db.(reusableIPDB)
 			if !ok {
 				closeAll()
@@ -51,7 +51,7 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	}
 	if unchanged == len(m.dbs) { // nothing moved, so there is nothing to swap in
 		closeAll()
-		return MultiIPDB{}, errBlocklistUnchanged
+		return MultiIPDB{}, ErrBlocklistUnchanged
 	}
 	return NewMultiIPDB(newDBs...)
 }

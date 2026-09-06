@@ -172,7 +172,7 @@ func TestMultiDBReloadUnchanged(t *testing.T) {
 	onlyFailing, err := NewMultiDB(unreadable)
 	require.NoError(t, err)
 	_, err = onlyFailing.Reload()
-	require.ErrorIs(t, err, errBlocklistUnchanged)
+	require.ErrorIs(t, err, ErrBlocklistUnchanged)
 }
 
 // The IP group behaves like the name-based one: a source that cannot be read
@@ -209,5 +209,5 @@ func TestMultiIPDBReloadUnchanged(t *testing.T) {
 	onlyFailing, err := NewMultiIPDB(unreadable)
 	require.NoError(t, err)
 	_, err = onlyFailing.Reload()
-	require.ErrorIs(t, err, errBlocklistUnchanged)
+	require.ErrorIs(t, err, ErrBlocklistUnchanged)
 }

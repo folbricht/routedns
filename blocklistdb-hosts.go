@@ -31,7 +31,14 @@ var _ BlocklistDB = &HostsDB{}
 func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 	filters := make(map[string]ipRecords)
 	ptrMap := make(map[string][]string)
-	err := loadRules(loader, func() { clear(filters); clear(ptrMap) }, func(r string) error {
+	// Fresh maps rather than clear(), which empties a map without giving up
+	// the buckets it grew: a list that broke off part way through would leave
+	// its memory behind in the database that goes on serving queries.
+	reset := func() {
+		filters = make(map[string]ipRecords)
+		ptrMap = make(map[string][]string)
+	}
+	err := loadRules(loader, reset, func(r string) error {
 		r = strings.TrimSpace(r)
 		fields := strings.Fields(r)
 		if len(fields) == 0 {

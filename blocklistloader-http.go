@@ -81,7 +81,7 @@ func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
 	}
 	log.Warn("failed to load blocklist, continuing with the previous ruleset",
 		"error", err)
-	return errBlocklistUnchanged
+	return ErrBlocklistUnchanged
 }
 
 func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
@@ -134,8 +134,12 @@ func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
 	var opened bool
 	err = writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
 		opened = true
-		scanErr = scanRules(io.TeeReader(resp.Body, w), fn)
-		return scanErr
+		var cacheErr error
+		scanErr, cacheErr = cacheWhileReading(resp.Body, w, fn)
+		if scanErr != nil {
+			return scanErr
+		}
+		return cacheErr
 	})
 
 	// A cache that cannot be written is worth reporting, not failing the load
@@ -165,6 +169,27 @@ func (l *HTTPLoader) readFile(name string, fn func(rule string) error) error {
 	defer f.Close()
 	return scanRules(f, fn)
 }
+
+// cacheWhileReading passes every rule read from r to fn and copies what it
+// reads into w along the way, keeping the two failures apart. A cache that
+// cannot be written must not look like a list that broke off, and it otherwise
+// would: io.TeeReader hands a write error back as a read error, and the cache
+// file is buffered, so it flushes part way through a list of any size.
+func cacheWhileReading(r io.Reader, w io.Writer, fn func(rule string) error) (scanErr, cacheErr error) {
+	cache := writerFunc(func(p []byte) (int, error) {
+		if cacheErr == nil {
+			_, cacheErr = w.Write(p)
+		}
+		return len(p), nil
+	})
+	scanErr = scanRules(io.TeeReader(r, cache), fn)
+	return scanErr, cacheErr
+}
+
+// writerFunc is an io.Writer made from a function.
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 // scanRules passes every line of r to fn as a rule.
 func scanRules(r io.Reader, fn func(rule string) error) error {
