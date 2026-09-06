@@ -45,13 +45,22 @@ func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
 
-	err := l.read(fn)
+	var served int
+	err := l.read(func(rule string) error {
+		served++
+		return fn(rule)
+	})
 	if err == nil {
 		l.loaded = true
 		log.Debug("completed loading blocklist")
 		return nil
 	}
 	if !l.opt.AllowFailure || !loadFailure(err) {
+		return err
+	}
+	if served > 0 {
+		// Part of the list is already through, so what is being built holds a
+		// fragment of the rules and has to be thrown away rather than served.
 		return err
 	}
 	if !l.loaded { // nothing loaded yet, carry on with an empty list

@@ -63,13 +63,23 @@ func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
 	log.Debug("loading blocklist")
 
 	start := time.Now()
-	err := l.read(log, fn)
+	var served int
+	err := l.read(log, func(rule string) error {
+		served++
+		return fn(rule)
+	})
 	if err == nil {
 		l.loaded = true
 		log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
 		return nil
 	}
 	if !l.opt.AllowFailure || !loadFailure(err) {
+		return err
+	}
+	if served > 0 {
+		// Part of the list is already through, so there is nothing to carry on
+		// with: the database being built holds a fragment of the rules and has
+		// to be thrown away rather than served.
 		return err
 	}
 	if !l.loaded { // nothing loaded yet, carry on with an empty list
@@ -127,9 +137,22 @@ func (l *HTTPLoader) read(log *slog.Logger, fn func(rule string) error) error {
 	// write afterwards. The file is only renamed into place if the whole body
 	// arrives, so a failed download leaves the previous cache alone.
 	log.Debug("writing rules to cache-dir")
-	return writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
-		return scanRules(io.TeeReader(resp.Body, w), fn)
+	var served int
+	err = writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
+		return scanRules(io.TeeReader(resp.Body, w), func(rule string) error {
+			served++
+			return fn(rule)
+		})
 	})
+
+	// A cache that cannot be written is worth a warning, not a failed load, so
+	// long as nothing has been read yet: the body is still there to be read
+	// without it. Once rules are through, the failure is the read itself.
+	if err != nil && served == 0 && loadFailure(err) {
+		log.Warn("failed to write rules to cache-dir", "error", err)
+		return scanRules(resp.Body, fn)
+	}
+	return err
 }
 
 func (l *HTTPLoader) readFile(name string, fn func(rule string) error) error {

@@ -3,6 +3,8 @@ package rdns
 import (
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -135,4 +137,40 @@ func TestRefreshDatabaseKeepsFailedDatabase(t *testing.T) {
 	mu.RLock()
 	defer mu.RUnlock()
 	require.Same(t, original, db)
+}
+
+// A source that cannot be read holds the rules it has while the sources beside
+// it carry on refreshing. Only when none of them can be read is there nothing
+// to swap in.
+func TestMultiDBReloadUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "list.txt")
+	require.NoError(t, os.WriteFile(name, []byte("gone.example.com\n"), 0644))
+
+	failing := NewFileLoader(name, FileLoaderOptions{AllowFailure: true})
+	unreadable, err := NewDomainDB("unreadable", failing)
+	require.NoError(t, err)
+	steady, err := NewDomainDB("steady", NewStaticLoader([]string{"kept.example.com"}))
+	require.NoError(t, err)
+
+	multi, err := NewMultiDB(unreadable, steady)
+	require.NoError(t, err)
+
+	// The file is gone, so that source reports nothing to change. The group
+	// still reloads, and both sets of rules still match.
+	require.NoError(t, os.Remove(name))
+	reloaded, err := multi.Reload()
+	require.NoError(t, err, "one unreadable source must not stall the group")
+	for _, q := range []string{"gone.example.com.", "kept.example.com."} {
+		msg := new(dns.Msg)
+		msg.SetQuestion(q, dns.TypeA)
+		_, _, _, ok := reloaded.Match(msg)
+		require.True(t, ok, "query %s", q)
+	}
+
+	// With every source unreadable there is nothing new to install.
+	onlyFailing, err := NewMultiDB(unreadable)
+	require.NoError(t, err)
+	_, err = onlyFailing.Reload()
+	require.ErrorIs(t, err, errBlocklistUnchanged)
 }

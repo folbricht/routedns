@@ -103,3 +103,52 @@ func TestLoaderAllowFailure(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, errBlocklistUnchanged)
 }
+
+// A body that stops short of what was promised is a partial list. It must not
+// be reported as a loaded one, and the cached copy must survive it.
+func TestHTTPLoaderTruncatedBody(t *testing.T) {
+	dir := t.TempDir()
+	truncate := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if truncate {
+			w.Header().Set("Content-Length", "1000")
+			fmt.Fprint(w, "half.example.com\n")
+			return
+		}
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	_, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	require.NoError(t, err)
+
+	truncate = true
+	for _, allowFailure := range []bool{false, true} {
+		l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir, AllowFailure: allowFailure})
+		l.fromDisk = false // force it to the network
+		_, err = l.Load()
+		require.Error(t, err, "allow-failure=%v: a partial list is not a list", allowFailure)
+		require.NotErrorIs(t, err, errBlocklistUnchanged)
+	}
+
+	cached, err := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}).Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
+}
+
+// A cache-dir that cannot be written to is worth a warning, not a failed load.
+func TestHTTPLoaderUnwritableCache(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(notADir, nil, 0644))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: notADir})
+	l.fromDisk = false
+	rules, err := l.Load()
+	require.NoError(t, err, "the download worked, only the cache did not")
+	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+}

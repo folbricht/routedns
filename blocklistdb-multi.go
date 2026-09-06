@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"net"
 
 	"github.com/miekg/dns"
@@ -19,13 +20,25 @@ func NewMultiDB(dbs ...BlocklistDB) (MultiDB, error) {
 }
 
 func (m MultiDB) Reload() (BlocklistDB, error) {
-	var newDBs []BlocklistDB
+	// A list that could not be read keeps the rules it already has, which is
+	// what its loader means by errBlocklistUnchanged, while the lists beside
+	// it still refresh. Only when none of them moved is there nothing to swap
+	// in.
+	newDBs := make([]BlocklistDB, 0, len(m.dbs))
+	unchanged := 0
 	for _, db := range m.dbs {
 		n, err := db.Reload()
-		if err != nil {
+		switch {
+		case errors.Is(err, errBlocklistUnchanged):
+			unchanged++
+			n = db
+		case err != nil:
 			return nil, err
 		}
 		newDBs = append(newDBs, n)
+	}
+	if unchanged == len(m.dbs) {
+		return nil, errBlocklistUnchanged
 	}
 	return NewMultiDB(newDBs...)
 }

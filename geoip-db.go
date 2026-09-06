@@ -33,6 +33,8 @@ func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB
 	}
 
 	db := make(map[uint64]struct{})
+	// The map file is open from here on, so every way out of this function
+	// has to close it.
 	err = loadRules(loader, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
@@ -48,6 +50,7 @@ func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB
 		return nil
 	})
 	if err != nil {
+		geoDB.Close()
 		return nil, err
 	}
 	return &GeoIPDB{

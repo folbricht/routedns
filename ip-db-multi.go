@@ -17,10 +17,22 @@ func NewMultiIPDB(dbs ...IPBlocklistDB) (MultiIPDB, error) {
 }
 
 func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
-	var newDBs []IPBlocklistDB
+	// Unlike the name-based group, this one owns its databases and closes them
+	// when it is replaced, so a database that reported nothing to change
+	// cannot be carried into the new group: the old group would close it out
+	// from under the new one. The whole group therefore keeps what it has
+	// until every list in it can be read again, and the ones already rebuilt
+	// are closed rather than dropped on the floor.
+	newDBs := make([]IPBlocklistDB, 0, len(m.dbs))
+	closeAll := func() {
+		for _, db := range newDBs {
+			db.Close()
+		}
+	}
 	for _, db := range m.dbs {
 		n, err := db.Reload()
 		if err != nil {
+			closeAll()
 			return MultiIPDB{}, err
 		}
 		newDBs = append(newDBs, n)
