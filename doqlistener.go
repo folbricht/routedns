@@ -62,7 +62,7 @@ func NewDoQListenerMetrics(id string) *DoQListenerMetrics {
 	}
 }
 
-// NewQuicListener returns an instance of a QUIC listener.
+// NewQUICListener returns an instance of a QUIC listener.
 func NewQUICListener(id, addr string, opt DoQListenerOptions, resolver Resolver) *DoQListener {
 	if opt.TLSConfig == nil {
 		opt.TLSConfig = new(tls.Config)

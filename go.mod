@@ -13,7 +13,6 @@ require (
 	github.com/miekg/dns v1.1.72
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/pion/dtls/v3 v3.1.5
-	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.60.0
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/spf13/cobra v1.10.2

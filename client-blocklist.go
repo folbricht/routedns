@@ -36,7 +36,7 @@ type ClientBlocklistOptions struct {
 	UseECS bool
 }
 
-// NewClientBlocklistIP returns a new instance of a client blocklist resolver.
+// NewClientBlocklist returns a new instance of a client blocklist resolver.
 func NewClientBlocklist(id string, resolver Resolver, opt ClientBlocklistOptions) (*ClientBlocklist, error) {
 	blocklist := &ClientBlocklist{
 		id:                     id,

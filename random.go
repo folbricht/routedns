@@ -77,13 +77,10 @@ func (r *Random) String() string {
 func (r *Random) pick() Resolver {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	available := len(r.resolvers)
-	r.metrics.available.Set(int64(available))
-	r.metrics.failover.Add(1)
-	if available == 0 {
+	if len(r.resolvers) == 0 {
 		return nil
 	}
-	return r.resolvers[rand.Intn(available)]
+	return r.resolvers[rand.Intn(len(r.resolvers))]
 }
 
 // Remove the resolver from the list of active ones and schedule it to
@@ -103,7 +100,14 @@ func (r *Random) deactivate(bad Resolver) {
 		}
 		filtered = append(filtered, resolver)
 	}
+	// Another query may have deactivated the same resolver already, in which
+	// case the group did not move off a resolver here.
+	if len(filtered) == len(r.resolvers) {
+		return
+	}
+	r.metrics.failover.Add(1)
 	r.resolvers = filtered
+	r.metrics.available.Set(int64(len(filtered)))
 }
 
 // Bring back a failed resolver after some time.
