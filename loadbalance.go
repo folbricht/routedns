@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -145,11 +143,11 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		r.metrics.failover.Add(1)
 		penalized := r.updateOnFailure(idx, elapsed)
 		if penalized {
-			Log.Debug("penalizing resolver", slog.Group("details",
-				slog.String("group", r.id),
-				slog.String("resolver", resolver.String()),
-				slog.Duration("penalty", r.opt.FailurePenalty),
-			))
+			Log.Debug("penalizing resolver",
+				"id", r.id,
+				"resolver", resolver.String(),
+				"penalty", r.opt.FailurePenalty,
+			)
 		}
 
 		remaining[pos] = remaining[len(remaining)-1]

@@ -6,8 +6,6 @@ import (
 	"net"
 	"strconv"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 	"github.com/pion/dtls/v3"
 )
@@ -43,7 +41,7 @@ func NewDTLSListener(id, addr string, opt DTLSListenerOptions, resolver Resolver
 
 // Start the DTLS server.
 func (s *DTLSListener) Start() error {
-	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "dtls"), slog.String("addr", s.Addr)))
+	Log.Info("starting listener", "id", s.id, "protocol", "dtls", "addr", s.Addr)
 
 	if s.opt.NetNS.usesXSocket() {
 		return errors.New("xsocket is not supported for DTLS listeners")
@@ -77,7 +75,7 @@ func (s *DTLSListener) Start() error {
 
 // Stop the server.
 func (s *DTLSListener) Stop() error {
-	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "dtls"), slog.String("addr", s.Addr)))
+	Log.Info("stopping listener", "id", s.id, "protocol", "dtls", "addr", s.Addr)
 	return s.Shutdown()
 }
 

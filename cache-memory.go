@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -157,10 +155,8 @@ func (b *memoryBackend) startGC(period time.Duration) {
 		b.mu.Unlock()
 
 		Log.Debug("cache garbage collection",
-			slog.Group("details",
-				slog.Int("total", total),
-				slog.Int("removed", removed),
-			),
+			"total", total,
+			"removed", removed,
 		)
 	}
 }

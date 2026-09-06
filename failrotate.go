@@ -3,8 +3,6 @@ package rdns
 import (
 	"sync"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -93,7 +91,7 @@ func (r *FailRotate) errorFrom(i int) {
 	}
 	r.metrics.failover.Add(1)
 	r.active = (r.active + 1) % len(r.resolvers)
-	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
+	Log.Info("failing over to resolver", "id", r.id, "resolver", r.resolvers[r.active].String())
 }
 
 func (r *FailRotate) isSuccessResponse(a *dns.Msg) bool {

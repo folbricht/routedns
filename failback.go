@@ -5,8 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 )
 
@@ -138,7 +136,7 @@ func (r *FailBack) errorFrom(i int) {
 	// derive the gauge from the active index rather than decrementing it,
 	// which would drift below zero over repeated rotations.
 	r.metrics.available.Set(int64(len(r.resolvers) - r.active))
-	Log.Info("failing over to resolver", slog.Group("details", slog.String("id", r.id), slog.String("resolver", r.resolvers[r.active].String())))
+	Log.Info("failing over to resolver", "id", r.id, "resolver", r.resolvers[r.active].String())
 	r.mu.Unlock()
 	r.metrics.failover.Add(1)
 	r.failCh <- struct{}{} // signal the timer to wait some more before switching back
@@ -162,7 +160,7 @@ func (r *FailBack) startResetTimer() chan struct{} {
 				// All resolvers are considered available again, regardless of
 				// how far the group had failed over.
 				r.metrics.available.Set(int64(len(r.resolvers)))
-				Log.Debug("failing back to resolver", slog.Group("details", slog.String("resolver", r.resolvers[r.active].String())))
+				Log.Debug("failing back to resolver", "id", r.id, "resolver", r.resolvers[r.active].String())
 				r.mu.Unlock()
 				// we just reset to the first resolver, let's wait for another failure before running again
 				<-failCh
