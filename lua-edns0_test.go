@@ -17,6 +17,7 @@ var luaEDNS0Types = []struct {
 	new    string
 	option uint16
 	fields map[string]string // field name -> Lua expression, compared with ==
+	slice  string            // name of the field holding a table of numbers, if any
 }{
 	{
 		name: "EDNS0_COOKIE", new: `EDNS0_COOKIE.new("24a5ac1a012345ff")`, option: dns.EDNS0COOKIE,
@@ -24,9 +25,11 @@ var luaEDNS0Types = []struct {
 	},
 	{
 		name: "EDNS0_DAU", new: `EDNS0_DAU.new({ 1, 2, 3 })`, option: dns.EDNS0DAU,
+		slice: "algcode",
 	},
 	{
 		name: "EDNS0_DHU", new: `EDNS0_DHU.new({ 1, 2, 3 })`, option: dns.EDNS0DHU,
+		slice: "algcode",
 	},
 	{
 		name: "EDNS0_EDE", new: `EDNS0_EDE.new(15, "domain blocked")`, option: dns.EDNS0EDE,
@@ -51,6 +54,7 @@ var luaEDNS0Types = []struct {
 	},
 	{
 		name: "EDNS0_N3U", new: `EDNS0_N3U.new({ 1, 2, 3 })`, option: dns.EDNS0N3U,
+		slice: "algcode",
 	},
 	{
 		// NSID packs as hex, so the value has to be one.
@@ -92,6 +96,9 @@ func TestLuaEDNS0OptionCode(t *testing.T) {
 func TestLuaEDNS0FieldRoundTrip(t *testing.T) {
 	for _, tt := range luaEDNS0Types {
 		t.Run(tt.name, func(t *testing.T) {
+			// A type with neither is one whose fields nothing checks, which
+			// is what this asserts against for types added later.
+			require.True(t, len(tt.fields) > 0 || tt.slice != "", "no fields to check")
 			for field, value := range tt.fields {
 				runLuaEDNS0Check(t, fmt.Sprintf(`
 	local e = %s
@@ -106,17 +113,20 @@ func TestLuaEDNS0FieldRoundTrip(t *testing.T) {
 
 // Slice fields come back as a table of numbers, indexed from 1.
 func TestLuaEDNS0SliceFieldRoundTrip(t *testing.T) {
-	for _, name := range []string{"EDNS0_DAU", "EDNS0_DHU", "EDNS0_N3U"} {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range luaEDNS0Types {
+		if tt.slice == "" {
+			continue
+		}
+		t.Run(tt.name, func(t *testing.T) {
 			runLuaEDNS0Check(t, fmt.Sprintf(`
-	local e = %s.new({ 1, 2, 3 })
-	if e.algcode[1] ~= 1 or e.algcode[3] ~= 3 then
+	local e = %s
+	if e.%s[1] ~= 1 or e.%s[3] ~= 3 then
 		return nil, Error.new("constructor value not readable")
 	end
-	e.algcode = { 8, 9 }
-	if e.algcode[1] ~= 8 or e.algcode[2] ~= 9 then
+	e.%s = { 8, 9 }
+	if e.%s[1] ~= 8 or e.%s[2] ~= 9 then
 		return nil, Error.new("assigned value not readable")
-	end`, name))
+	end`, tt.new, tt.slice, tt.slice, tt.slice, tt.slice, tt.slice))
 		})
 	}
 }
