@@ -78,7 +78,7 @@ func (l queryLogger) log(level slog.Level, msg string, args ...any) {
 	r := newRecord(level, msg)
 	r.Add(slog.String("id", l.id), slog.Any("client", l.ci.SourceIP))
 	if l.q != nil {
-		r.Add(slog.String("qtype", qTypeName(l.q)), slog.String("qname", qName(l.q)))
+		r.Add(slog.String("qtype", qType(l.q)), slog.String("qname", qName(l.q)))
 	}
 	if l.ci.Protocol != "" {
 		r.Add(slog.String("protocol", l.ci.Protocol))
@@ -101,13 +101,4 @@ func newRecord(level slog.Level, msg string) slog.Record {
 	var pcs [1]uintptr
 	runtime.Callers(4, pcs[:])
 	return slog.NewRecord(time.Now(), level, msg, pcs[0])
-}
-
-// Returns the string representation of the query type, rendering types with no
-// registered name as "TYPE<n>". qType returns an empty string for those.
-func qTypeName(q *dns.Msg) string {
-	if len(q.Question) == 0 {
-		return ""
-	}
-	return dns.Type(q.Question[0].Qtype).String()
 }

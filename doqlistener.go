@@ -125,7 +125,7 @@ func (s *DoQListener) Start() error {
 
 // Stop the server.
 func (s *DoQListener) Stop() error {
-	s.log.Info("stopping listener", slog.Group("details", slog.String("protocol", "quic"), slog.String("addr", s.addr)))
+	s.log.Info("stopping listener")
 	s.mu.Lock()
 	ln, transport, conn := s.ln, s.transport, s.conn
 	s.mu.Unlock()

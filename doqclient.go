@@ -99,6 +99,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		opt.QueryTimeout = defaultQueryTimeout
 	}
 	log := Log.With(
+		"id", id,
 		"protocol", "doq",
 		"endpoint", endpoint,
 	)
@@ -155,7 +156,10 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 
 // Resolve a DNS query.
 func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-	Log.Debug("querying upstream resolver", slog.Group("details", slog.String("id", d.id), slog.String("resolver", d.endpoint), slog.String("protocol", "doq"), slog.String("qname", qName(q)), slog.String("qtype", qType(q))))
+	logger(d.id, q, ci).Debug("querying upstream resolver",
+		"resolver", d.endpoint,
+		"protocol", "doq",
+	)
 
 	d.metrics.query.Add(1)
 
@@ -392,10 +396,10 @@ func (s *quicConnection) restart(rAddr *net.UDPAddr) error {
 	)
 	conn, err := s.dialFunc(context.TODO(), rAddr, s.tlsConfig, s.config)
 	if err != nil {
-		Log.Warn("couldn't restart quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("remote", rAddr.String()), slog.String("local", s.lAddr.String())), "error", err)
+		Log.Warn("couldn't restart quic connection", "protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String(), "error", err)
 		return err
 	}
-	Log.Debug("restarted quic connection", slog.Group("details", slog.String("protocol", "quic"), slog.String("remote", rAddr.String()), slog.String("local", s.lAddr.String())))
+	Log.Debug("restarted quic connection", "protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String())
 
 	s.Conn = conn
 	return nil
