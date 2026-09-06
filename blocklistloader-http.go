@@ -55,9 +55,8 @@ func (l *HTTPLoader) Load() ([]string, error) {
 }
 
 // loadEach passes the rules on as they arrive over the wire, so a list of
-// millions of them is never held in memory as a whole. A failed load with
-// AllowFailure set leaves whatever database is already serving queries in
-// place, or starts with an empty one when nothing has loaded yet.
+// millions of them is never held in memory as a whole. See FileLoader.loadEach
+// for what a failure means, which is the same here.
 func (l *HTTPLoader) loadEach(fn func(rule string) error) error {
 	log := Log.With("url", l.url)
 	log.Debug("loading blocklist")

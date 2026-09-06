@@ -38,9 +38,15 @@ func (l *FileLoader) Load() ([]string, error) {
 }
 
 // loadEach reads the file a line at a time, so the whole list is never held at
-// once. A failed load with AllowFailure set is reported as no rules at all
-// rather than an error, which leaves whatever database is already serving
-// queries in place.
+// once.
+//
+// What a failure means depends on how far it got. Without AllowFailure it is
+// simply an error. With it, a list that could not be opened is no rules at all
+// when none have ever loaded, and errBlocklistUnchanged once some have, which
+// leaves the database already serving queries in place. A list that broke off
+// part way through is an error either way: what has been passed on cannot be
+// taken back, so the fragment must not be built into a database and served as
+// though it were the list.
 func (l *FileLoader) loadEach(fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
