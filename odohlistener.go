@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -144,8 +143,9 @@ func (s *ODoHListener) ODoHproxyHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	Log.Debug("forwarding query to ODoH target",
-		slog.String("client", r.RemoteAddr),
-		slog.String("target", host),
+		"id", s.id,
+		"client", r.RemoteAddr,
+		"target", host,
 	)
 	response, err := forwardProxyRequest(s.proxyClient, host, path, b, contentType)
 	if err != nil {
@@ -186,78 +186,101 @@ func forwardProxyRequest(client *http.Client, host string, path string, body []b
 }
 
 func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) {
+	// The oblivious and the plain DoH path publish one set of metrics under the
+	// listener id, so a dual-mode listener counts both in the same place.
+	metrics := s.doh.metrics
+
 	qHeader := r.Header.Get("Content-Type")
 	if r.Method != http.MethodPost || qHeader == DOH_CONTENT_TYPE {
 		if s.opt.AllowDoH {
-			Log.Debug("Forwarding DoH query")
+			Log.Debug("forwarding DoH query", "id", s.id)
 			s.doh.dohHandler(w, r)
 			return
 		} else {
-			Log.Debug("DoH queries disabled, dropping DoH message")
+			Log.Debug("DoH queries disabled, dropping DoH message", "id", s.id)
+			metrics.err.Add("contenttype", 1)
 			http.Error(w, "only contentType oblivious-dns-message allowed", http.StatusMethodNotAllowed)
 			return
 		}
 	}
 
 	if qHeader != ODOH_CONTENT_TYPE {
+		metrics.err.Add("contenttype", 1)
 		http.Error(w, "only contentType oblivious-dns-message allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	metrics.query.Add(1)
 	b, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
+		metrics.err.Add("read", 1)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	msg, err := odoh.UnmarshalDNSMessage(b)
 	if err != nil {
+		metrics.err.Add("unmarshal", 1)
 		http.Error(w, "error while parsing oblivious query", http.StatusBadRequest)
 		return
 	}
 
 	obliviousQuery, responseContext, err := s.odohKeyPair.DecryptQuery(msg)
 	if err != nil {
+		metrics.err.Add("decrypt", 1)
 		http.Error(w, "error while decrypting oblivious query", http.StatusBadRequest)
 		return
 	}
 
 	q := &dns.Msg{}
 	if q.Unpack(obliviousQuery.Message()) != nil {
+		metrics.err.Add("unpack", 1)
 		http.Error(w, "unpacking oblivious query failed", http.StatusBadRequest)
 		return
 	}
+
+	ci := ClientInfo{
+		Listener:     s.id,
+		Protocol:     "odoh",
+		ListenerAddr: s.addr,
+	}
+	if r.TLS != nil {
+		ci.TLSServerName = r.TLS.ServerName
+	}
+	log := logger(s.id, q, ci)
+
 	if len(q.Question) == 0 {
-		Log.With("id", s.id, "protocol", "odoh", "addr", s.addr).Warn("dropping query with no Question section")
+		metrics.err.Add("noquestion", 1)
+		log.Warn("dropping query with no Question section")
 		http.Error(w, "no question in query", http.StatusBadRequest)
 		return
 	}
+	log.Debug("received query")
 
-	a, err := s.r.Resolve(q, ClientInfo{
-		Listener:      s.id,
-		TLSServerName: r.TLS.ServerName,
-		Protocol:      "odoh",
-		ListenerAddr:  s.addr,
-	})
+	a, err := s.r.Resolve(q, ci)
 	if err != nil {
-		Log.Warn("failed to resolve", "error", err)
-		a = new(dns.Msg)
-		a.SetRcode(q, dns.RcodeServerFailure)
+		metrics.err.Add("resolve", 1)
+		log.Warn("failed to resolve", "error", err)
+		a = servfail(q)
 	}
 
 	// A nil response from the resolvers means "drop", return blank response
 	if a == nil {
+		metrics.drop.Add(1)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
+	metrics.response.Add(rCode(a), 1)
 	p, err := a.Pack()
 	if err != nil {
-		Log.Error("failed to encode response", "error", err)
+		metrics.err.Add("pack", 1)
+		log.Error("failed to encode response", "error", err)
 		return
 	}
 
 	response := odoh.CreateObliviousDNSResponse(p, 0)
 	obliviousResponse, err := responseContext.EncryptResponse(response)
 	if err != nil {
+		metrics.err.Add("encrypt", 1)
 		http.Error(w, "failed to encrypt oblivious response", http.StatusBadRequest)
 		return
 	}

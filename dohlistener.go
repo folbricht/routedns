@@ -14,8 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"log/slog"
-
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -118,7 +116,7 @@ func NewDoHListener(id, addr string, opt DoHListenerOptions, resolver Resolver) 
 
 // Start the DoH server.
 func (s *DoHListener) Start() error {
-	Log.Info("starting listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
+	Log.Info("starting listener", "id", s.id, "protocol", "doh", "transport", s.opt.Transport, "addr", s.addr)
 	if s.opt.Transport == "quic" {
 		return s.startQUIC()
 	}
@@ -185,7 +183,7 @@ func (s *DoHListener) startQUIC() error {
 
 // Stop the server.
 func (s *DoHListener) Stop() error {
-	Log.Info("stopping listener", slog.Group("details", slog.String("id", s.id), slog.String("protocol", "doh"), slog.String("transport", s.opt.Transport), slog.String("addr", s.addr)))
+	Log.Info("stopping listener", "id", s.id, "protocol", "doh", "transport", s.opt.Transport, "addr", s.addr)
 	s.mu.Lock()
 	httpServer, quicServer := s.httpServer, s.quicServer
 	quicTransport, quicConn := s.quicTransport, s.quicConn
@@ -313,6 +311,17 @@ func (s *DoHListener) extractClientAddress(r *http.Request) net.IP {
 
 func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.Request) {
 	s.metrics.query.Add(1)
+
+	// The client address and TLS name are filled in below, once the headers
+	// have been parsed. The listener half is known here, so records logged
+	// before then still identify the listener and the query.
+	ci := ClientInfo{
+		Listener:     s.id,
+		DoHPath:      r.URL.Path,
+		Protocol:     "doh",
+		ListenerAddr: s.addr,
+	}
+
 	q := new(dns.Msg)
 	if err := q.Unpack(b); err != nil {
 		s.metrics.err.Add("unpack", 1)
@@ -321,7 +330,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	}
 	if len(q.Question) == 0 {
 		s.metrics.err.Add("noquestion", 1)
-		Log.With("id", s.id, "protocol", "doh", "addr", s.addr).Warn("dropping query with no Question section")
+		logger(s.id, q, ci).Warn("dropping query with no Question section")
 		http.Error(w, "no question in query", http.StatusBadRequest)
 		return
 	}
@@ -332,7 +341,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	// handshake only for early data; on the TCP transport it is always complete.
 	if r.TLS != nil && !r.TLS.HandshakeComplete && !isReplayableOpcode(q.Opcode) {
 		s.metrics.err.Add("tooearly", 1)
-		Log.With("id", s.id, "protocol", "doh", "addr", s.addr).Warn("rejecting non-replayable opcode received as 0-RTT", "opcode", dns.OpcodeToString[q.Opcode])
+		logger(s.id, q, ci).Warn("rejecting non-replayable opcode received as 0-RTT", "opcode", dns.OpcodeToString[q.Opcode])
 		http.Error(w, "opcode not allowed in early data", http.StatusTooEarly)
 		return
 	}
@@ -343,17 +352,9 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 		http.Error(w, "Invalid RemoteAddr", http.StatusBadRequest)
 		return
 	}
-	var tlsServerName string
+	ci.SourceIP = clientIP
 	if r.TLS != nil {
-		tlsServerName = r.TLS.ServerName
-	}
-	ci := ClientInfo{
-		SourceIP:      clientIP,
-		DoHPath:       r.URL.Path,
-		TLSServerName: tlsServerName,
-		Listener:      s.id,
-		Protocol:      "doh",
-		ListenerAddr:  s.addr,
+		ci.TLSServerName = r.TLS.ServerName
 	}
 	log := logger(s.id, q, ci)
 	log.Debug("received query")
