@@ -44,12 +44,14 @@ func qName(q *dns.Msg) string {
 	return q.Question[0].Name
 }
 
-// Returns the string representation of the query type.
+// Returns the string representation of the query type, rendering types with no
+// registered name as "TYPE<n>". Returns an empty string for a query with no
+// question section.
 func qType(q *dns.Msg) string {
 	if len(q.Question) == 0 {
 		return ""
 	}
-	return dns.TypeToString[q.Question[0].Qtype]
+	return dns.Type(q.Question[0].Qtype).String()
 }
 
 // Reports whether an opcode may be acted on in QUIC 0-RTT data. RFC 9250 4.5
