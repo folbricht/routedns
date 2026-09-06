@@ -1213,6 +1213,10 @@ func newBlocklistDB(l list, rules []string) (rdns.BlocklistDB, error) {
 		return rdns.NewDomainDB(name, loader)
 	case "domain-subdomain":
 		return rdns.NewDomainSubdomainDB(name, loader)
+	case "domain-compact":
+		return rdns.NewDomainCompactDB(name, loader)
+	case "domain-subdomain-compact":
+		return rdns.NewDomainSubdomainCompactDB(name, loader)
 	case "hosts":
 		return rdns.NewHostsDB(name, loader)
 	case "mac":

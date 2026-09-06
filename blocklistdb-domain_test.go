@@ -10,6 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// domainFormats builds a rule list in both storage formats. Everything the
+// tables in this file assert about matching has to hold for either of them,
+// so they run against both.
+func domainFormats(t *testing.T, rules []string, includeSubdomains bool) map[string]BlocklistDB {
+	t.Helper()
+	loader := NewStaticLoader(rules)
+	exact, err := newDomainDB("testlist", loader, includeSubdomains)
+	require.NoError(t, err)
+	compact, err := newDomainCompactDB("testlist", loader, includeSubdomains)
+	require.NoError(t, err)
+	return map[string]BlocklistDB{"exact": exact, "compact": compact}
+}
+
 func TestDomainDB(t *testing.T) {
 	loader := NewStaticLoader([]string{
 		"domain1.com.",    // exact match
@@ -21,9 +34,6 @@ func TestDomainDB(t *testing.T) {
 		".domain4.com",
 		".DOMAIN5.com",
 	})
-
-	m, err := NewDomainDB("testlist", loader)
-	require.NoError(t, err)
 
 	tests := []struct {
 		q     string
@@ -55,12 +65,16 @@ func TestDomainDB(t *testing.T) {
 		// match capital blocklist item
 		{"domain5.com.", true},
 	}
-	for _, test := range tests {
-		msg := new(dns.Msg)
-		msg.SetQuestion(test.q, dns.TypeA)
+	for format, m := range domainFormats(t, loader.rules, false) {
+		t.Run(format, func(t *testing.T) {
+			for _, test := range tests {
+				msg := new(dns.Msg)
+				msg.SetQuestion(test.q, dns.TypeA)
 
-		_, _, _, ok := m.Match(msg)
-		require.Equal(t, test.match, ok, "query: %s", test.q)
+				_, _, _, ok := m.Match(msg)
+				require.Equal(t, test.match, ok, "query: %s", test.q)
+			}
+		})
 	}
 }
 
@@ -155,13 +169,15 @@ func TestDomainDBOverlap(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m, err := NewDomainDB("testlist", NewStaticLoader(c.rules))
-			require.NoError(t, err)
-			for _, test := range c.tests {
-				msg := new(dns.Msg)
-				msg.SetQuestion(test.q, dns.TypeA)
-				_, _, _, ok := m.Match(msg)
-				require.Equal(t, test.match, ok, "rules=%v query=%s", c.rules, test.q)
+			for format, m := range domainFormats(t, c.rules, false) {
+				t.Run(format, func(t *testing.T) {
+					for _, test := range c.tests {
+						msg := new(dns.Msg)
+						msg.SetQuestion(test.q, dns.TypeA)
+						_, _, _, ok := m.Match(msg)
+						require.Equal(t, test.match, ok, "rules=%v query=%s", c.rules, test.q)
+					}
+				})
 			}
 		})
 	}
@@ -175,9 +191,6 @@ func TestDomainSubdomainDB(t *testing.T) {
 		"DOMAIN4.com",   // capitalized bare entry
 		"trailing.dot.com.",
 	})
-
-	m, err := NewDomainSubdomainDB("testlist", loader)
-	require.NoError(t, err)
 
 	tests := []struct {
 		q     string
@@ -211,12 +224,16 @@ func TestDomainSubdomainDB(t *testing.T) {
 		// capitalized query
 		{"Domain1.com.", true},
 	}
-	for _, test := range tests {
-		msg := new(dns.Msg)
-		msg.SetQuestion(test.q, dns.TypeA)
+	for format, m := range domainFormats(t, loader.rules, true) {
+		t.Run(format, func(t *testing.T) {
+			for _, test := range tests {
+				msg := new(dns.Msg)
+				msg.SetQuestion(test.q, dns.TypeA)
 
-		_, _, _, ok := m.Match(msg)
-		require.Equal(t, test.match, ok, "query: %s", test.q)
+				_, _, _, ok := m.Match(msg)
+				require.Equal(t, test.match, ok, "query: %s", test.q)
+			}
+		})
 	}
 }
 
@@ -231,6 +248,8 @@ func TestDomainSubdomainDBError(t *testing.T) {
 		loader := NewStaticLoader([]string{test.name})
 		_, err := NewDomainSubdomainDB("testlist", loader)
 		require.Error(t, err)
+		_, err = NewDomainSubdomainCompactDB("testlist", loader)
+		require.Error(t, err)
 	}
 }
 
@@ -244,6 +263,8 @@ func TestDomainDBError(t *testing.T) {
 	for _, test := range tests {
 		loader := NewStaticLoader([]string{test.name})
 		_, err := NewDomainDB("testlist", loader)
+		require.Error(t, err)
+		_, err = NewDomainCompactDB("testlist", loader)
 		require.Error(t, err)
 	}
 }
@@ -335,9 +356,6 @@ func TestDomainDBGenerated(t *testing.T) {
 			reported[p.reported] = true
 		}
 
-		db, err := newDomainDB("testlist", NewStaticLoader(rules), includeSubdomains)
-		require.NoError(t, err)
-
 		var queries []string
 		for _, p := range parsed {
 			queries = append(queries, p.domain, "www."+p.domain, "a.b."+p.domain)
@@ -350,17 +368,19 @@ func TestDomainDBGenerated(t *testing.T) {
 		}
 
 		msg := new(dns.Msg)
-		for _, q := range queries {
-			msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
-			_, _, match, ok := db.Match(msg)
-			require.Equal(t, referenceDomainMatch(parsed, q), ok,
-				"subdomain-mode=%v query=%s", includeSubdomains, q)
-			if !ok {
-				require.Nil(t, match, "a miss must not build a match")
-				continue
+		for format, db := range domainFormats(t, rules, includeSubdomains) {
+			for _, q := range queries {
+				msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
+				_, _, match, ok := db.Match(msg)
+				require.Equal(t, referenceDomainMatch(parsed, q), ok,
+					"format=%s subdomain-mode=%v query=%s", format, includeSubdomains, q)
+				if !ok {
+					require.Nil(t, match, "a miss must not build a match")
+					continue
+				}
+				require.True(t, reported[match.Rule],
+					"reported rule %q is not one of the rules loaded", match.Rule)
 			}
-			require.True(t, reported[match.Rule],
-				"reported rule %q is not one of the rules loaded", match.Rule)
 		}
 	}
 }
@@ -420,9 +440,6 @@ func TestDomainDBLabelStorage(t *testing.T) {
 		"sub." + long + ".net",
 		"." + long + ".net",
 	}
-	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
-	require.NoError(t, err)
-
 	tests := []struct {
 		q     string
 		match bool
@@ -437,11 +454,15 @@ func TestDomainDBLabelStorage(t *testing.T) {
 		{"sub." + long + ".net.", true},
 		{"other." + long + ".net.", true}, // covered by the .prefix rule
 	}
-	for _, test := range tests {
-		msg := new(dns.Msg)
-		msg.SetQuestion(test.q, dns.TypeA)
-		_, _, _, ok := m.Match(msg)
-		require.Equal(t, test.match, ok, "query: %s", test.q)
+	for format, m := range domainFormats(t, rules, false) {
+		t.Run(format, func(t *testing.T) {
+			for _, test := range tests {
+				msg := new(dns.Msg)
+				msg.SetQuestion(test.q, dns.TypeA)
+				_, _, _, ok := m.Match(msg)
+				require.Equal(t, test.match, ok, "query: %s", test.q)
+			}
+		})
 	}
 }
 
@@ -450,29 +471,33 @@ func TestDomainDBLabelStorage(t *testing.T) {
 func TestDomainDBGrowth(t *testing.T) {
 	rules := generateDomainRules(20000)
 	parsed := parseDomainRules(rules, false)
-	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
-	require.NoError(t, err)
 
 	msg := new(dns.Msg)
-	for _, p := range parsed {
-		q := p.domain
-		if !p.apex { // a sub-domains-only rule needs one to match
-			q = "www." + q
-		}
-		msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
-		_, _, _, ok := m.Match(msg)
-		require.True(t, ok, "rule %q, query %q", p.reported, q)
+	for format, m := range domainFormats(t, rules, false) {
+		t.Run(format, func(t *testing.T) {
+			for _, p := range parsed {
+				q := p.domain
+				if !p.apex { // a sub-domains-only rule needs one to match
+					q = "www." + q
+				}
+				msg.SetQuestion(dns.Fqdn(q), dns.TypeA)
+				_, _, _, ok := m.Match(msg)
+				require.True(t, ok, "rule %q, query %q", p.reported, q)
+			}
+		})
 	}
 }
 
 func TestDomainDBEmpty(t *testing.T) {
-	m, err := NewDomainDB("testlist", NewStaticLoader(nil))
-	require.NoError(t, err)
-	msg := new(dns.Msg)
-	msg.SetQuestion("example.com.", dns.TypeA)
-	_, _, match, ok := m.Match(msg)
-	require.False(t, ok)
-	require.Nil(t, match)
+	for format, m := range domainFormats(t, nil, false) {
+		t.Run(format, func(t *testing.T) {
+			msg := new(dns.Msg)
+			msg.SetQuestion("example.com.", dns.TypeA)
+			_, _, match, ok := m.Match(msg)
+			require.False(t, ok)
+			require.Nil(t, match)
+		})
+	}
 }
 
 // TestDomainDBSharedLabels covers the same label sitting under several parents,
@@ -485,9 +510,6 @@ func TestDomainDBSharedLabels(t *testing.T) {
 		"www.four.net",
 		"deep.www.one.com",
 	}
-	m, err := NewDomainDB("testlist", NewStaticLoader(rules))
-	require.NoError(t, err)
-
 	tests := []struct {
 		q     string
 		match bool
@@ -503,10 +525,14 @@ func TestDomainDBSharedLabels(t *testing.T) {
 		{"www.five.com.", false},
 		{"deep.www.four.net.", false},
 	}
-	for _, test := range tests {
-		msg := new(dns.Msg)
-		msg.SetQuestion(test.q, dns.TypeA)
-		_, _, _, ok := m.Match(msg)
-		require.Equal(t, test.match, ok, "query: %s", test.q)
+	for format, m := range domainFormats(t, rules, false) {
+		t.Run(format, func(t *testing.T) {
+			for _, test := range tests {
+				msg := new(dns.Msg)
+				msg.SetQuestion(test.q, dns.TypeA)
+				_, _, _, ok := m.Match(msg)
+				require.Equal(t, test.match, ok, "query: %s", test.q)
+			}
+		})
 	}
 }
