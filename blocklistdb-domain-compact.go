@@ -60,34 +60,25 @@ var _ BlocklistDB = &DomainCompactDB{}
 // NewDomainCompactDB returns a matcher for a list of domain rules that trades
 // exactness for memory. See DomainCompactDB.
 func NewDomainCompactDB(name string, loader BlocklistLoader) (*DomainCompactDB, error) {
-	return newDomainCompactDB(name, loader, false, 0)
+	return newDomainCompactDB(name, loader, false)
 }
 
 // NewDomainSubdomainCompactDB is like NewDomainCompactDB but treats bare
 // entries as matching the apex and all sub-domains, as NewDomainSubdomainDB
 // does.
 func NewDomainSubdomainCompactDB(name string, loader BlocklistLoader) (*DomainCompactDB, error) {
-	return newDomainCompactDB(name, loader, true, 0)
+	return newDomainCompactDB(name, loader, true)
 }
 
-// nodes is the number of entries the database this one replaces holds, which is
-// what a refresh builds into rather than growing towards. A list is streamed in,
-// so its size is not known up front, and every doubling of the slice copies
-// what is already in it while both halves are held at once. The first build of
-// all has no estimate and grows into what it needs.
-func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains bool, nodes int) (*DomainCompactDB, error) {
+func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains bool) (*DomainCompactDB, error) {
 	f := domainFingerprints{seed: rand.Uint64()}
-	// A little over the last count: merging drops the entries a rule shares
-	// with the ones before it, so a build appends a few percent more than it
-	// keeps.
-	sized := func() []uint64 { return make([]uint64, 0, nodes+nodes/8) }
-	entries := sized()
+	var entries []uint64
 	recent := new(domainRecent)
 	reset := func() {
 		// Not entries[:0]: an empty slice still points at the array behind it,
 		// and so does the clone build makes of it, which would keep every
 		// entry of a list that broke off reachable for good.
-		entries, recent = sized(), new(domainRecent)
+		entries, recent = nil, new(domainRecent)
 	}
 	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {
 		// Walk the labels from the TLD inwards, hashing each suffix as it goes.
@@ -120,7 +111,7 @@ func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains b
 }
 
 func (m *DomainCompactDB) Reload() (BlocklistDB, error) {
-	return newDomainCompactDB(m.name, m.loader, m.includeSubdomains, len(m.fingerprints.entries))
+	return newDomainCompactDB(m.name, m.loader, m.includeSubdomains)
 }
 
 func (m *DomainCompactDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) {

@@ -146,20 +146,11 @@ type domainBuilder struct {
 	parents []uint32
 }
 
-// newDomainBuilder starts a trie of about nodes nodes holding about blob bytes
-// of long labels. A list is streamed in, so its size is not known up front; the
-// build it is replacing is the estimate, and the first one of all has none and
-// grows into what it needs.
-func newDomainBuilder(nodes, blob int) *domainBuilder {
+func newDomainBuilder() *domainBuilder {
 	b := &domainBuilder{}
-	b.nodes = make([]domainNode, 1, nodes+1) // node 0 is the root
-	b.parents = make([]uint32, 1, nodes+1)
-	b.blob = make([]byte, 0, blob)
-	size := domainTableSize(uint64(nodes)) + 8
-	if size < 64 {
-		size = 64
-	}
-	b.rebuild(size)
+	b.nodes = make([]domainNode, 1) // node 0 is the root
+	b.parents = make([]uint32, 1)
+	b.rebuild(64)
 	return b
 }
 
@@ -205,8 +196,8 @@ func (b *domainBuilder) rebuild(size uint64) {
 }
 
 // done returns the finished trie, sized to what it holds rather than to the
-// estimate it was started from or the doubling it grew by. Anything left over
-// would be held for as long as the trie serves queries.
+// doubling it grew by. Anything left over would be held for as long as the trie
+// serves queries.
 func (b *domainBuilder) done() domainTrie {
 	if want := domainTableSize(uint64(len(b.nodes))) + 8; uint64(len(b.slots)) > want*4/3 {
 		b.rebuild(want)
@@ -219,10 +210,4 @@ func (b *domainBuilder) done() domainTrie {
 	}
 	b.parents = nil
 	return b.domainTrie
-}
-
-// sizes says what the trie holds, which is what the next build of the same list
-// starts from.
-func (t *domainTrie) sizes() (nodes, blob int) {
-	return len(t.nodes), len(t.blob)
 }

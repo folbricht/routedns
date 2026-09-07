@@ -18,9 +18,9 @@ func TestDomainCompactMatchesExact(t *testing.T) {
 	for _, includeSubdomains := range []bool{false, true} {
 		rules := generateDomainRules(20000)
 		loader := NewStaticLoader(rules)
-		exact, err := newDomainDB("testlist", loader, includeSubdomains, 0, 0)
+		exact, err := newDomainDB("testlist", loader, includeSubdomains)
 		require.NoError(t, err)
-		compact, err := newDomainCompactDB("testlist", loader, includeSubdomains, 0)
+		compact, err := newDomainCompactDB("testlist", loader, includeSubdomains)
 		require.NoError(t, err)
 
 		var queries []string
@@ -51,9 +51,9 @@ func TestDomainCompactMatchesExact(t *testing.T) {
 func TestDomainCompactSeeded(t *testing.T) {
 	rules := generateDomainRules(1000)
 	loader := NewStaticLoader(rules)
-	first, err := newDomainCompactDB("testlist", loader, false, 0)
+	first, err := newDomainCompactDB("testlist", loader, false)
 	require.NoError(t, err)
-	second, err := newDomainCompactDB("testlist", loader, false, 0)
+	second, err := newDomainCompactDB("testlist", loader, false)
 	require.NoError(t, err)
 	require.NotEqual(t, first.fingerprints.seed, second.fingerprints.seed)
 	require.NotEqual(t, first.fingerprints.entries, second.fingerprints.entries)
@@ -75,7 +75,7 @@ func TestDomainCompactSeeded(t *testing.T) {
 func BenchmarkDomainCompactMatch(b *testing.B) {
 	for _, n := range []int{1000, 100000} {
 		rules := generateDomainRules(n)
-		db, err := newDomainCompactDB("testlist", NewStaticLoader(rules), false, 0)
+		db, err := newDomainCompactDB("testlist", NewStaticLoader(rules), false)
 		require.NoError(b, err)
 
 		hit := "www." + strings.TrimPrefix(strings.TrimPrefix(rules[len(rules)-1], "*."), ".")
@@ -99,7 +99,7 @@ func BenchmarkDomainCompactBuild(b *testing.B) {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := newDomainCompactDB("testlist", loader, false, 0); err != nil {
+				if _, err := newDomainCompactDB("testlist", loader, false); err != nil {
 					b.Fatal(err)
 				}
 			}

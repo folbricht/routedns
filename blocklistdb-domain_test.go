@@ -18,9 +18,9 @@ import (
 func domainFormats(t *testing.T, rules []string, includeSubdomains bool) map[string]BlocklistDB {
 	t.Helper()
 	loader := NewStaticLoader(rules)
-	exact, err := newDomainDB("testlist", loader, includeSubdomains, 0, 0)
+	exact, err := newDomainDB("testlist", loader, includeSubdomains)
 	require.NoError(t, err)
-	compact, err := newDomainCompactDB("testlist", loader, includeSubdomains, 0)
+	compact, err := newDomainCompactDB("testlist", loader, includeSubdomains)
 	require.NoError(t, err)
 	return map[string]BlocklistDB{"exact": exact, "compact": compact}
 }
@@ -390,7 +390,7 @@ func TestDomainDBGenerated(t *testing.T) {
 func BenchmarkDomainDBMatch(b *testing.B) {
 	for _, n := range []int{1000, 100000} {
 		rules := generateDomainRules(n)
-		db, err := newDomainDB("testlist", NewStaticLoader(rules), false, 0, 0)
+		db, err := newDomainDB("testlist", NewStaticLoader(rules), false)
 		require.NoError(b, err)
 
 		// A name that matches the last rule loaded, one that shares its TLD
@@ -416,7 +416,7 @@ func BenchmarkDomainDBBuild(b *testing.B) {
 		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := newDomainDB("testlist", loader, false, 0, 0); err != nil {
+				if _, err := newDomainDB("testlist", loader, false); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -539,8 +539,8 @@ func TestDomainDBSharedLabels(t *testing.T) {
 	}
 }
 
-// A refresh builds into the size of the build before it. A list that shrank
-// must not leave the database holding what the larger one needed.
+// The trie a build hands back is sized to what it holds, so a list that shrank
+// does not leave the database holding what the larger one needed.
 func TestDomainDBShrink(t *testing.T) {
 	dir := t.TempDir()
 	name := filepath.Join(dir, "list.txt")
