@@ -1,7 +1,10 @@
 package rdns
 
 import (
+	"context"
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -70,12 +73,6 @@ func TestDTLSListenerPSK(t *testing.T) {
 
 // The key has to be verified, not just accepted, so a client with the wrong
 // one must not get an answer through.
-//
-// The listener is stopped without waiting here. Shutdown blocks after a
-// handshake the peer abandoned, because dns.Server.Shutdown waits on the
-// connection pion left behind. That is a pre-existing issue in the DTLS
-// listener, unrelated to pre-shared keys: the same happens with certificates,
-// and it does not affect the successful path above.
 func TestDTLSListenerPSKMismatch(t *testing.T) {
 	upstream := new(TestResolver)
 
@@ -86,7 +83,7 @@ func TestDTLSListenerPSKMismatch(t *testing.T) {
 	require.NoError(t, err)
 	s := NewDTLSListener("test-dtls-psk-mismatch", addr, DTLSListenerOptions{DTLSConfig: serverConfig}, upstream)
 	go s.Start()
-	defer func() { go s.Stop() }()
+	defer s.Stop()
 	time.Sleep(time.Second)
 
 	clientConfig, err := DTLSClientConfig("", "", "", &PSK{Key: []byte{0xff, 0xfe, 0xfd, 0xfc}, Identity: "test-client"})
@@ -191,4 +188,97 @@ func TestDTLSPSKNegotiatesForwardSecrecy(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, dtls.TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA256, state.CipherSuiteID,
 		"a PSK connection between two RouteDNS peers should use the forward secret suite")
+}
+
+// A peer that starts a handshake and then stops responding must not pin the
+// listener open. pion runs the handshake on the first Read with an unbounded
+// context, so without a deadline of our own the connection goroutine never
+// returns and dns.Server.Shutdown waits on it forever.
+func TestDTLSListenerStopAfterAbandonedHandshake(t *testing.T) {
+	upstream := new(TestResolver)
+
+	addr, err := getLnAddress()
+	require.NoError(t, err)
+
+	serverConfig, err := DTLSServerConfig("", "testdata/server.crt", "testdata/server.key", false, nil)
+	require.NoError(t, err)
+	s := NewDTLSListener("test-dtls-abandoned", addr, DTLSListenerOptions{DTLSConfig: serverConfig}, upstream)
+	go s.Start()
+	time.Sleep(time.Second)
+
+	// Send a ClientHello and then go away. The server accepts the connection
+	// and starts a handshake that never completes.
+	conn, err := net.Dial("udp", addr)
+	require.NoError(t, err)
+	clientHello := []byte{
+		0x16, 0xfe, 0xfd, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x10, 0x01, 0x00, 0x00,
+		0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x04, 0xfe, 0xfd, 0x00, 0x00,
+	}
+	_, err = conn.Write(clientHello)
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	time.Sleep(500 * time.Millisecond)
+
+	// Shutdown has to cancel the handshake rather than wait it out, so this is
+	// deliberately far below dtlsHandshakeTimeout.
+	stopped := make(chan error, 1)
+	start := time.Now()
+	go func() { stopped <- s.Stop() }()
+	select {
+	case <-stopped:
+	case <-time.After(dtlsHandshakeTimeout / 2):
+		t.Fatal("Stop blocked on a connection whose handshake was abandoned")
+	}
+	require.Less(t, time.Since(start), dtlsHandshakeTimeout/2,
+		"shutdown waited out the handshake timeout instead of cancelling it")
+}
+
+// stalledHandshakeConn stands in for a *dtls.Conn whose peer never finishes the
+// handshake: HandshakeContext returns only when the context is done.
+type stalledHandshakeConn struct {
+	net.Conn
+	calls atomic.Int64
+}
+
+func (c *stalledHandshakeConn) HandshakeContext(ctx context.Context) error {
+	c.calls.Add(1)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (c *stalledHandshakeConn) Read([]byte) (int, error)  { panic("handshake should not complete") }
+func (c *stalledHandshakeConn) Write([]byte) (int, error) { panic("handshake should not complete") }
+
+// Read and Write both wait for the handshake, so both have to give up when it
+// does not finish, and between them they must only run it once.
+func TestDTLSConnHandshakeDeadline(t *testing.T) {
+	stalled := &stalledHandshakeConn{}
+	c := newDTLSConn(stalled)
+	c.handshakeTimeout = time.Second
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, errs[0] = c.Read(make([]byte, 2))
+	}()
+	go func() {
+		defer wg.Done()
+		_, errs[1] = c.Write([]byte("query"))
+	}()
+
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Read and Write did not return after the handshake deadline")
+	}
+
+	require.ErrorIs(t, errs[0], context.DeadlineExceeded)
+	require.ErrorIs(t, errs[1], context.DeadlineExceeded)
+	require.Equal(t, int64(1), stalled.calls.Load(), "the handshake should run once for the connection")
 }

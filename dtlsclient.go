@@ -159,5 +159,5 @@ func (d dtlsDialer) Dial(address string) (*dns.Conn, error) {
 		pConn.Close()
 		return nil, err
 	}
-	return &dns.Conn{Conn: &dtlsConn{Conn: c}}, nil
+	return &dns.Conn{Conn: newDTLSConn(c)}, nil
 }
