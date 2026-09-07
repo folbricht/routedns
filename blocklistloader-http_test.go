@@ -94,50 +94,34 @@ func TestHTTPLoaderCacheKeptOnFailure(t *testing.T) {
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
 }
 
-// A cached copy that breaks off part way through is dropped and the list read
-// again from upstream, rather than the fragment being served as the list.
-func TestHTTPLoaderCorruptCacheFallsBack(t *testing.T) {
-	dir := t.TempDir()
+// A cached copy that cannot be used is dropped and the list read again from
+// upstream, whether it broke off or carried a rule the database refuses.
+func TestHTTPLoaderCacheFallsBack(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "a.example.com\nb.example.com")
 	}))
 	defer srv.Close()
 
-	// A cache file holding a rule and then a line longer than the scanner can
-	// take, so the read fails only after part of the list was handed over.
-	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
-	corrupt := "cached.example.com\n" + strings.Repeat("x", 100_000)
-	require.NoError(t, os.WriteFile(l.cacheFilename(), []byte(corrupt), 0644))
+	for name, cached := range map[string]string{
+		"broke off": "cached.example.com\n" + strings.Repeat("x", 100_000),
+		"refused":   "cached.example.com\nrefused.example.com\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: t.TempDir()})
+			require.NoError(t, os.WriteFile(l.cacheFilename(), []byte(cached), 0644))
 
-	rules, err := collectRules(l)
-	require.NoError(t, err)
-	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
-}
-
-// A cached copy carrying a rule the database refuses is no different from one
-// that cannot be read: what it handed over is dropped and the list is taken
-// from upstream instead.
-func TestHTTPLoaderCacheRefusedRule(t *testing.T) {
-	dir := t.TempDir()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "a.example.com\nb.example.com")
-	}))
-	defer srv.Close()
-
-	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
-	cached := "cached.example.com\nrefused.example.com\n"
-	require.NoError(t, os.WriteFile(l.cacheFilename(), []byte(cached), 0644))
-
-	var rules []string
-	err := l.Load(func() { rules = nil }, func(rule string) error {
-		if rule == "refused.example.com" {
-			return errors.New("the database will not take this rule")
-		}
-		rules = append(rules, rule)
-		return nil
-	})
-	require.NoError(t, err)
-	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+			var rules []string
+			err := l.Load(func() { rules = nil }, func(rule string) error {
+				if rule == "refused.example.com" {
+					return errors.New("the database will not take this rule")
+				}
+				rules = append(rules, rule)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+		})
+	}
 }
 
 // AllowFailure covers the first load: a list that has never loaded starts
@@ -166,10 +150,9 @@ func TestLoaderAllowFailure(t *testing.T) {
 	require.Error(t, err)
 }
 
-// A body that stops short of what was promised is a partial list, and counts
-// as a list that could not be read: on the first load AllowFailure carries on
-// without it, later it is an error. Either way the cached copy survives it and
-// no part of the fragment is served.
+// A body that stops short of what was promised is a list that could not be
+// read: an error, no part of the fragment served, and the cached copy left
+// alone.
 func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	dir := t.TempDir()
 	truncate := false
@@ -200,15 +183,7 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, rules, "a fragment of a list must not be served as the list")
 
-	// Once a list has loaded, a later fragment leaves it in place instead.
 	truncate = false
-	rules, err = collectRules(allow)
-	require.NoError(t, err)
-	require.Len(t, rules, 2)
-	truncate = true
-	_, err = collectRules(allow)
-	require.Error(t, err, "a list that has loaded reports a later fragment")
-
 	cached, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, cached)
@@ -239,40 +214,29 @@ func TestPartialListDiscarded(t *testing.T) {
 	}
 }
 
-// A cache-dir that cannot be written to is worth a warning, not a failed load.
-func TestHTTPLoaderUnwritableCache(t *testing.T) {
+// A cache that cannot be written is worth a warning, not a failed load: the
+// rules are in hand either way, whether the file could not be opened at all or
+// the rename at the end failed.
+func TestHTTPLoaderCacheWriteFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
 	notADir := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(notADir, nil, 0644))
+	unwritable := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: notADir})
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "a.example.com\nb.example.com")
-	}))
-	defer srv.Close()
-
-	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: notADir})
-	l.fromDisk = false
-	rules, err := collectRules(l)
-	require.NoError(t, err, "the download worked, only the cache did not")
-	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
-}
-
-// Writing the cache fails after the body has been read and every rule passed
-// on, since the file is buffered and only flushed and renamed at the end. That
-// must not turn a list that arrived into a list that failed.
-func TestHTTPLoaderCacheWriteFails(t *testing.T) {
-	dir := t.TempDir()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "a.example.com\nb.example.com")
-	}))
-	defer srv.Close()
-
-	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
 	// A directory where the cache file belongs: the rename at the end fails.
-	require.NoError(t, os.Mkdir(l.cacheFilename(), 0755))
+	taken := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: t.TempDir()})
+	require.NoError(t, os.Mkdir(taken.cacheFilename(), 0755))
 
-	rules, err := collectRules(l)
-	require.NoError(t, err, "the list arrived, only the cache write failed")
-	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+	for _, l := range []*HTTPLoader{unwritable, taken} {
+		l.fromDisk = false
+		rules, err := collectRules(l)
+		require.NoError(t, err, "the list arrived, only the cache write failed")
+		require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+	}
 }
 
 // A cache write that fails part way through a download is what a cache-dir

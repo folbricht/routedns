@@ -196,8 +196,7 @@ func (b *domainBuilder) rebuild(size uint64) {
 }
 
 // done returns the finished trie, sized to what it holds rather than to the
-// doubling it grew by. Anything left over would be held for as long as the trie
-// serves queries.
+// doubling it grew by, which it would otherwise hold while it serves queries.
 func (b *domainBuilder) done() domainTrie {
 	if want := domainTableSize(uint64(len(b.nodes))) + 8; uint64(len(b.slots)) > want*4/3 {
 		b.rebuild(want)

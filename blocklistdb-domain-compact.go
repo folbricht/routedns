@@ -75,9 +75,8 @@ func newDomainCompactDB(name string, loader BlocklistLoader, includeSubdomains b
 	var entries []uint64
 	recent := new(domainRecent)
 	reset := func() {
-		// Not entries[:0]: an empty slice still points at the array behind it,
-		// and so does the clone build makes of it, which would keep every
-		// entry of a list that broke off reachable for good.
+		// Not entries[:0]: it still points at the array behind it, and so
+		// would the clone build makes of it.
 		entries, recent = nil, new(domainRecent)
 	}
 	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {

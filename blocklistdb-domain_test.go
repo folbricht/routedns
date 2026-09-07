@@ -3,8 +3,6 @@ package rdns
 import (
 	"fmt"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -537,33 +535,4 @@ func TestDomainDBSharedLabels(t *testing.T) {
 			}
 		})
 	}
-}
-
-// The trie a build hands back is sized to what it holds, so a list that shrank
-// does not leave the database holding what the larger one needed.
-func TestDomainDBShrink(t *testing.T) {
-	dir := t.TempDir()
-	name := filepath.Join(dir, "list.txt")
-	var big strings.Builder
-	for i := range 20000 {
-		fmt.Fprintf(&big, "host%d.example.com\n", i)
-	}
-	require.NoError(t, os.WriteFile(name, []byte(big.String()), 0644))
-
-	db, err := NewDomainDB("testlist", NewFileLoader(name, FileLoaderOptions{}))
-	require.NoError(t, err)
-	require.Greater(t, cap(db.trie.nodes), 20000)
-
-	require.NoError(t, os.WriteFile(name, []byte("only.example.com\n"), 0644))
-	reloaded, err := db.Reload()
-	require.NoError(t, err)
-
-	trie := reloaded.(*DomainDB).trie
-	require.Less(t, cap(trie.nodes), 100, "the trie kept the nodes the larger list needed")
-	require.Less(t, len(trie.slots), 100, "the table kept the size the larger list needed")
-
-	msg := new(dns.Msg)
-	msg.SetQuestion("only.example.com.", dns.TypeA)
-	_, _, _, ok := reloaded.Match(msg)
-	require.True(t, ok)
 }

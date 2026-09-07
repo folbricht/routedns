@@ -59,9 +59,8 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 func (m *CidrDB) Reload() (IPBlocklistDB, error) {
 	db, err := NewCidrDB(m.name, m.loader)
 	if err != nil {
-		// The list could not be read, so the rules already loaded stand. The
-		// tries are immutable, so the instance carrying them on shares them,
-		// and it holds nothing else that closing would release.
+		// The rules already loaded stand. The tries are immutable, so the
+		// instance carrying them on shares them.
 		return &CidrDB{name: m.name, ip4: m.ip4, ip6: m.ip6, loader: m.loader}, err
 	}
 	return db, err

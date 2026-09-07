@@ -40,9 +40,8 @@ func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
 	return l
 }
 
-// Load passes the rules on as they arrive over the wire, so a list of millions
-// of them is never held in memory as a whole. See listFailed for what a list
-// that could not be read means.
+// Load passes the rules on as they arrive. See listFailed for a list that
+// could not be read.
 func (l *HTTPLoader) Load(reset func(), fn func(rule string) error) error {
 	log := Log.With("url", l.url)
 	log.Debug("loading blocklist")
@@ -57,10 +56,9 @@ func (l *HTTPLoader) Load(reset func(), fn func(rule string) error) error {
 }
 
 func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) error) error {
-	// If a cache-dir was given, try to load the list from disk on first load,
-	// and fall back to the network when that fails. Whatever a cached copy
-	// handed over before it broke off is dropped first, so the list that
-	// arrives from upstream is the only one built.
+	// With a cache-dir, the first load comes from disk and falls back to the
+	// network. Whatever the cached copy handed over is dropped first, so the
+	// list from upstream is the only one built.
 	if l.fromDisk {
 		l.fromDisk = false
 		err := readRulesFile(l.cacheFilename(), fn)
@@ -93,9 +91,8 @@ func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) e
 		return scanRules(resp.Body, fn)
 	}
 
-	// Write the list to the cache as it is read rather than keeping it to
-	// write afterwards. The file is only renamed into place if the whole body
-	// arrives, so a failed download leaves the previous cache alone.
+	// The list is cached as it is read. The file is only renamed into place if
+	// the whole body arrives, so a failed download leaves the cache alone.
 	log.Debug("writing rules to cache-dir")
 	var scanErr error
 	var opened bool
@@ -110,14 +107,11 @@ func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) e
 	})
 
 	// A cache that cannot be written is worth reporting, not failing the load
-	// over: the rules are in hand either way. The two have to be told apart by
-	// which one failed rather than by how far the read got, because the file
-	// is buffered and its flush, sync and rename all happen after the body has
-	// been read and every rule passed on.
+	// over. Which of the two failed cannot be told from how far the read got,
+	// since the flush, sync and rename all happen after the last rule.
 	switch {
 	case !opened:
-		// Nothing has been read yet, so the body is still there to take
-		// without a cache to write it to.
+		// Nothing read yet, so the body is still there to take.
 		log.Error("failed to write rules to cache-dir", "error", err)
 		return scanRules(resp.Body, fn)
 	case scanErr != nil:
@@ -129,9 +123,8 @@ func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) e
 }
 
 // cacheWhileReading passes every rule read from r to fn and writes it to w on
-// the way past, keeping the two failures apart. A cache that cannot be written
-// must not look like a list that broke off, so the write error is kept here
-// rather than raised where the read would report it.
+// the way past, returning the read and write failures apart from one another
+// so that an unwritable cache never looks like a list that broke off.
 func cacheWhileReading(r io.Reader, w io.Writer, fn func(rule string) error) (scanErr, cacheErr error) {
 	write := func(s string) {
 		if cacheErr == nil {

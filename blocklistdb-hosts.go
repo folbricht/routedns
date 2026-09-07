@@ -32,8 +32,7 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 	filters := make(map[string]ipRecords)
 	ptrMap := make(map[string][]string)
 	// Fresh maps rather than clear(), which empties a map without giving up
-	// the buckets it grew: a list that broke off part way through would leave
-	// its memory behind in the database that goes on serving queries.
+	// the buckets it grew from a list that broke off.
 	reset := func() {
 		filters = make(map[string]ipRecords)
 		ptrMap = make(map[string][]string)

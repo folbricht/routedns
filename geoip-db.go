@@ -66,12 +66,10 @@ func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB
 func (m *GeoIPDB) Reload() (IPBlocklistDB, error) {
 	db, err := NewGeoIPDB(m.name, m.loader, m.geoDBFile)
 	if err != nil {
-		// The list could not be read, so the rules already loaded stand. They
-		// are immutable and shared with the instance carrying them on, but the
-		// map file is opened again so that it has a handle of its own to close.
+		// The rules already loaded stand. They are immutable and shared, but
+		// the map file is opened again for a handle of its own to close.
 		geoDB, oerr := maxminddb.Open(m.geoDBFile)
 		if oerr != nil {
-			// Without a handle of its own there is nothing to carry them on with.
 			return nil, errors.Join(err, fmt.Errorf("failed to open geo location database file: %w", oerr))
 		}
 		return &GeoIPDB{

@@ -18,13 +18,10 @@ func NewMultiIPDB(dbs ...IPBlocklistDB) (MultiIPDB, error) {
 
 func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	// A list that could not be read hands back the rules it already has while
-	// the lists beside it refresh, so the group is rebuilt whole either way.
-	// A database that cannot even do that leaves the group as it is.
-	// The databases it is rebuilt from are new instances, which is what lets
+	// the lists beside it refresh. Those are new instances, which is what lets
 	// the group they came from be closed once this one is in place.
 	newDBs := make([]IPBlocklistDB, 0, len(m.dbs))
-	// Every way out of here but the last one leaves the group unbuilt, and the
-	// databases gathered for it are then nobody's to close but ours.
+	// Until the group is built, what was gathered for it is ours to close.
 	keep := false
 	defer func() {
 		if !keep {

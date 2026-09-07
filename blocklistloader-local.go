@@ -20,8 +20,8 @@ func NewFileLoader(filename string, opt FileLoaderOptions) *FileLoader {
 	return &FileLoader{filename, opt, false}
 }
 
-// Load reads the file a line at a time, so the whole list is never held at
-// once. See listFailed for what a list that could not be read means.
+// Load reads the file a line at a time. See listFailed for a list that could
+// not be read.
 func (l *FileLoader) Load(reset func(), fn func(rule string) error) error {
 	log := Log.With("file", l.filename)
 	log.Debug("loading blocklist")
