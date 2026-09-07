@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/bits"
+	"slices"
 )
 
 // The longest label a domain name can carry. A rule with anything longer could
@@ -145,11 +146,11 @@ type domainBuilder struct {
 	parents []uint32
 }
 
-func newDomainBuilder(rules int) *domainBuilder {
+func newDomainBuilder() *domainBuilder {
 	b := &domainBuilder{}
-	b.nodes = make([]domainNode, 1, rules+1) // node 0 is the root
-	b.parents = make([]uint32, 1, rules+1)
-	b.rebuild(domainTableSize(uint64(rules)) + 8)
+	b.nodes = make([]domainNode, 1) // node 0 is the root
+	b.parents = make([]uint32, 1)
+	b.rebuild(64)
 	return b
 }
 
@@ -195,10 +196,16 @@ func (b *domainBuilder) rebuild(size uint64) {
 }
 
 // done returns the finished trie, sized to what it holds rather than to the
-// rule count it was guessed from.
+// doubling it grew by, which it would otherwise hold while it serves queries.
 func (b *domainBuilder) done() domainTrie {
 	if want := domainTableSize(uint64(len(b.nodes))) + 8; uint64(len(b.slots)) > want*4/3 {
 		b.rebuild(want)
+	}
+	if cap(b.nodes) > len(b.nodes)+len(b.nodes)/3+8 {
+		b.nodes = slices.Clone(b.nodes)
+	}
+	if cap(b.blob) > len(b.blob)+len(b.blob)/3 {
+		b.blob = slices.Clone(b.blob)
 	}
 	b.parents = nil
 	return b.domainTrie

@@ -1,23 +1,22 @@
 package rdns
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 )
 
 // HTTPLoader reads blocklist rules from a server via HTTP(S).
 type HTTPLoader struct {
-	url         string
-	opt         HTTPLoaderOptions
-	fromDisk    bool
-	lastSuccess []string
+	url      string
+	opt      HTTPLoaderOptions
+	fromDisk bool
+	loaded   bool // a load has succeeded before, so there is a ruleset to keep
 }
 
 // HTTPLoaderOptions holds options for HTTP blocklist loaders.
@@ -33,7 +32,7 @@ var _ BlocklistLoader = &HTTPLoader{}
 const httpTimeout = 30 * time.Minute
 
 func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
-	l := &HTTPLoader{url, opt, opt.CacheDir != "", nil}
+	l := &HTTPLoader{url, opt, opt.CacheDir != "", false}
 	if opt.CacheDir != "" {
 		// Clean up temp files left behind by a run that was killed mid-write.
 		removeStaleTempFiles(opt.CacheDir)
@@ -41,37 +40,33 @@ func NewHTTPLoader(url string, opt HTTPLoaderOptions) *HTTPLoader {
 	return l
 }
 
-func (l *HTTPLoader) Load() (rules []string, err error) {
+// Load passes the rules on as they arrive. See listFailed for a list that
+// could not be read.
+func (l *HTTPLoader) Load(reset func(), fn func(rule string) error) error {
 	log := Log.With("url", l.url)
 	log.Debug("loading blocklist")
 
-	// If AllowFailure is enabled, return the last successfully loaded list
-	// and nil. Without it there's nothing to fall back to, so the rules are
-	// not kept: for a large list that copy would be held for the life of the
-	// process.
-	defer func() {
-		if !l.opt.AllowFailure {
-			return
-		}
-		if err != nil {
-			log.Warn("failed to load blocklist, continuing with previous ruleset",
-				"error", err)
-			rules = l.lastSuccess
-			err = nil
-			return
-		}
-		l.lastSuccess = rules
-	}()
+	start := time.Now()
+	if err := l.read(log, reset, fn); err != nil {
+		return listFailed(log, l.opt.AllowFailure, l.loaded, reset, err)
+	}
+	l.loaded = true
+	log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
+	return nil
+}
 
-	// If a cache-dir was given, try to load the list from disk on first load
+func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) error) error {
+	// With a cache-dir, the first load comes from disk and falls back to the
+	// network. Whatever the cached copy handed over is dropped first, so the
+	// list from upstream is the only one built.
 	if l.fromDisk {
-		start := time.Now()
 		l.fromDisk = false
-		rules, err := l.loadFromDisk()
+		err := readRulesFile(l.cacheFilename(), fn)
 		if err == nil {
-			log.With("load-time", time.Since(start)).Debug("loaded blocklist from cache-dir")
-			return rules, err
+			log.Debug("loaded blocklist from cache-dir")
+			return nil
 		}
+		reset()
 		log.Warn("unable to load cached list from disk, loading from upstream",
 			"error", err)
 	}
@@ -81,64 +76,67 @@ func (l *HTTPLoader) Load() (rules []string, err error) {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", l.url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("got unexpected status code %d from %s", resp.StatusCode, l.url)
+		return fmt.Errorf("got unexpected status code %d from %s", resp.StatusCode, l.url)
 	}
 
-	start := time.Now()
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		rules = append(rules, scanner.Text())
+	if l.opt.CacheDir == "" {
+		return scanRules(resp.Body, fn)
 	}
-	log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
 
-	// Cache the content to disk if the read from the remote server was successful
-	if scanner.Err() == nil && l.opt.CacheDir != "" {
-		log.Debug("writing rules to cache-dir")
-		if err := l.writeToDisk(rules); err != nil {
-			Log.Error("failed to write rules to cache", "error", err)
+	// The list is cached as it is read. The file is only renamed into place if
+	// the whole body arrives, so a failed download leaves the cache alone.
+	log.Debug("writing rules to cache-dir")
+	var scanErr error
+	var opened bool
+	err = writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
+		opened = true
+		var cacheErr error
+		scanErr, cacheErr = cacheWhileReading(resp.Body, w, fn)
+		if scanErr != nil {
+			return scanErr
 		}
-	}
-	return rules, scanner.Err()
-}
-
-// Loads a cached version of the list from disk. The filename is made by hashing the URL with SHA256
-// and the file is expect to be in cache-dir.
-func (l *HTTPLoader) loadFromDisk() ([]string, error) {
-	f, err := os.Open(l.cacheFilename())
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var rules []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		rules = append(rules, scanner.Text())
-	}
-	return rules, scanner.Err()
-}
-
-func (l *HTTPLoader) writeToDisk(rules []string) error {
-	return writeFileAtomic(l.cacheFilename(), func(w io.Writer) error {
-		for _, r := range rules {
-			if _, err := io.WriteString(w, r); err != nil {
-				return err
-			}
-			if _, err := io.WriteString(w, "\n"); err != nil {
-				return err
-			}
-		}
-		return nil
+		return cacheErr
 	})
+
+	// A cache that cannot be written is worth reporting, not failing the load
+	// over. Which of the two failed cannot be told from how far the read got,
+	// since the flush, sync and rename all happen after the last rule.
+	switch {
+	case !opened:
+		// Nothing read yet, so the body is still there to take.
+		log.Error("failed to write rules to cache-dir", "error", err)
+		return scanRules(resp.Body, fn)
+	case scanErr != nil:
+		return scanErr
+	case err != nil:
+		log.Error("failed to write rules to cache-dir", "error", err)
+	}
+	return nil
+}
+
+// cacheWhileReading passes every rule read from r to fn and writes it to w on
+// the way past, returning the read and write failures apart from one another
+// so that an unwritable cache never looks like a list that broke off.
+func cacheWhileReading(r io.Reader, w io.Writer, fn func(rule string) error) (scanErr, cacheErr error) {
+	write := func(s string) {
+		if cacheErr == nil {
+			_, cacheErr = io.WriteString(w, s)
+		}
+	}
+	scanErr = scanRules(r, func(rule string) error {
+		write(rule)
+		write("\n")
+		return fn(rule)
+	})
+	return scanErr, cacheErr
 }
 
 // Returns the name of the list cache file, which is the SHA256 of url in the cache-dir.

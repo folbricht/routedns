@@ -19,11 +19,16 @@ func NewMultiDB(dbs ...BlocklistDB) (MultiDB, error) {
 }
 
 func (m MultiDB) Reload() (BlocklistDB, error) {
-	var newDBs []BlocklistDB
+	// A list that could not be read keeps the rules it already has while the
+	// lists beside it refresh. These databases hold nothing that closing
+	// releases, so the one already serving a list carries straight over.
+	newDBs := make([]BlocklistDB, 0, len(m.dbs))
 	for _, db := range m.dbs {
 		n, err := db.Reload()
 		if err != nil {
-			return nil, err
+			Log.Warn("failed to load rules, continuing with the ones already loaded",
+				"error", err)
+			n = db
 		}
 		newDBs = append(newDBs, n)
 	}

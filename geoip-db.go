@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -32,24 +33,26 @@ func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB
 		return nil, fmt.Errorf("failed to open geo location database file: %w", err)
 	}
 
-	rules, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
-
 	db := make(map[uint64]struct{})
-	for _, r := range rules {
+	// The map file is open from here on, so every way out of this function
+	// has to close it.
+	err = loader.Load(func() { db = make(map[uint64]struct{}) }, func(r string) error {
 		r = strings.TrimSpace(r)
 		if strings.HasPrefix(r, "#") || r == "" {
-			continue
+			return nil
 		}
 		r = strings.Split(r, "#")[0] // possible comment at the end of the line
 		r = strings.TrimSpace(r)
 		value, err := strconv.ParseUint(r, 10, 64) // GeoNames ID
 		if err != nil {
-			return nil, fmt.Errorf("unable to parse geoname id in rule '%s': %w", r, err)
+			return fmt.Errorf("unable to parse geoname id in rule '%s': %w", r, err)
 		}
 		db[value] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		geoDB.Close()
+		return nil, err
 	}
 	return &GeoIPDB{
 		name:      name,
@@ -61,7 +64,23 @@ func NewGeoIPDB(name string, loader BlocklistLoader, geoDBFile string) (*GeoIPDB
 }
 
 func (m *GeoIPDB) Reload() (IPBlocklistDB, error) {
-	return NewGeoIPDB(m.name, m.loader, m.geoDBFile)
+	db, err := NewGeoIPDB(m.name, m.loader, m.geoDBFile)
+	if err != nil {
+		// The rules already loaded stand. They are immutable and shared, but
+		// the map file is opened again for a handle of its own to close.
+		geoDB, oerr := maxminddb.Open(m.geoDBFile)
+		if oerr != nil {
+			return nil, errors.Join(err, fmt.Errorf("failed to open geo location database file: %w", oerr))
+		}
+		return &GeoIPDB{
+			name:      m.name,
+			loader:    m.loader,
+			geoDB:     geoDB,
+			geoDBFile: m.geoDBFile,
+			db:        m.db,
+		}, err
+	}
+	return db, err
 }
 
 func (m *GeoIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {

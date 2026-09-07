@@ -64,15 +64,23 @@ func refreshDatabase[T reloadable[T]](id, what string, refresh time.Duration, mu
 		log.Debug("reloading " + what)
 		reloaded, err := (*db).Reload()
 		if err != nil {
-			log.Error("failed to load rules", "error", err)
+			log.Warn("failed to load rules, continuing with the ones already loaded",
+				"error", err)
+			closeDatabase(reloaded) // those rules are already being served
 			continue
 		}
 		mu.Lock()
 		old := *db
 		*db = reloaded
 		mu.Unlock()
-		if closer, ok := any(old).(io.Closer); ok {
-			closer.Close()
-		}
+		closeDatabase(old)
+	}
+}
+
+// closeDatabase releases what a database holds, for those that hold anything:
+// the location databases own a memory-mapped file, the rest own nothing.
+func closeDatabase[T any](db T) {
+	if closer, ok := any(db).(io.Closer); ok {
+		closer.Close()
 	}
 }
