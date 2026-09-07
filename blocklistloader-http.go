@@ -68,9 +68,6 @@ func (l *HTTPLoader) read(log *slog.Logger, reset func(), fn func(rule string) e
 			log.Debug("loaded blocklist from cache-dir")
 			return nil
 		}
-		if isRuleError(err) {
-			return err // the database refused a rule, another copy will not help
-		}
 		reset()
 		log.Warn("unable to load cached list from disk, loading from upstream",
 			"error", err)

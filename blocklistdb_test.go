@@ -139,10 +139,36 @@ func TestRefreshDatabaseKeepsFailedDatabase(t *testing.T) {
 	require.Same(t, original, db)
 }
 
+// A rule the database will not take is a failure like any other. With
+// AllowFailure a list that has never loaded starts empty rather than keeping
+// the process from starting; once it has loaded, the rules it is serving stay.
+func TestBlocklistRuleErrorAllowFailure(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "list.txt")
+	require.NoError(t, os.WriteFile(name, []byte("a*b.example.com\n"), 0644))
+
+	loader := NewFileLoader(name, FileLoaderOptions{AllowFailure: true})
+	db, err := NewDomainDB("testlist", loader)
+	require.NoError(t, err, "a rule the database refuses must not keep it from starting")
+	msg := new(dns.Msg)
+	msg.SetQuestion("ab.example.com.", dns.TypeA)
+	_, _, _, ok := db.Match(msg)
+	require.False(t, ok, "a list that failed to load must hold none of it")
+
+	require.NoError(t, os.WriteFile(name, []byte("good.example.com\n"), 0644))
+	reloaded, err := db.Reload()
+	require.NoError(t, err)
+
+	// The list has loaded now, so a rule the database refuses is an error and
+	// the rules already serving are what stays.
+	require.NoError(t, os.WriteFile(name, []byte("a*b.example.com\n"), 0644))
+	_, err = reloaded.Reload()
+	require.Error(t, err, "a list the database refused must not pass as loaded")
+}
+
 // A source that cannot be read holds the rules it has while the sources beside
-// it carry on refreshing. Only when none of them can be read is there nothing
-// to swap in.
-func TestMultiDBReloadUnchanged(t *testing.T) {
+// it carry on refreshing.
+func TestMultiDBReloadUnreadableSource(t *testing.T) {
 	dir := t.TempDir()
 	name := filepath.Join(dir, "list.txt")
 	require.NoError(t, os.WriteFile(name, []byte("gone.example.com\n"), 0644))
@@ -156,8 +182,8 @@ func TestMultiDBReloadUnchanged(t *testing.T) {
 	multi, err := NewMultiDB(unreadable, steady)
 	require.NoError(t, err)
 
-	// The file is gone, so that source reports nothing to change. The group
-	// still reloads, and both sets of rules still match.
+	// The file is gone, so that source fails to load. The group still
+	// reloads, and both sets of rules still match.
 	require.NoError(t, os.Remove(name))
 	reloaded, err := multi.Reload()
 	require.NoError(t, err, "one unreadable source must not stall the group")
@@ -168,16 +194,21 @@ func TestMultiDBReloadUnchanged(t *testing.T) {
 		require.True(t, ok, "query %s", q)
 	}
 
-	// With every source unreadable there is nothing new to install.
+	// With every source unreadable the group still reloads, holding the rules
+	// each of its sources already had.
 	onlyFailing, err := NewMultiDB(unreadable)
 	require.NoError(t, err)
-	_, err = onlyFailing.Reload()
-	require.ErrorIs(t, err, ErrBlocklistUnchanged)
+	kept, err := onlyFailing.Reload()
+	require.NoError(t, err)
+	msg := new(dns.Msg)
+	msg.SetQuestion("gone.example.com.", dns.TypeA)
+	_, _, _, ok := kept.Match(msg)
+	require.True(t, ok, "the group dropped the rules it was serving")
 }
 
 // The IP group behaves like the name-based one: a source that cannot be read
 // keeps its rules while the sources beside it refresh.
-func TestMultiIPDBReloadUnchanged(t *testing.T) {
+func TestMultiIPDBReloadUnreadableSource(t *testing.T) {
 	dir := t.TempDir()
 	name := filepath.Join(dir, "list.txt")
 	require.NoError(t, os.WriteFile(name, []byte("10.0.0.0/8\n"), 0644))
@@ -204,14 +235,14 @@ func TestMultiIPDBReloadUnchanged(t *testing.T) {
 	_, ok := reloaded.Match(net.ParseIP("10.1.2.3"))
 	require.True(t, ok, "the carried database was closed with the old group")
 
-	// With every source unreadable the group says so, and still hands back a
-	// database holding the rules it was already serving.
+	// With every source unreadable the group still reloads, holding the rules
+	// each of its sources already had.
 	onlyFailing, err := NewMultiIPDB(unreadable)
 	require.NoError(t, err)
 	kept, err := onlyFailing.Reload()
-	require.ErrorIs(t, err, ErrBlocklistUnchanged)
+	require.NoError(t, err)
 	_, ok = kept.Match(net.ParseIP("10.1.2.3"))
-	require.True(t, ok, "the group reported unchanged without the rules to go with it")
+	require.True(t, ok, "the group dropped the rules it was serving")
 }
 
 // A database that owns something closing releases, as the location databases
@@ -225,7 +256,7 @@ type handleIPDB struct {
 
 func (m *handleIPDB) Reload() (IPBlocklistDB, error) {
 	m.next = &handleIPDB{ip: m.ip}
-	return m.next, ErrBlocklistUnchanged
+	return m.next, errors.New("the list could not be read")
 }
 
 func (m *handleIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {

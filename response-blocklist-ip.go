@@ -14,10 +14,11 @@ import (
 // IPBlocklistDB is a database containing IPs used in blocklists.
 type IPBlocklistDB interface {
 	// Reload builds a new instance of the same database with a freshly loaded
-	// ruleset. It hands one back even when it reports ErrBlocklistUnchanged,
-	// holding the rules already loaded, so that a caller always has a database
-	// to put where this one was. Whichever it gets is a new instance owning
-	// whatever it holds, so closing the one it replaces never disturbs it.
+	// ruleset. A list that could not be read is an error, and the database
+	// handed back with it holds the rules already loaded, so that a caller
+	// always has one to put where this one was. Whichever it gets is a new
+	// instance owning whatever it holds, so closing the one it replaces never
+	// disturbs it.
 	Reload() (IPBlocklistDB, error)
 	Match(ip net.IP) (*BlocklistMatch, bool)
 	Close() error

@@ -114,8 +114,35 @@ func TestHTTPLoaderCorruptCacheFallsBack(t *testing.T) {
 	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
 }
 
-// With AllowFailure set, a list that has never loaded starts empty, while one
-// that has loaded before keeps what it has.
+// A cached copy carrying a rule the database refuses is no different from one
+// that cannot be read: what it handed over is dropped and the list is taken
+// from upstream instead.
+func TestHTTPLoaderCacheRefusedRule(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "a.example.com\nb.example.com")
+	}))
+	defer srv.Close()
+
+	l := NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir})
+	cached := "cached.example.com\nrefused.example.com\n"
+	require.NoError(t, os.WriteFile(l.cacheFilename(), []byte(cached), 0644))
+
+	var rules []string
+	err := l.Load(func() { rules = nil }, func(rule string) error {
+		if rule == "refused.example.com" {
+			return errors.New("the database will not take this rule")
+		}
+		rules = append(rules, rule)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.example.com", "b.example.com"}, rules)
+}
+
+// AllowFailure covers the first load: a list that has never loaded starts
+// empty. Once it has loaded, a failure is reported like any other, and the
+// database already serving its rules is what keeps them.
 func TestLoaderAllowFailure(t *testing.T) {
 	dir := t.TempDir()
 	name := filepath.Join(dir, "list.txt")
@@ -132,18 +159,17 @@ func TestLoaderAllowFailure(t *testing.T) {
 
 	require.NoError(t, os.Remove(name))
 	_, err = collectRules(l)
-	require.ErrorIs(t, err, ErrBlocklistUnchanged, "a loaded list keeps what it has")
+	require.Error(t, err, "a list that has loaded reports a failure rather than starting empty")
 
 	// Without AllowFailure the error surfaces as it always did.
 	_, err = collectRules(NewFileLoader(name, FileLoaderOptions{}))
 	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 }
 
-// A body that stops short of what was promised is a partial list. Whether that
-// fails the load or is carried on without depends on AllowFailure, exactly as
-// a list that could not be read at all does, and either way the cached copy
-// survives it and no part of the fragment is served.
+// A body that stops short of what was promised is a partial list, and counts
+// as a list that could not be read: on the first load AllowFailure carries on
+// without it, later it is an error. Either way the cached copy survives it and
+// no part of the fragment is served.
 func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	dir := t.TempDir()
 	truncate := false
@@ -165,7 +191,6 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	l.fromDisk = false // force it to the network
 	_, err = collectRules(l)
 	require.Error(t, err, "without allow-failure a partial list is an error")
-	require.NotErrorIs(t, err, ErrBlocklistUnchanged)
 
 	// With allow-failure and nothing loaded yet, the fragment is dropped and
 	// the list is empty, which is what an unreadable list has always done.
@@ -182,7 +207,7 @@ func TestHTTPLoaderTruncatedBody(t *testing.T) {
 	require.Len(t, rules, 2)
 	truncate = true
 	_, err = collectRules(allow)
-	require.ErrorIs(t, err, ErrBlocklistUnchanged)
+	require.Error(t, err, "a list that has loaded reports a later fragment")
 
 	cached, err := collectRules(NewHTTPLoader(srv.URL, HTTPLoaderOptions{CacheDir: dir}))
 	require.NoError(t, err)

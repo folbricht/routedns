@@ -1,7 +1,6 @@
 package rdns
 
 import (
-	"errors"
 	"net"
 )
 
@@ -20,6 +19,7 @@ func NewMultiIPDB(dbs ...IPBlocklistDB) (MultiIPDB, error) {
 func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	// A list that could not be read hands back the rules it already has while
 	// the lists beside it refresh, so the group is rebuilt whole either way.
+	// A database that cannot even do that leaves the group as it is.
 	// The databases it is rebuilt from are new instances, which is what lets
 	// the group they came from be closed once this one is in place.
 	newDBs := make([]IPBlocklistDB, 0, len(m.dbs))
@@ -33,15 +33,14 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 			}
 		}
 	}()
-	changed := false
 	for _, db := range m.dbs {
 		n, err := db.Reload()
-		switch {
-		case errors.Is(err, ErrBlocklistUnchanged): // n holds the rules it had
-		case err != nil:
-			return MultiIPDB{}, err
-		default:
-			changed = true
+		if err != nil {
+			if n == nil { // nothing to put in its place, so the group stays as it is
+				return MultiIPDB{}, err
+			}
+			Log.Warn("failed to load rules, continuing with the ones already loaded",
+				"error", err)
 		}
 		newDBs = append(newDBs, n)
 	}
@@ -50,9 +49,6 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 		return MultiIPDB{}, err
 	}
 	keep = true
-	if !changed { // nothing moved, so the group says so as its databases did
-		return group, ErrBlocklistUnchanged
-	}
 	return group, nil
 }
 
