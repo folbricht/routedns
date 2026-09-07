@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"net"
 	"strings"
 )
@@ -57,7 +58,14 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 }
 
 func (m *CidrDB) Reload() (IPBlocklistDB, error) {
-	return NewCidrDB(m.name, m.loader)
+	db, err := NewCidrDB(m.name, m.loader)
+	if errors.Is(err, ErrBlocklistUnchanged) {
+		// The list could not be read, so the rules already loaded stand. The
+		// tries are immutable, so the instance carrying them on shares them,
+		// and it holds nothing else that closing would release.
+		return &CidrDB{name: m.name, ip4: m.ip4, ip6: m.ip6, loader: m.loader}, err
+	}
+	return db, err
 }
 
 func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
@@ -72,13 +80,6 @@ func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	}
 	rule, ok := m.ip4.hasIP(ip)
 	return &BlocklistMatch{List: m.name, Rule: rule}, ok
-}
-
-// reuse hands this database to a new group while the group it came from is
-// closed. It holds no resource that closing releases, so the same instance
-// serves both.
-func (m *CidrDB) reuse() (IPBlocklistDB, error) {
-	return m, nil
 }
 
 func (m *CidrDB) Close() error {

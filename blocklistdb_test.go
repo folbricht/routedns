@@ -176,9 +176,7 @@ func TestMultiDBReloadUnchanged(t *testing.T) {
 }
 
 // The IP group behaves like the name-based one: a source that cannot be read
-// keeps its rules while the sources beside it refresh. It cannot carry the
-// database itself across, since it closes what it replaces, so it carries a
-// copy that owns whatever needs closing.
+// keeps its rules while the sources beside it refresh.
 func TestMultiIPDBReloadUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	name := filepath.Join(dir, "list.txt")
@@ -206,8 +204,69 @@ func TestMultiIPDBReloadUnchanged(t *testing.T) {
 	_, ok := reloaded.Match(net.ParseIP("10.1.2.3"))
 	require.True(t, ok, "the carried database was closed with the old group")
 
+	// With every source unreadable the group says so, and still hands back a
+	// database holding the rules it was already serving.
 	onlyFailing, err := NewMultiIPDB(unreadable)
 	require.NoError(t, err)
-	_, err = onlyFailing.Reload()
+	kept, err := onlyFailing.Reload()
 	require.ErrorIs(t, err, ErrBlocklistUnchanged)
+	_, ok = kept.Match(net.ParseIP("10.1.2.3"))
+	require.True(t, ok, "the group reported unchanged without the rules to go with it")
+}
+
+// A database that owns something closing releases, as the location databases
+// own a memory-mapped file. Its list is never readable, so every reload hands
+// the rules on in a new instance.
+type handleIPDB struct {
+	ip     net.IP
+	closed bool
+	next   *handleIPDB // what the last reload handed on to
+}
+
+func (m *handleIPDB) Reload() (IPBlocklistDB, error) {
+	m.next = &handleIPDB{ip: m.ip}
+	return m.next, ErrBlocklistUnchanged
+}
+
+func (m *handleIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {
+	if m.closed {
+		panic("matched against a database that was closed")
+	}
+	return &BlocklistMatch{List: "handle"}, ip.Equal(m.ip)
+}
+
+func (m *handleIPDB) Close() error {
+	m.closed = true
+	return nil
+}
+
+func (m *handleIPDB) String() string { return "handle" }
+
+// The group is closed once the group replacing it is in place, so what it
+// hands on has to be a database of its own rather than one it is about to
+// close.
+func TestMultiIPDBOwnershipOnReload(t *testing.T) {
+	owner := &handleIPDB{ip: net.ParseIP("10.0.0.1")}
+	steady, err := NewCidrDB("steady", NewStaticLoader([]string{"192.168.0.0/16"}))
+	require.NoError(t, err)
+	multi, err := NewMultiIPDB(owner, steady)
+	require.NoError(t, err)
+
+	reloaded, err := multi.Reload()
+	require.NoError(t, err, "one unreadable source must not stall the group")
+	carried := owner.next
+	require.NotNil(t, carried, "the group dropped what its database handed on")
+
+	require.NoError(t, multi.Close())
+	require.True(t, owner.closed, "the old group left its own database open")
+	require.False(t, carried.closed, "the old group closed the database it handed on")
+
+	for _, ip := range []string{"10.0.0.1", "192.168.1.1"} {
+		_, ok := reloaded.Match(net.ParseIP(ip))
+		require.True(t, ok, "address %s", ip)
+	}
+
+	// And the new group owns what it holds, in its turn.
+	require.NoError(t, reloaded.Close())
+	require.True(t, carried.closed, "the group left its database open")
 }

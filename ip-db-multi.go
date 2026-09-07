@@ -18,11 +18,10 @@ func NewMultiIPDB(dbs ...IPBlocklistDB) (MultiIPDB, error) {
 }
 
 func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
-	// A list that could not be read keeps the rules it already has while the
-	// lists beside it still refresh. Unlike the name-based group, this one
-	// closes its databases when it is replaced, so a database that reported
-	// nothing to change is carried across as a copy that owns whatever it
-	// holds rather than as the instance the old group is about to close.
+	// A list that could not be read hands back the rules it already has while
+	// the lists beside it refresh, so the group is rebuilt whole either way.
+	// The databases it is rebuilt from are new instances, which is what lets
+	// the group they came from be closed once this one is in place.
 	newDBs := make([]IPBlocklistDB, 0, len(m.dbs))
 	// Every way out of here but the last one leaves the group unbuilt, and the
 	// databases gathered for it are then nobody's to close but ours.
@@ -38,14 +37,7 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	for _, db := range m.dbs {
 		n, err := db.Reload()
 		switch {
-		case errors.Is(err, ErrBlocklistUnchanged):
-			r, ok := db.(reusableIPDB)
-			if !ok {
-				return MultiIPDB{}, err
-			}
-			if n, err = r.reuse(); err != nil {
-				return MultiIPDB{}, err
-			}
+		case errors.Is(err, ErrBlocklistUnchanged): // n holds the rules it had
 		case err != nil:
 			return MultiIPDB{}, err
 		default:
@@ -53,22 +45,15 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 		}
 		newDBs = append(newDBs, n)
 	}
-	if !changed { // nothing moved, so there is nothing to swap in
-		return MultiIPDB{}, ErrBlocklistUnchanged
-	}
 	group, err := NewMultiIPDB(newDBs...)
 	if err != nil {
 		return MultiIPDB{}, err
 	}
 	keep = true
+	if !changed { // nothing moved, so the group says so as its databases did
+		return group, ErrBlocklistUnchanged
+	}
 	return group, nil
-}
-
-// An IP database that can produce an equivalent of itself, holding the same
-// rules but owning whatever needs closing, so that it can be carried into a
-// new group while the group it came from is closed.
-type reusableIPDB interface {
-	reuse() (IPBlocklistDB, error)
 }
 
 func (m MultiIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {

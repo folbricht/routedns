@@ -88,10 +88,6 @@ func (m *MACDB) Match(msg *dns.Msg) ([]net.IP, []string, *BlocklistMatch, bool) 
 	return nil, nil, nil, false
 }
 
-func (m *MACDB) Close() error {
-	return nil
-}
-
 func (m *MACDB) String() string {
 	return "MAC-blocklist"
 }

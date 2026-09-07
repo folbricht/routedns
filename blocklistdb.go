@@ -66,6 +66,10 @@ func refreshDatabase[T reloadable[T]](id, what string, refresh time.Duration, mu
 		reloaded, err := (*db).Reload()
 		if errors.Is(err, ErrBlocklistUnchanged) {
 			log.Debug("keeping the " + what + " already loaded")
+			// The rules are the ones already being served, so the database
+			// carrying them on is of no use here. It owns what it holds, and
+			// nothing else will close it.
+			closeDatabase(reloaded)
 			continue
 		}
 		if err != nil {
@@ -76,8 +80,15 @@ func refreshDatabase[T reloadable[T]](id, what string, refresh time.Duration, mu
 		old := *db
 		*db = reloaded
 		mu.Unlock()
-		if closer, ok := any(old).(io.Closer); ok {
-			closer.Close()
-		}
+		closeDatabase(old)
+	}
+}
+
+// closeDatabase releases what a database holds, for the databases that hold
+// anything. The location ones own a memory-mapped file, the rest own nothing
+// and say so by not being closeable at all.
+func closeDatabase[T any](db T) {
+	if closer, ok := any(db).(io.Closer); ok {
+		closer.Close()
 	}
 }

@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -63,7 +64,24 @@ func NewASNDB(name string, loader BlocklistLoader, geoDBFile string) (*ASNDB, er
 }
 
 func (m *ASNDB) Reload() (IPBlocklistDB, error) {
-	return NewASNDB(m.name, m.loader, m.geoDBFile)
+	db, err := NewASNDB(m.name, m.loader, m.geoDBFile)
+	if errors.Is(err, ErrBlocklistUnchanged) {
+		// The list could not be read, so the rules already loaded stand. They
+		// are immutable and shared with the instance carrying them on, but the
+		// map file is opened again so that it has a handle of its own to close.
+		geoDB, oerr := maxminddb.Open(m.geoDBFile)
+		if oerr != nil {
+			return nil, fmt.Errorf("failed to open geo asn database file: %w", oerr)
+		}
+		return &ASNDB{
+			name:      m.name,
+			loader:    m.loader,
+			geoDB:     geoDB,
+			geoDBFile: m.geoDBFile,
+			db:        m.db,
+		}, err
+	}
+	return db, err
 }
 
 func (m *ASNDB) Match(ip net.IP) (*BlocklistMatch, bool) {
@@ -85,23 +103,6 @@ func (m *ASNDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 		}, true
 	}
 	return nil, false
-}
-
-// reuse hands this database to a new group while the group it came from is
-// closed. The rules are immutable and shared, but the map file is opened again
-// so the copy has a handle of its own to close.
-func (m *ASNDB) reuse() (IPBlocklistDB, error) {
-	geoDB, err := maxminddb.Open(m.geoDBFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open geo asn database file: %w", err)
-	}
-	return &ASNDB{
-		name:      m.name,
-		loader:    m.loader,
-		geoDB:     geoDB,
-		geoDBFile: m.geoDBFile,
-		db:        m.db,
-	}, nil
 }
 
 func (m *ASNDB) Close() error {
