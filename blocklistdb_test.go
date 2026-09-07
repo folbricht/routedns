@@ -228,10 +228,14 @@ func TestMultiIPDBReloadUnreadableSource(t *testing.T) {
 type handleIPDB struct {
 	ip     net.IP
 	closed bool
+	broken bool        // cannot hand its rules on, as a lost map file leaves it
 	next   *handleIPDB // what the last reload handed on to
 }
 
 func (m *handleIPDB) Reload() (IPBlocklistDB, error) {
+	if m.broken {
+		return nil, errors.New("the list could not be read")
+	}
 	m.next = &handleIPDB{ip: m.ip}
 	return m.next, errors.New("the list could not be read")
 }
@@ -271,4 +275,19 @@ func TestMultiIPDBOwnershipOnReload(t *testing.T) {
 
 	_, ok := reloaded.Match(net.ParseIP("10.0.0.1"))
 	require.True(t, ok, "the rules handed on are not being served")
+}
+
+// A group that cannot hand its rules on hands back nothing, so the group
+// around it keeps what it has rather than installing an empty one.
+func TestMultiIPDBNestedFailure(t *testing.T) {
+	inner, err := NewMultiIPDB(&handleIPDB{ip: net.ParseIP("10.0.0.1"), broken: true})
+	require.NoError(t, err)
+	steady, err := NewCidrDB("steady", NewStaticLoader([]string{"192.168.0.0/16"}))
+	require.NoError(t, err)
+	outer, err := NewMultiIPDB(inner, steady)
+	require.NoError(t, err)
+
+	reloaded, err := outer.Reload()
+	require.Error(t, err)
+	require.Nil(t, reloaded, "an empty group must not pass as the rules already loaded")
 }

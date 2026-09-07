@@ -71,7 +71,7 @@ Options:
 
 When using the `cache-dir` option on a list that loads rules via HTTP, the results are cached into a file in the given directory. The filename is the URL of the source hashed with SHA256 so multiple blocklists can be cached in the same directory. If a cached file exists on startup, it is used instead of refreshing the list from the remote location (slowing down startup). As with the cache `filename` option, a new file is created with mode `0600` and an existing one keeps whatever mode it already has. When running under the systemd unit shipped with the packages, use a path under `/var/cache/routedns`; see [Writable Paths](overview.md#writable-paths).
 
-To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start. If a failure occurs during runtime, the previous ruleset will be reused.
+To avoid errors at startup when for example a remote blocklist isn't available, the `allow-failure` option can be used. Any errors encountered will be logged but not cause a failure to start, and the list is left empty. This covers a list that can't be read as well as one carrying a rule that can't be parsed. If a failure occurs during runtime, the previous ruleset will be reused.
 
 ### Examples
 

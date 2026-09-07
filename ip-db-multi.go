@@ -34,7 +34,7 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 		n, err := db.Reload()
 		if err != nil {
 			if n == nil { // nothing to put in its place, so the group stays as it is
-				return MultiIPDB{}, err
+				return nil, err
 			}
 			Log.Warn("failed to load rules, continuing with the ones already loaded",
 				"error", err)
@@ -43,7 +43,7 @@ func (m MultiIPDB) Reload() (IPBlocklistDB, error) {
 	}
 	group, err := NewMultiIPDB(newDBs...)
 	if err != nil {
-		return MultiIPDB{}, err
+		return nil, err
 	}
 	keep = true
 	return group, nil

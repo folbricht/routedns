@@ -536,3 +536,20 @@ func TestDomainDBSharedLabels(t *testing.T) {
 		})
 	}
 }
+
+// A trie grows by doubling, so the array and the table it grew into would be
+// held for as long as it serves queries. What it hands back is sized to what
+// it holds.
+func TestDomainDBTrimmed(t *testing.T) {
+	rules := make([]string, 0, 20000)
+	for i := range 20000 {
+		rules = append(rules, fmt.Sprintf("host%d.example.com", i))
+	}
+	db, err := NewDomainDB("testlist", NewStaticLoader(rules))
+	require.NoError(t, err)
+
+	nodes := len(db.trie.nodes)
+	require.LessOrEqual(t, cap(db.trie.nodes), nodes+nodes/3+8, "the trie kept the array it grew into")
+	require.LessOrEqual(t, uint64(len(db.trie.slots)), domainTableSize(uint64(nodes))*4/3+8,
+		"the trie kept the table it doubled into")
+}
