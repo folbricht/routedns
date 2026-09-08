@@ -176,3 +176,43 @@ func TestHostsDBPTRBounded(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "blocked0.example.com", names[0])
 }
+
+// A line is an address followed by names, and a comment can begin anywhere on
+// it. Words on a line that carries neither are not names.
+func TestHostsDBLineShape(t *testing.T) {
+	m, err := NewHostsDB("testlist", NewStaticLoader([]string{
+		"This list is provided as is",         // an un-commented header
+		"# 0.0.0.0 commented.example.com",     // a whole line commented out
+		"1.2.3.4",                             // an address with no names
+		"1.2.3.4 spoof.example.com # comment", // a comment after a name
+		"0.0.0.0 ads.example.com # tracker",
+	}))
+	require.NoError(t, err)
+
+	for _, name := range []string{
+		"list.", "is.", "provided.", "as.", // words of the header line
+		"commented.example.com.",   // behind a comment
+		"comment.", "tracker.", "", // words of the inline comments
+	} {
+		msg := new(dns.Msg)
+		msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
+		_, _, _, ok := m.Match(msg)
+		require.False(t, ok, "query: %s", name)
+	}
+
+	// The names on those lines are unaffected, spoofed and blocked as written.
+	msg := new(dns.Msg)
+	msg.SetQuestion("spoof.example.com.", dns.TypeA)
+	ips, _, _, ok := m.Match(msg)
+	require.True(t, ok)
+	require.Equal(t, []net.IP{net.ParseIP("1.2.3.4")}, ips)
+
+	msg = new(dns.Msg)
+	msg.SetQuestion("ads.example.com.", dns.TypeA)
+	ips, _, _, ok = m.Match(msg)
+	require.True(t, ok)
+	require.Nil(t, ips)
+
+	// A comment is not a name in the reverse map either.
+	require.Equal(t, []string{"spoof.example.com"}, m.ptrMap["4.3.2.1.in-addr.arpa."])
+}

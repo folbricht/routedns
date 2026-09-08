@@ -48,19 +48,32 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		ptrMap = make(map[string][]string)
 	}
 	err := loader.Load(reset, func(r string) error {
+		// A line is an address followed by the names it answers for, and a
+		// comment can begin anywhere on it. Everything from the comment on is
+		// dropped rather than read as more names, which is what a hosts file
+		// means by it and what stopped a list carrying "0.0.0.0 ads.example.com
+		// # tracker" from also blocking "tracker".
 		fields := strings.Fields(r)
-		if len(fields) == 0 {
+		for i, f := range fields {
+			if strings.HasPrefix(f, "#") {
+				fields = fields[:i]
+				break
+			}
+		}
+		if len(fields) < 2 {
 			return nil
 		}
 		ipString := fields[0]
 		names := fields[1:]
-		if strings.HasPrefix(ipString, "#") {
-			return nil
-		}
-		if len(names) == 0 {
-			return nil
-		}
+
+		// A line whose first field is not an address is not a hosts entry, so
+		// the words on it are not names. A list opening with an un-commented
+		// "This list is provided as is" would otherwise answer NXDOMAIN for
+		// "list", "is", "provided" and "as".
 		ip := net.ParseIP(ipString)
+		if ip == nil {
+			return nil
+		}
 
 		// A name pointed at an unspecified address has no address to answer
 		// with, so it can only block. No reverse entry is made for it either:
