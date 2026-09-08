@@ -82,23 +82,7 @@ func newDomainDB(name string, loader BlocklistLoader, includeSubdomains bool) (*
 	b := newDomainBuilder()
 	reset := func() { b = newDomainBuilder() }
 	err := domainRules(loader, includeSubdomains, reset, func(domain string, flag uint8) error {
-		// Walk the labels from the TLD inwards, building the path as needed.
-		n := uint32(0)
-		end := len(domain)
-		for {
-			i := strings.LastIndexByte(domain[:end], '.')
-			child, err := b.child(n, domain[i+1:end])
-			if err != nil {
-				return err
-			}
-			n = child
-			if i <= 0 {
-				break
-			}
-			end = i
-		}
-		b.nodes[n].flags |= flag
-		return nil
+		return b.add(domain, flag)
 	})
 	if err != nil {
 		return nil, err
@@ -183,32 +167,42 @@ func domainQueryName(msg *dns.Msg, buf []byte) []byte {
 	return []byte(strings.ToLower(name))
 }
 
-// match walks the labels of a lower-cased query name from the TLD inwards,
-// stopping at the first rule that covers it.
 func (m *DomainDB) match(name []byte) ([]net.IP, []string, *BlocklistMatch, bool) {
+	prefix, rule, ok := trieMatch(&m.trie, name)
+	if !ok {
+		return nil, nil, nil, false
+	}
+	return nil, nil, domainMatched(m.name, prefix, rule), true
+}
+
+// trieMatch walks the labels of a lower-cased query name from the TLD inwards,
+// stopping at the first rule that covers it. It reports the prefix the matching
+// rule was written with and the part of the name the rule applies to, which
+// together are the rule itself.
+func trieMatch(t *domainTrie, name []byte) (string, []byte, bool) {
 	node := uint32(0)
-	flags := m.trie.nodes[0].flags
+	flags := t.nodes[0].flags
 	end := len(name)
 	for end > 0 {
 		if flags&ruleHasChildren == 0 {
-			return nil, nil, nil, false // nothing more specific exists
+			return "", nil, false // nothing more specific exists
 		}
 		i := bytes.LastIndexByte(name[:end], '.')
-		child, ok := trieFind(&m.trie, node, name[i+1:end])
+		child, ok := trieFind(t, node, name[i+1:end])
 		if !ok {
-			return nil, nil, nil, false
+			return "", nil, false
 		}
-		flags = m.trie.nodes[child].flags
+		flags = t.nodes[child].flags
 		if prefix, ok := domainRuleAt(flags, i > 0); ok {
-			return nil, nil, domainMatched(m.name, prefix, name[i+1:]), true
+			return prefix, name[i+1:], true
 		}
 		node = child
 		end = i
 	}
 	if flags&ruleExact != 0 {
-		return nil, nil, domainMatched(m.name, "", name), true
+		return "", name, true
 	}
-	return nil, nil, nil, false
+	return "", nil, false
 }
 
 // domainRuleAt reports whether the rules recorded on a node cover a query that

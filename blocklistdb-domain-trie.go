@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 )
 
 // The longest label a domain name can carry. A rule with anything longer could
@@ -159,6 +160,28 @@ func newDomainBuilder() *domainBuilder {
 // short enough that a lookup rarely leaves the cache line it starts on.
 func domainTableSize(nodes uint64) uint64 {
 	return nodes * 3 / 2
+}
+
+// add records a rule on the node for a domain, creating the nodes on the way to
+// it as needed. The labels are walked from the TLD inwards, the direction a
+// query is matched in.
+func (b *domainBuilder) add(domain string, flag uint8) error {
+	n := uint32(0)
+	end := len(domain)
+	for {
+		i := strings.LastIndexByte(domain[:end], '.')
+		child, err := b.child(n, domain[i+1:end])
+		if err != nil {
+			return err
+		}
+		n = child
+		if i <= 0 {
+			break
+		}
+		end = i
+	}
+	b.nodes[n].flags |= flag
+	return nil
 }
 
 // child returns the node for label under parent, adding it if it's new.
