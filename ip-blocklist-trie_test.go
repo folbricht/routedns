@@ -101,6 +101,9 @@ func TestIPBlocklistTrieCompact(t *testing.T) {
 	nodesBefore := len(tr.nodes)
 	tr.compact()
 	require.Less(t, len(tr.nodes), nodesBefore, "compact dropped nothing")
+	// The array is the memory, not the length: sizing it from the trie being
+	// replaced would keep every dropped node resident behind the shorter slice.
+	require.Equal(t, len(tr.nodes), cap(tr.nodes), "compact kept the array it dropped nodes from")
 
 	for i, ip := range probes {
 		rule, ok := tr.hasIP(ip)

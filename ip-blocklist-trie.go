@@ -59,15 +59,20 @@ func (t *ipBlocklistTrie) add(n *net.IPNet) {
 	t.nodes[p].child = [2]uint32{ipBlocklistLeaf, 0}
 }
 
-// compact returns the trie holding only the nodes still reachable from the
-// root, in the order a lookup walks them. A network added after one that
-// already covers it leaves whatever was built below it unreachable, and a
-// build that grew by doubling holds an array up to twice the size it needs.
+// compact rebuilds the trie with only the nodes still reachable from the root,
+// in the order a lookup walks them. A network added after one that already
+// covers it leaves whatever was built below it unreachable, and a build that
+// grew by doubling holds an array up to twice the size it needs.
+//
+// The nodes are counted before they are copied so that the array is exactly
+// the size of what it holds. Sizing it from the trie being replaced would keep
+// that array alive behind the shorter slice, which is the memory this exists to
+// give back, and would hold both in full while it ran.
 func (t *ipBlocklistTrie) compact() {
 	if len(t.nodes) == 0 {
 		return
 	}
-	nodes := make([]ipBlocklistNode, 1, len(t.nodes))
+	nodes := make([]ipBlocklistNode, 1, t.reachable(0))
 	var walk func(from, to uint32)
 	walk = func(from, to uint32) {
 		if t.nodes[from].leaf() {
@@ -86,6 +91,21 @@ func (t *ipBlocklistTrie) compact() {
 	}
 	walk(0, 0)
 	t.nodes = nodes
+}
+
+// reachable counts the nodes a lookup can still arrive at from the given one,
+// itself included. Every node has one parent, so nothing is counted twice.
+func (t *ipBlocklistTrie) reachable(from uint32) int {
+	if t.nodes[from].leaf() {
+		return 1
+	}
+	n := 1
+	for _, c := range t.nodes[from].child {
+		if c != 0 {
+			n += t.reachable(c)
+		}
+	}
+	return n
 }
 
 // Returns true and the string representation of the network covering
