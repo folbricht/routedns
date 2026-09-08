@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -125,17 +126,26 @@ func TestHostsDBBlockedInTrie(t *testing.T) {
 	require.Len(t, m.ptrMap, 1)
 }
 
-// A name with a label longer than a label may be is skipped. It could never be
-// reached by a query, and the trie holds a label's length in a byte.
-func TestHostsDBOverlongLabel(t *testing.T) {
+// Names the trie would file under something the list never carried are skipped.
+// A label's length is held in a byte, so a 300 byte label would wrap to 44 and
+// block a name of 44 characters, and the walk drops a leading dot, so
+// ".example.com" would block the apex. Both are dead entries in the map this
+// replaced, and both stay unmatched here.
+func TestHostsDBUnqueryableNames(t *testing.T) {
 	long := strings.Repeat("a", 300)
 	m, err := NewHostsDB("testlist", NewStaticLoader([]string{
 		"0.0.0.0 " + long + ".example.com",
+		"0.0.0.0 .apex.example.com",
 		"0.0.0.0 blocked.example.com",
 	}))
 	require.NoError(t, err)
 
-	for _, name := range []string{long + ".example.com.", "aa.example.com.", "example.com."} {
+	for _, name := range []string{
+		long + ".example.com.",
+		strings.Repeat("a", int(uint8(len(long)))) + ".example.com.", // the truncated length
+		"apex.example.com.",
+		"example.com.",
+	} {
 		msg := new(dns.Msg)
 		msg.SetQuestion(name, dns.TypeA)
 		_, _, _, ok := m.Match(msg)
@@ -146,4 +156,23 @@ func TestHostsDBOverlongLabel(t *testing.T) {
 	msg.SetQuestion("blocked.example.com.", dns.TypeA)
 	_, _, _, ok := m.Match(msg)
 	require.True(t, ok)
+}
+
+// A PTR entry holds no more names than a PTR query is answered with. Lists that
+// sinkhole to a single address, an unspecified one or 127.0.0.1, would
+// otherwise gather every name they carry under the one reverse address.
+func TestHostsDBPTRBounded(t *testing.T) {
+	var rules []string
+	for i := range 100 {
+		rules = append(rules, fmt.Sprintf("127.0.0.1 blocked%d.example.com", i))
+	}
+	m, err := NewHostsDB("testlist", NewStaticLoader(rules))
+	require.NoError(t, err)
+	require.Len(t, m.ptrMap["1.0.0.127.in-addr.arpa."], maxPTRResponses)
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("1.0.0.127.in-addr.arpa.", dns.TypePTR)
+	_, names, _, ok := m.Match(msg)
+	require.True(t, ok)
+	require.Equal(t, "blocked0.example.com", names[0])
 }

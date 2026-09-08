@@ -68,12 +68,14 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		// it would answer with an arbitrary handful of the whole list.
 		if ip.IsUnspecified() {
 			for _, name := range names {
-				// A label longer than a label may be could never be reached by
-				// a query, and the trie stores a label's length in a byte, so
-				// such a name is skipped rather than truncated into a rule that
-				// matches something else.
+				// Two shapes are skipped rather than recorded, because the trie
+				// would file them under a name the list never carried. A label
+				// longer than a label may be has its length stored in a byte and
+				// would wrap, and a leading dot is dropped by the walk, which
+				// would turn the malformed ".example.com" into a rule against
+				// the apex. Neither could be queried in the map this replaced.
 				name = hostsName(name)
-				if name == "" || hasOverlongLabel(name) {
+				if name == "" || name[0] == '.' || hasOverlongLabel(name) {
 					continue
 				}
 				if err := b.add(name, ruleExact); err != nil {
@@ -107,7 +109,13 @@ func NewHostsDB(name string, loader BlocklistLoader) (*HostsDB, error) {
 		if err != nil {
 			return nil
 		}
-		ptrMap[reverseAddr] = append(ptrMap[reverseAddr], names...)
+		// One address covers every name a list points at it, and a PTR query is
+		// answered with maxPTRResponses of them, so the rest are only held. A
+		// list that sinkholes to 127.0.0.1 rather than to an unspecified address
+		// would otherwise gather all of its names under the one entry.
+		if have := len(ptrMap[reverseAddr]); have < maxPTRResponses {
+			ptrMap[reverseAddr] = append(ptrMap[reverseAddr], names[:min(len(names), maxPTRResponses-have)]...)
+		}
 		return nil
 	})
 	if err != nil {
