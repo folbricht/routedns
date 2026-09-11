@@ -19,6 +19,7 @@ import (
 	"time"
 
 	syslog "github.com/RackSec/srslog"
+	"github.com/coreos/go-systemd/v22/daemon"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
 	"github.com/redis/go-redis/v9"
@@ -549,6 +550,14 @@ func run(opt options, args []string) error {
 			continue
 		}
 		go superviseNetNSListener(pl.id, pl.nsName, pl.build)
+	}
+
+	// Notify Systemd that we are done starting, i.e. the listeners are up.
+	// This is a no-op unless $NOTIFY_SOCKET is set.
+	_, err = daemon.SdNotify(false, daemon.SdNotifyReady)
+	if err != nil {
+		rdns.Log.Error("daemon notification failed", "error", err)
+		// carry on
 	}
 
 	// Graceful shutdown

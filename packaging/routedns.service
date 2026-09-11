@@ -3,7 +3,7 @@ Description=RouteDNS - DNS stub resolver and router
 After=network.target
 
 [Service]
-Type=simple
+Type=notify
 DynamicUser=true
 NoNewPrivileges=true
 
