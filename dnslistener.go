@@ -28,6 +28,8 @@ type ListenOptions struct {
 
 	// Linux socket options for fwmark and interface binding.
 	SocketOptions SocketOptions
+
+	NotifyStartedFunc func()
 }
 
 // NewDNSListener returns an instance of either a UDP or TCP DNS listener.
@@ -35,9 +37,10 @@ func NewDNSListener(id, addr, net string, opt ListenOptions, resolver Resolver) 
 	return &DNSListener{
 		id: id,
 		Server: &dns.Server{
-			Addr:    addr,
-			Net:     net,
-			Handler: listenHandler(id, net, addr, resolver, opt.AllowedNet),
+			Addr:              addr,
+			Net:               net,
+			Handler:           listenHandler(id, net, addr, resolver, opt.AllowedNet),
+			NotifyStartedFunc: opt.NotifyStartedFunc,
 		},
 		opt: opt,
 	}
@@ -78,6 +81,12 @@ func (s DNSListener) Stop() error {
 
 func (s DNSListener) String() string {
 	return s.id
+}
+
+func (opt *ListenOptions) notifyStarted() {
+	if opt.NotifyStartedFunc != nil {
+		opt.NotifyStartedFunc()
+	}
 }
 
 // DNS handler to forward all incoming requests to a given resolver.

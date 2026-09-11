@@ -36,10 +36,11 @@ func NewDoTListener(id, addr, network string, opt DoTListenerOptions, resolver R
 	return &DoTListener{
 		id: id,
 		Server: &dns.Server{
-			Addr:      addr,
-			Net:       network,
-			TLSConfig: opt.TLSConfig,
-			Handler:   listenHandler(id, "dot", addr, resolver, opt.AllowedNet),
+			Addr:              addr,
+			Net:               network,
+			TLSConfig:         opt.TLSConfig,
+			Handler:           listenHandler(id, "dot", addr, resolver, opt.AllowedNet),
+			NotifyStartedFunc: opt.NotifyStartedFunc,
 		},
 		opt: opt,
 	}

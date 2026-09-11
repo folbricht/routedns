@@ -98,6 +98,7 @@ func (s *AdminListener) startTCP() error {
 		return err
 	}
 	defer ln.Close()
+	s.opt.notifyStarted()
 	return httpServer.ServeTLS(ln, "", "")
 }
 
