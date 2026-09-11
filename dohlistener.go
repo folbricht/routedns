@@ -141,6 +141,7 @@ func (s *DoHListener) startTCP() error {
 		return err
 	}
 	defer ln.Close()
+	s.opt.notifyStarted()
 	if s.opt.NoTLS {
 		return httpServer.Serve(ln)
 	}

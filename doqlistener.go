@@ -106,6 +106,7 @@ func (s *DoQListener) Start() error {
 	s.ln = ln
 	s.mu.Unlock()
 	s.log.Info("starting listener")
+	s.opt.notifyStarted()
 
 	for {
 		connection, err := ln.Accept(context.Background())

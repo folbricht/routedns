@@ -70,6 +70,7 @@ func (s *DTLSListener) Start() error {
 		return err
 	}
 	s.Server.Listener = dtlsListener{listener}
+	s.opt.notifyStarted()
 	return s.Server.ActivateAndServe()
 }
 

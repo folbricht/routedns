@@ -15,10 +15,12 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
 	syslog "github.com/RackSec/srslog"
+	"github.com/coreos/go-systemd/v22/daemon"
 	rdns "github.com/folbricht/routedns"
 	"github.com/heimdalr/dag"
 	"github.com/redis/go-redis/v9"
@@ -357,6 +359,7 @@ func run(opt options, args []string) error {
 
 	// Build the Listeners last as they can point to routers, groups or resolvers directly.
 	var listeners []pendingListener
+	var wg sync.WaitGroup
 	for id, l := range config.Listeners {
 		resolver, ok := resolvers[l.Resolver]
 		// All Listeners should route queries (except the admin service).
@@ -383,9 +386,10 @@ func run(opt options, args []string) error {
 		}
 
 		opt := rdns.ListenOptions{
-			AllowedNet:    allowedNet,
-			NetNS:         netns,
-			SocketOptions: rdns.SocketOptions{FWMark: l.FWMark, BindInterface: l.BindInterface},
+			AllowedNet:        allowedNet,
+			NetNS:             netns,
+			SocketOptions:     rdns.SocketOptions{FWMark: l.FWMark, BindInterface: l.BindInterface},
+			NotifyStartedFunc: wg.Done,
 		}
 
 		var build func() (rdns.Listener, error)
@@ -506,6 +510,7 @@ func run(opt options, args []string) error {
 		}
 		pl := pendingListener{id: id, nsName: nsName, build: build}
 		if pl.nsName == "" {
+			wg.Add(1)
 			pl.ln, err = build()
 			if err != nil {
 				return err
@@ -549,6 +554,15 @@ func run(opt options, args []string) error {
 			continue
 		}
 		go superviseNetNSListener(pl.id, pl.nsName, pl.build)
+	}
+
+	// Notify Systemd that we are done starting, i.e. the listeners are up.
+	// This is a no-op unless $NOTIFY_SOCKET is set.
+	wg.Wait()
+	_, err = daemon.SdNotify(false, daemon.SdNotifyReady)
+	if err != nil {
+		rdns.Log.Error("daemon notification failed", "error", err)
+		// carry on
 	}
 
 	// Graceful shutdown

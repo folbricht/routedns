@@ -8,6 +8,7 @@ require (
 	github.com/RackSec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/cisco/go-hpke v0.0.0-20230407100446-246075f83609
 	github.com/cloudflare/odoh-go v1.0.1-0.20230926114050-f39fa019b017
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/heimdalr/dag v1.5.1
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.72
