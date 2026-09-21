@@ -89,6 +89,23 @@ cd routedns/cmd/routedns && go install
 
 Pre-built binaries for Linux (amd64, arm64, armv6/armv7 for Raspberry Pi, mips/mipsle softfloat for OpenWrt routers), macOS (amd64, arm64), FreeBSD, and Windows are available on the [GitHub Releases](https://github.com/folbricht/routedns/releases) page.
 
+### Minimal builds
+
+Two of the larger dependencies can be left out at build time with Go build tags:
+
+| Tag | Leaves out |
+| --- | --- |
+| `noredis` | The `redis` cache backend |
+| `nolua` | `lua` groups |
+
+Together they take a linux/mipsle binary from 23.5MB to 17.0MB, which matters on a router with 16MB of flash. Releases include `routedns-minimal-linux-*` binaries built with both tags for arm, arm64, mips and mipsle. To build one:
+
+```text
+go build -tags nolua,noredis -ldflags="-s -w" -o routedns ./cmd/routedns
+```
+
+Configuration is unaffected, all options are still parsed. A config that asks for a feature the binary was built without fails at startup with an error naming it.
+
 ### Linux packages
 
 Releases include deb, rpm, apk, and Arch Linux packages for amd64, arm64, and armv7. They install the binary to `/usr/bin/routedns`, a default configuration to `/etc/routedns/config.toml`, and a systemd service:

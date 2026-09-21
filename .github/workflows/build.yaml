@@ -30,6 +30,14 @@ jobs:
     - name: Test
       run: go test -race ./...
 
+    # The reduced release builds replace the Redis backend and the Lua
+    # resolver with stubs. Nothing else exercises those, so build and test
+    # them here or they break unnoticed.
+    - name: Build and test without optional features
+      run: |
+        go build -v -tags nolua,noredis ./...
+        go test -tags nolua,noredis ./...
+
   # Consistency checks on the docs: links and anchors resolve, no two sections
   # render to the same anchor, every toml option in config.go is mentioned in
   # the guide, and every example config is described and indexed. Each of these
