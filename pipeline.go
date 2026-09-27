@@ -59,7 +59,16 @@ func NewPipeline(id string, addr string, client DNSDialer, timeout, idle time.Du
 }
 
 // Resolve a single query using this connection.
+//
+// The query is handed over rather than borrowed: it is written to the
+// connection as it stands, under an ID of the connection's choosing, so the
+// caller must own it and must not touch it again. That holds once Resolve has
+// returned as well, since a query reported as timed out may still be on its way
+// to the connection. Every caller in the tree passes a copy it made to pack and
+// lets go of it here.
 func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
+	// Read while the query is still ours, for the same reason.
+	name := qName(q)
 	r := newRequest(q)
 
 	timeout := time.NewTimer(c.timeout)
@@ -70,7 +79,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	case c.requests <- r:
 	case <-timeout.C:
 		c.metrics.err.Add("querytimeout", 1)
-		return nil, QueryTimeoutError{q}
+		return nil, QueryTimeoutError{name}
 	}
 
 	// Wait for the request to complete or time out
@@ -79,7 +88,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	case <-timeout.C:
 		c.inFlight.delete(r)
 		c.metrics.err.Add("querytimeout", 1)
-		return nil, QueryTimeoutError{q}
+		return nil, QueryTimeoutError{name}
 	}
 
 	return r.waitFor()
@@ -206,15 +215,20 @@ func (c *Pipeline) start() {
 // closed when the request is done.
 type request struct {
 	q, a *dns.Msg
-	id   uint16
-	err  error
-	done chan struct{}
+	// The ID the query carried on the way in, kept because the queue writes
+	// the one it is sent under over it, and the answer has to go back to the
+	// client under the ID it asked with.
+	origID uint16
+	id     uint16
+	err    error
+	done   chan struct{}
 }
 
 func newRequest(q *dns.Msg) *request {
 	return &request{
-		q:    q,
-		done: make(chan struct{}),
+		q:      q,
+		origID: q.Id,
+		done:   make(chan struct{}),
 	}
 }
 
@@ -234,7 +248,7 @@ func (r *request) waitFor() (*dns.Msg, error) {
 // Mark the request as complete.
 func (r *request) markDone(a *dns.Msg, err error) {
 	if a != nil {
-		a.Id = r.q.Id // Fix the query ID in the answer to match the query
+		a.Id = r.origID // Fix the query ID in the answer to match the query
 	}
 	r.a = a
 	r.err = err
@@ -271,12 +285,11 @@ func (q *inFlightQueue) add(r *request) *dns.Msg {
 	}
 	r.id = id
 	q.requests[id] = r
-	query := r.q.Copy()
-	query.Id = id
+	r.q.Id = id
 	if len(q.requests) > q.maxLen {
 		q.maxLen = len(q.requests)
 	}
-	return query
+	return r.q
 }
 
 // Returns the request for a given query ID, or nil if the request isn't in the queue. The

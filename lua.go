@@ -57,6 +57,11 @@ func (r *Lua) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	log := logger(r.id, q, ci)
 
+	// The script is handed the query to read, to pass on and to change as it
+	// sees fit, which it may not do to the caller's message. Copy it, which is
+	// nothing next to running a script.
+	q = q.Copy()
+
 	// Call the "resolve" function in the script. It should return 2 values.
 	ret, err := s.Call("Resolve", 2, q, ci)
 	if err != nil {

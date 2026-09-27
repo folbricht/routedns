@@ -6,7 +6,7 @@
 
 `type = "lua"`
 
-Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
+Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. The `msg` it receives is the script's own copy of the query, so it can be changed freely and passed to a resolver, and what the script does to it is not seen by the components it came through. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
 
 ### Configuration
 

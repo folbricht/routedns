@@ -266,8 +266,10 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 
 	log.With("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
 
-	// Get a response from upstream
-	a, err := r.resolver.Resolve(q.Copy(), ci)
+	// Get a response from upstream. The query is keyed on again below to store
+	// the answer, which is safe because a resolver may not modify what it is
+	// given; see the Resolver interface.
+	a, err := r.resolver.Resolve(q, ci)
 	if err != nil || a == nil {
 		return nil, err
 	}

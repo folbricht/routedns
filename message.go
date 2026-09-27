@@ -128,21 +128,18 @@ func copyRRs(rrs []dns.RR) []dns.RR {
 	return out
 }
 
-// Changes the UDP size in the EDNS0 record and returns a
-// copy of the query. Adds an OPT record if there isn't one
-// already. If size is 0, the original query is returned.
-func setUDPSize(q *dns.Msg, size uint16) *dns.Msg {
+// Changes the UDP size in the EDNS0 record, adding an OPT record if there
+// isn't one already. A size of 0 leaves the query alone.
+//
+// The query is modified in place, so the caller has to own it. Both callers are
+// upstream clients working on the copy they made to pack.
+func setUDPSize(q *dns.Msg, size uint16) {
 	if size == 0 {
-		return q
+		return
 	}
-	copy := q.Copy()
-	// Set the EDNS0 size. Adds an OPT record if there isn't
-	// one already
-	edns0 := copy.IsEdns0()
-	if edns0 != nil {
+	if edns0 := q.IsEdns0(); edns0 != nil {
 		edns0.SetUDPSize(size)
 	} else {
-		copy.SetEdns0(size, false)
+		q.SetEdns0(size, false)
 	}
-	return copy
 }

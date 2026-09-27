@@ -896,9 +896,11 @@ function Resolve(msg, ci)
 		return nil, Error.new("OPT.new(512,true) do_bit should be true")
 	end
 
-	-- Build the response using the modified opt record
+	-- Return the modified OPT record on the answer. The script works on its
+	-- own copy of the query, so that is where the caller can see it.
 	local answer = Message.new()
 	answer:set_reply(msg)
+	answer.extra = { opt }
 	return answer, nil
 end`,
 	}
@@ -916,8 +918,8 @@ end`,
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
-	// Verify the OPT record on the original message was modified
-	edns0 := q.IsEdns0()
+	// Verify the OPT record the script built and handed back
+	edns0 := a.IsEdns0()
 	require.NotNil(t, edns0)
 	require.Equal(t, uint16(1232), edns0.UDPSize())
 	require.True(t, edns0.Do())
@@ -925,6 +927,10 @@ end`,
 	require.Len(t, edns0.Option, 2)
 	require.Equal(t, uint16(dns.EDNS0EDE), edns0.Option[0].Option())
 	require.Equal(t, uint16(dns.EDNS0COOKIE), edns0.Option[1].Option())
+
+	// The query the caller passed in is untouched, so a listener reading it
+	// back for truncation and padding sees what it sent.
+	require.Nil(t, q.IsEdns0())
 }
 
 func TestLuaClientInfoAccess(t *testing.T) {
