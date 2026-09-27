@@ -31,22 +31,23 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 		if strings.HasPrefix(r, "#") || r == "" {
 			return nil
 		}
-		// Append a mask suffix if there isn't one already
+		// Append a mask suffix if there isn't one already. The colon decides,
+		// since the v4-mapped form of an address carries both it and the dots.
 		if !strings.Contains(r, "/") {
-			if strings.Contains(r, ".") { // ip4
-				r += "/32"
-			} else if strings.Contains(r, ":") { // ip6
+			if strings.Contains(r, ":") { // ip6, the v4-mapped form included
 				r += "/128"
+			} else if strings.Contains(r, ".") { // ip4
+				r += "/32"
 			}
 		}
-		ip, n, err := net.ParseCIDR(r)
+		_, n, err := net.ParseCIDR(r)
 		if err != nil {
 			return err
 		}
-		if addr := ip.To4(); addr == nil {
-			db.ip6.add(n)
-		} else {
+		if n, ok := as4(n); ok {
 			db.ip4.add(n)
+		} else {
+			db.ip6.add(n)
 		}
 		return nil
 	})
@@ -56,6 +57,29 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 	db.ip4.compact()
 	db.ip6.compact()
 	return db, nil
+}
+
+// as4 returns a network as the v4 network it describes, and whether it is one.
+// ParseCIDR keeps a rule written in the v4-mapped form 16 bytes wide, so
+// "::ffff:1.2.3.4/128" arrives as a 128 bit network even though it names a
+// single v4 address; adding that to the v4 trie walks 96 bits of the mapped
+// prefix that a query, which is matched 4 bytes wide, never reaches.
+//
+// A prefix shorter than the 96 bits of that mapping covers addresses outside
+// it as well, so it is not a v4 network and stays where it was written.
+func as4(n *net.IPNet) (*net.IPNet, bool) {
+	if len(n.IP) == net.IPv4len {
+		return n, true
+	}
+	ip4 := n.IP.To4()
+	if ip4 == nil {
+		return n, false
+	}
+	ones, bits := n.Mask.Size()
+	if bits != 8*net.IPv6len || ones < 8*(net.IPv6len-net.IPv4len) {
+		return n, false
+	}
+	return &net.IPNet{IP: ip4, Mask: net.CIDRMask(ones-8*(net.IPv6len-net.IPv4len), 8*net.IPv4len)}, true
 }
 
 func (m *CidrDB) Reload() (IPBlocklistDB, error) {

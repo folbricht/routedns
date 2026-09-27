@@ -35,3 +35,67 @@ func TestCidrDB(t *testing.T) {
 	}
 
 }
+
+// A network written in the v4-mapped form names v4 addresses and has to match
+// them. ParseCIDR keeps it 16 bytes wide, which put a 128 bit path into the v4
+// trie: the rule itself never matched, and because the mapped prefix is 80 zero
+// bits followed by ones, a query for an address low enough to walk 32 zero bits
+// matched instead.
+func TestCidrDBV4Mapped(t *testing.T) {
+	db, err := NewCidrDB("testlist", NewStaticLoader([]string{
+		"::ffff:1.2.3.4/128", // one address, written the long way
+		"::ffff:5.6.7.0/120", // a /24, written the long way
+		"::ffff:9.9.0.0",     // no mask at all, both a colon and dots
+		"2001:db8:1::/48",    // a real v6 network alongside
+	}))
+	require.NoError(t, err)
+
+	tests := []struct {
+		ip    string
+		match bool
+		rule  string
+	}{
+		{"1.2.3.4", true, "1.2.3.4/32"},
+		{"1.2.3.5", false, ""},
+		{"5.6.7.1", true, "5.6.7.0/24"},
+		{"5.6.8.1", false, ""},
+		{"9.9.0.0", true, "9.9.0.0/32"},
+		// The address a 128 bit path in the v4 trie used to answer for.
+		{"0.0.0.0", false, ""},
+		{"2001:db8:1::1", true, "2001:db8:1::/48"},
+		{"2001:db8:2::1", false, ""},
+	}
+	for _, test := range tests {
+		match, ok := db.Match(net.ParseIP(test.ip))
+		require.Equal(t, test.match, ok, "ip: %s", test.ip)
+		if test.match {
+			require.Equal(t, test.rule, match.Rule, "ip: %s", test.ip)
+		}
+	}
+}
+
+// The mapping occupies the first 96 bits, so a network covering all of it is
+// all of v4, and anything shorter reaches outside it and stays v6.
+func TestCidrDBV4MappedBoundary(t *testing.T) {
+	all, err := NewCidrDB("testlist", NewStaticLoader([]string{"::ffff:0:0/96"}))
+	require.NoError(t, err)
+	match, ok := all.Match(net.ParseIP("203.0.113.9"))
+	require.True(t, ok, "::ffff:0:0/96 is every v4 address")
+	require.Equal(t, "0.0.0.0/0", match.Rule)
+
+	// One bit shorter takes in addresses that are not v4 at all.
+	wider, err := NewCidrDB("testlist", NewStaticLoader([]string{"::ffff:0:0/95"}))
+	require.NoError(t, err)
+	_, ok = wider.Match(net.ParseIP("203.0.113.9"))
+	require.False(t, ok, "a network reaching outside the mapping is not a v4 one")
+	_, ok = wider.Match(net.ParseIP("::ffff:0:0"))
+	require.False(t, ok, "and a v4-mapped query is matched as the v4 address it is")
+
+	// The v6 default route still covers v6 only.
+	def, err := NewCidrDB("testlist", NewStaticLoader([]string{"::/0"}))
+	require.NoError(t, err)
+	_, ok = def.Match(net.ParseIP("2001:db8::1"))
+	require.True(t, ok)
+	_, ok = def.Match(net.ParseIP("203.0.113.9"))
+	require.False(t, ok, "::/0 is not a v4 rule")
+}
