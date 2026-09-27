@@ -19,12 +19,19 @@ Options:
 - `lua-script-source` - Path to an external `.lua` file. Alternative to `lua-script`.
 - `lua-concurrency` - Number of concurrent Lua VM instances (pool size). Default `4`.
 - `lua-no-sandbox` - Disable the sandbox to allow `io`, `os`, `debug`, and dynamic code loading. Default `false`.
+- `lua-timeout` - Seconds a script may run before it is cut off, both for a query and for the top level of the script when it is loaded. Default `30`. A negative value removes the limit. See [Run time](#run-time).
 
 ### Sandbox
 
 By default, scripts run in a sandbox that provides access to safe libraries: `base` (with dangerous functions removed), `string`, `math`, `table`, and `coroutine`. The following functions are blocked in sandbox mode: `dofile`, `loadfile`, `load`, `loadstring`, `module`, `require`. The `io`, `os`, `debug`, and `package` libraries are not loaded.
 
 Set `lua-no-sandbox = true` to disable the sandbox and allow full access to all Lua libraries. Only use this for trusted scripts.
+
+### Run time
+
+A script is cut off after `lua-timeout` seconds and the query fails with an error. The pool holds `lua-concurrency` instances, and without a limit a script that never returns, an accidental loop with no exit for instance, holds the instance it runs on for the life of the process; once that has happened to every instance the group answers nothing further and each query that arrives waits for ever. The same limit applies to the top level of the script when it is loaded, so a script that does not return there fails to start rather than hanging startup.
+
+The default is high enough that no script doing real work reaches it. Time spent waiting on an upstream resolver counts towards it but is not interrupted, so the limit is reached on the next thing the script does rather than in the middle of a query the script sent. A script that is meant to run longer than any limit can set `lua-timeout` to a negative value, which brings back the behaviour described above.
 
 ### Lua API
 

@@ -5,6 +5,7 @@ package rdns
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
@@ -1110,4 +1111,96 @@ end`,
 	answer, err := r.Resolve(q, ci)
 	require.NoError(t, err)
 	require.True(t, answer.Authoritative)
+}
+
+// A script that does not return is cut off, and the instance it ran on goes
+// back into the pool working. Without a limit it would hold that instance for
+// the life of the process, and a query for every instance would stop the group
+// answering anything ever again.
+func TestLuaTimeout(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{
+		Concurrency: 1,
+		Timeout:     200 * time.Millisecond,
+		Script: `
+function Resolve(msg, ci)
+	if msg.questions[1].name == "loop.example.com." then
+		while true do end
+	end
+	local a = Message.new()
+	a:set_reply(msg)
+	return a, nil
+end`,
+	})
+	require.NoError(t, err)
+
+	loop := new(dns.Msg)
+	loop.SetQuestion("loop.example.com.", dns.TypeA)
+	_, err = r.Resolve(loop, ClientInfo{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+
+	// The only instance is back, and still works.
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	a, err := r.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.NotNil(t, a)
+	require.True(t, a.Response)
+}
+
+// The top level of a script runs when it is loaded, so one that does not return
+// there fails to load rather than hanging startup with nothing logged.
+func TestLuaTimeoutAtLoad(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewLua("test-lua", LuaOptions{
+			Concurrency: 1,
+			Timeout:     200 * time.Millisecond,
+			Script: `
+while true do end
+function Resolve(msg, ci) return nil, nil end`,
+		})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "context deadline exceeded")
+	case <-time.After(10 * time.Second):
+		t.Fatal("NewLua did not return, so the limit did not apply at load")
+	}
+}
+
+// A negative timeout removes the limit, for a script that is meant to run long.
+func TestLuaTimeoutDisabled(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{
+		Concurrency: 1,
+		Timeout:     -1,
+		Script: `
+function Resolve(msg, ci)
+	local a = Message.new()
+	a:set_reply(msg)
+	return a, nil
+end`,
+	})
+	require.NoError(t, err)
+	s := <-r.scripts
+	require.Nil(t, s.L.Context(), "no deadline should be left on the state")
+	r.scripts <- s
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err = r.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+}
+
+// The default applies when nothing is configured, so the limit is on unless it
+// was deliberately taken off.
+func TestLuaTimeoutDefault(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{Script: `function Resolve(msg, ci) return nil, nil end`})
+	require.NoError(t, err)
+	require.Equal(t, defaultLuaTimeout, r.opt.Timeout)
+	s := <-r.scripts
+	require.Equal(t, defaultLuaTimeout, s.timeout)
+	r.scripts <- s
 }

@@ -1073,6 +1073,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			Script:      script,
 			Concurrency: g.LuaConcurrency,
 			NoSandbox:   g.LuaNoSandbox,
+			Timeout:     time.Duration(g.LuaTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewLua(id, opt, gr...)
 		if err != nil {
