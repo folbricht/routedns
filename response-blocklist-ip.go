@@ -115,7 +115,7 @@ func (r *ResponseBlocklistIP) blockIfMatch(query, answer *dns.Msg, ci ClientInfo
 					slog.String("ip", ip.String()),
 				)
 				if r.BlocklistResolver != nil {
-					log.With(slog.String("resolver", r.BlocklistResolver.String())).Debug("blocklist match, forwarding to blocklist-resolver")
+					log.Debug("blocklist match, forwarding to blocklist-resolver", slog.String("resolver", r.BlocklistResolver.String()))
 					return r.BlocklistResolver.Resolve(query, ci)
 				}
 				log.Debug("blocking response")
@@ -136,7 +136,7 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 	if len(answer.Answer) == 0 {
 		log := Log.With("qname", qName(query))
 		if r.BlocklistResolver != nil {
-			log.With(slog.String("resolver", r.BlocklistResolver.String())).Debug("no answers after filtering, forwarding to blocklist-resolver")
+			log.Debug("no answers after filtering, forwarding to blocklist-resolver", slog.String("resolver", r.BlocklistResolver.String()))
 			return r.BlocklistResolver.Resolve(query, ci)
 		}
 		log.Debug("no answers after filtering, blocking response")
@@ -148,8 +148,9 @@ func (r *ResponseBlocklistIP) filterMatch(query, answer *dns.Msg, ci ClientInfo)
 }
 
 func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.RR) []dns.RR {
-	newRRs := make([]dns.RR, 0, len(rrs))
-	for _, rr := range rrs {
+	// Built only once a record is dropped, which for most responses is never.
+	var newRRs []dns.RR
+	for i, rr := range rrs {
 		var ip net.IP
 		switch r := rr.(type) {
 		case *dns.A:
@@ -157,19 +158,29 @@ func (r *ResponseBlocklistIP) filterRR(query *dns.Msg, ci ClientInfo, rrs []dns.
 		case *dns.AAAA:
 			ip = r.AAAA
 		default:
-			newRRs = append(newRRs, rr)
+			if newRRs != nil {
+				newRRs = append(newRRs, rr)
+			}
 			continue
 		}
 		if match, ok := r.match(ip); ok != r.Inverted {
-			log := logger(r.id, query, ci).With(
+			if newRRs == nil { // the first one to go, take what came before it
+				newRRs = make([]dns.RR, 0, len(rrs)-1)
+				newRRs = append(newRRs, rrs[:i]...)
+			}
+			logger(r.id, query, ci).Debug("filtering response",
 				slog.String("list", match.GetList()),
 				slog.String("rule", match.GetRule()),
 				slog.String("ip", ip.String()),
 			)
-			log.Debug("filtering response")
 			continue
 		}
-		newRRs = append(newRRs, rr)
+		if newRRs != nil {
+			newRRs = append(newRRs, rr)
+		}
+	}
+	if newRRs == nil { // nothing was filtered
+		return rrs
 	}
 	return newRRs
 }

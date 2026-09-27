@@ -16,10 +16,22 @@ type RateLimiter struct {
 	resolver Resolver
 	RateLimiterOptions
 
+	// The masks the prefix lengths describe, built once rather than per query.
+	mask4, mask6 net.IPMask
+
 	mu        sync.RWMutex
 	currWinID int64
-	counters  map[string]*uint
+	counters  map[clientNetwork]*uint
 	metrics   *rateLimiterMetrics
+}
+
+// clientNetwork identifies the network a query came from, the client address
+// with the configured prefix applied. An array rather than a string so that
+// using it as a map key costs no allocation; a v4 address sits in the first
+// four bytes with the length saying so.
+type clientNetwork struct {
+	addr [net.IPv6len]byte
+	len  uint8
 }
 
 var _ Resolver = &RateLimiter{}
@@ -56,6 +68,8 @@ func NewRateLimiter(id string, resolver Resolver, opt RateLimiterOptions) *RateL
 		id:                 id,
 		resolver:           resolver,
 		RateLimiterOptions: opt,
+		mask4:              net.CIDRMask(int(opt.Prefix4), 32),
+		mask6:              net.CIDRMask(int(opt.Prefix6), 128),
 		metrics: &rateLimiterMetrics{
 			query:  getVarInt("router", id, "query"),
 			exceed: getVarInt("router", id, "exceed"),
@@ -70,13 +84,7 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	r.metrics.query.Add(1)
 
 	// Apply the desired mask to the client IP to build a key it identify the client (network)
-	source := ci.SourceIP
-	if ip4 := source.To4(); len(ip4) == net.IPv4len {
-		source = source.Mask(net.CIDRMask(int(r.Prefix4), 32))
-	} else {
-		source = source.Mask(net.CIDRMask(int(r.Prefix6), 128))
-	}
-	key := source.String()
+	key := r.clientKey(ci.SourceIP)
 
 	// Calculate the current (fixed) window
 	windowID := time.Now().Unix() / int64(r.Window)
@@ -87,7 +95,7 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	// If we have moved on to the next window, re-initialize the counters
 	if windowID != r.currWinID {
 		r.currWinID = windowID
-		r.counters = make(map[string]*uint)
+		r.counters = make(map[clientNetwork]*uint)
 	}
 
 	// Load the current counter for this client or make a new one
@@ -107,15 +115,37 @@ func (r *RateLimiter) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	if reject {
 		r.metrics.exceed.Add(1)
 		if r.LimitResolver != nil {
-			log.With("resolver", r.LimitResolver).Debug("rate-limit exceeded, forwarding to limit-resolver")
+			log.Debug("rate-limit exceeded, forwarding to limit-resolver", "resolver", r.LimitResolver)
 			return r.LimitResolver.Resolve(q, ci)
 		}
 		r.metrics.drop.Add(1)
 		log.Debug("rate-limit reached, dropping")
 		return nil, nil
 	}
-	log.With("resolver", r.resolver).Debug("forwarding query to resolver")
+	log.Debug("forwarding query to resolver", "resolver", r.resolver)
 	return r.resolver.Resolve(q, ci)
+}
+
+// clientKey masks a client address down to the network the limit counts, in a
+// form that can be a map key without allocating.
+func (r *RateLimiter) clientKey(ip net.IP) clientNetwork {
+	var k clientNetwork
+	if ip4 := ip.To4(); len(ip4) == net.IPv4len {
+		k.len = net.IPv4len
+		for i := range ip4 {
+			k.addr[i] = ip4[i] & r.mask4[i]
+		}
+		return k
+	}
+	ip16 := ip.To16()
+	if ip16 == nil { // not an address at all, all such queries share a counter
+		return k
+	}
+	k.len = net.IPv6len
+	for i := range ip16 {
+		k.addr[i] = ip16[i] & r.mask6[i]
+	}
+	return k
 }
 
 func (r *RateLimiter) String() string {

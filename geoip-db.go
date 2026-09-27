@@ -100,8 +100,8 @@ func (m *GeoIPDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	}
 
 	if err := m.geoDB.Lookup(ip, &record); err != nil {
-		Log.With("ip", ip).Error("failed to lookup ip in geo location database",
-			"error", err)
+		Log.Error("failed to lookup ip in geo location database",
+			"ip", ip, "error", err)
 		return nil, false
 	}
 

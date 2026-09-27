@@ -123,7 +123,7 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		resolver := r.resolvers[idx]
 
 		r.metrics.route.Add(resolver.String(), 1)
-		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.Debug("forwarding query to resolver", "resolver", resolver.String())
 
 		start := time.Now()
 		a, err = resolver.Resolve(q.Copy(), ci)
@@ -133,8 +133,8 @@ func (r *LoadBalance) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			return a, nil
 		}
 
-		log.With("resolver", resolver.String()).Debug("resolver returned failure",
-			"error", err)
+		log.Debug("resolver returned failure",
+			"resolver", resolver.String(), "error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		// Count every failure as a failover to stay consistent with FailRotate
 		// (which increments on every failure, including the last/only resolver).

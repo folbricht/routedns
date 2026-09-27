@@ -71,6 +71,11 @@ func (r *ResponseBlocklistName) match(msg *dns.Msg) (*BlocklistMatch, bool) {
 }
 
 func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// One message carries each name to the matcher in turn, which takes a query
+	// rather than a name. A response has a record for every name in it, so
+	// building one per record was the bulk of what checking a response cost.
+	msg := new(dns.Msg)
+	msg.Question = make([]dns.Question, 1)
 	for _, records := range [][]dns.RR{answer.Answer, answer.Ns, answer.Extra} {
 		for _, rr := range records {
 			var name string
@@ -96,8 +101,7 @@ func (r *ResponseBlocklistName) blockIfMatch(query, answer *dns.Msg, ci ClientIn
 			default:
 				continue
 			}
-			msg := new(dns.Msg)
-			msg.SetQuestion(name, 0)
+			msg.Question[0].Name = name
 			if rule, ok := r.match(msg); ok != r.Inverted {
 				log := logger(r.id, query, ci).With("rule", rule.GetRule())
 				if r.BlocklistResolver != nil {

@@ -362,7 +362,7 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	var err error
 	a := new(dns.Msg)
 	if isAllowed(s.opt.AllowedNet, ci.SourceIP) {
-		log.With("resolver", s.r.String()).Debug("forwarding query to resolver")
+		log.Debug("forwarding query to resolver", "resolver", s.r.String())
 		a, err = s.r.Resolve(q, ci)
 		if err != nil {
 			log.Warn("failed to resolve", "error", err)

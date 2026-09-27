@@ -116,7 +116,7 @@ func (d *Socks5Dialer) Dial(network string, address string) (net.Conn, error) {
 				Log.Error("failed to parse socks5 address", "error", err)
 				return
 			}
-			Log.With("addr", host).Debug("resolving dns server locally")
+			Log.Debug("resolving dns server locally", "addr", host)
 			ip := net.ParseIP(host)
 			if ip != nil {
 				// Already an IP

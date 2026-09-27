@@ -98,12 +98,15 @@ func (m *CidrDB) Match(ip net.IP) (*BlocklistMatch, bool) {
 	if len(ip) == 0 {
 		return nil, false
 	}
+	trie := m.ip4
 	if addr := ip.To4(); addr == nil {
-		rule, ok := m.ip6.hasIP(ip)
-		return &BlocklistMatch{List: m.name, Rule: rule}, ok
+		trie = m.ip6
 	}
-	rule, ok := m.ip4.hasIP(ip)
-	return &BlocklistMatch{List: m.name, Rule: rule}, ok
+	rule, ok := trie.hasIP(ip)
+	if !ok {
+		return nil, false
+	}
+	return &BlocklistMatch{List: m.name, Rule: rule}, true
 }
 
 func (m *CidrDB) Close() error {

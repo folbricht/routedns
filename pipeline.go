@@ -124,7 +124,7 @@ func (c *Pipeline) start() {
 						c.metrics.err.Add("inflight_full", 1)
 						continue
 					}
-					log.With("qname", qName(query)).Debug("sending query")
+					log.Debug("sending query", "qname", qName(query))
 					c.metrics.query.Add(1)
 					if err := conn.WriteMsg(query); err != nil {
 						// Take the request back out of the in-flight queue before
@@ -138,8 +138,8 @@ func (c *Pipeline) start() {
 						conn.Close() // throw away this connection, should wake up the reader as well
 						wg.Done()
 						c.metrics.err.Add("send_query", 1)
-						log.With("qname", qName(query)).Debug("failed sending query",
-							"error", err)
+						log.Debug("failed sending query",
+							"qname", qName(query), "error", err)
 						return
 					}
 				case <-done: // the reader ran into an error and we want to stop using this connection
@@ -193,7 +193,7 @@ func (c *Pipeline) start() {
 				req := c.inFlight.get(a) // match the answer to an in-flight query
 				if req == nil {
 					c.metrics.err.Add("unexpected_a", 1)
-					log.With("qname", qName(a)).Warn("unexpected answer received, ignoring")
+					log.Warn("unexpected answer received, ignoring", "qname", qName(a))
 					continue
 				}
 				c.metrics.response.Add(rCode(a), 1)

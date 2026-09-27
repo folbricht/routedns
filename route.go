@@ -54,19 +54,19 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 	if err != nil {
 		return nil, err
 	}
-	re, err := regexp.Compile(name)
+	re, err := compilePattern(name)
 	if err != nil {
 		return nil, err
 	}
-	dohRe, err := regexp.Compile(dohPath)
+	dohRe, err := compilePattern(dohPath)
 	if err != nil {
 		return nil, err
 	}
-	listenerRe, err := regexp.Compile(listenerID)
+	listenerRe, err := compilePattern(listenerID)
 	if err != nil {
 		return nil, err
 	}
-	tlsRe, err := regexp.Compile(tlsServerName)
+	tlsRe, err := compilePattern(tlsServerName)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +100,18 @@ func NewRoute(name, class string, types, weekdays []string, before, after, sourc
 	}, nil
 }
 
+// compilePattern compiles a route criterion, or returns nil for one that was
+// not given. An empty expression matches every string, so a route carries no
+// expression for it rather than running the engine to be told so on every
+// query: four of these are checked per route, and an expression that matches
+// everything still costs as much to run as one that does something.
+func compilePattern(expr string) (*regexp.Regexp, error) {
+	if expr == "" {
+		return nil, nil
+	}
+	return regexp.Compile(expr)
+}
+
 func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 	question := q.Question[0]
 	if !r.matchType(question.Qtype) {
@@ -108,7 +120,7 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 	if r.class != 0 && r.class != question.Qclass {
 		return r.inverted
 	}
-	if !r.name.MatchString(question.Name) {
+	if r.name != nil && !r.name.MatchString(question.Name) {
 		return r.inverted
 	}
 	if r.source != nil && !r.source.Contains(ci.SourceIP) {
@@ -136,13 +148,13 @@ func (r *route) match(q *dns.Msg, ci ClientInfo) bool {
 			return r.inverted
 		}
 	}
-	if !r.dohPath.MatchString(ci.DoHPath) {
+	if r.dohPath != nil && !r.dohPath.MatchString(ci.DoHPath) {
 		return r.inverted
 	}
-	if !r.listenerID.MatchString(ci.Listener) {
+	if r.listenerID != nil && !r.listenerID.MatchString(ci.Listener) {
 		return r.inverted
 	}
-	if !r.tlsServerName.MatchString(ci.TLSServerName) {
+	if r.tlsServerName != nil && !r.tlsServerName.MatchString(ci.TLSServerName) {
 		return r.inverted
 	}
 	if len(r.weekdays) > 0 || r.before != nil || r.after != nil {
@@ -185,7 +197,7 @@ func (r *route) String() string {
 		}
 		fragments = append(fragments, fmt.Sprintf("types=%v", types))
 	}
-	if r.name.String() != "" {
+	if r.name != nil {
 		fragments = append(fragments, "name="+r.name.String())
 	}
 	if r.class != 0 {
@@ -198,13 +210,13 @@ func (r *route) String() string {
 	if r.ecsSource != nil {
 		fragments = append(fragments, "ecs-source="+r.ecsSource.String())
 	}
-	if r.dohPath.String() != "" {
+	if r.dohPath != nil {
 		fragments = append(fragments, "doh-path="+r.dohPath.String())
 	}
-	if r.listenerID.String() != "" {
+	if r.listenerID != nil {
 		fragments = append(fragments, "listener="+r.listenerID.String())
 	}
-	if r.tlsServerName.String() != "" {
+	if r.tlsServerName != nil {
 		fragments = append(fragments, "servername="+r.tlsServerName.String())
 	}
 	if len(r.weekdays) > 0 {
@@ -223,7 +235,7 @@ func (r *route) String() string {
 }
 
 func (r *route) isDefault() bool {
-	return r.class == 0 && len(r.types) == 0 && r.name.String() == ""
+	return r.class == 0 && len(r.types) == 0 && r.name == nil
 }
 
 func (r *route) matchType(typ uint16) bool {

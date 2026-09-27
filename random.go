@@ -57,13 +57,13 @@ func (r *Random) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		}
 
 		r.metrics.route.Add(resolver.String(), 1)
-		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.Debug("forwarding query to resolver", "resolver", resolver.String())
 		a, err := resolver.Resolve(q, ci)
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
-		log.With("resolver", resolver.String()).Debug("resolver returned failure",
-			"error", err)
+		log.Debug("resolver returned failure",
+			"resolver", resolver.String(), "error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 		r.deactivate(resolver)
 	}

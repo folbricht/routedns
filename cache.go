@@ -264,7 +264,7 @@ func (r *Cache) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	r.metrics.miss.Add(1)
 
-	log.With("resolver", r.resolver.String()).Debug("cache-miss, forwarding")
+	log.Debug("cache-miss, forwarding", "resolver", r.resolver.String())
 
 	// Get a response from upstream. The query is keyed on again below to store
 	// the answer, which is safe because a resolver may not modify what it is

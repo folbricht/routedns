@@ -51,7 +51,7 @@ func (l *HTTPLoader) Load(reset func(), fn func(rule string) error) error {
 		return listFailed(log, l.opt.AllowFailure, l.loaded, reset, err)
 	}
 	l.loaded = true
-	log.With("load-time", time.Since(start)).Debug("completed loading blocklist")
+	log.Debug("completed loading blocklist", "load-time", time.Since(start))
 	return nil
 }
 
