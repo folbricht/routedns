@@ -68,7 +68,7 @@ func (r *StaticTemplateResolver) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, e
 		log.Warn("failed to apply edns0ede template", "error", err)
 	}
 
-	logger(r.id, q, ci).With("truncated", r.truncate).Debug("responding")
+	logger(r.id, q, ci).Debug("responding", "truncated", r.truncate)
 
 	return answer, nil
 }

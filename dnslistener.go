@@ -117,7 +117,7 @@ func listenHandler(id, protocol, addr string, r Resolver, allowedNet []*net.IPNe
 
 		a := new(dns.Msg)
 		if isAllowed(allowedNet, ci.SourceIP) {
-			log.With("resolver", r.String()).Debug("forwarding query to resolver")
+			log.Debug("forwarding query to resolver", "resolver", r.String())
 			a, err = r.Resolve(req, ci)
 			if err != nil {
 				metrics.err.Add("resolve", 1)

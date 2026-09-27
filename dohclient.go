@@ -96,9 +96,12 @@ type DoHClient struct {
 	id       string
 	endpoint string
 	template *uritemplates.UriTemplate
-	client   *http.Client
-	opt      DoHClientOptions
-	metrics  *listenerMetrics
+	// The endpoint a POST goes to. POST carries the query in the body, so the
+	// template takes no values and expands to the same URL every time.
+	postURL string
+	client  *http.Client
+	opt     DoHClientOptions
+	metrics *listenerMetrics
 }
 
 var _ Resolver = &DoHClient{}
@@ -166,10 +169,16 @@ func NewDoHClient(id, endpoint string, opt DoHClientOptions) (*DoHClient, error)
 		opt.QueryTimeout = defaultQueryTimeout
 	}
 
+	postURL, err := template.Expand(map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+
 	return &DoHClient{
 		id:       id,
 		endpoint: endpoint,
 		template: template,
+		postURL:  postURL,
 		client:   client,
 		opt:      opt,
 		metrics:  newListenerMetrics("client", id),
@@ -239,14 +248,7 @@ func (d *DoHClient) do(req *http.Request) (*http.Response, error) {
 }
 
 func (d *DoHClient) buildPostRequest(ctx context.Context, msg []byte) (*http.Request, error) {
-	// The URL could be a template. Process it without values since POST doesn't use variables in the URL.
-	u, err := d.template.Expand(map[string]any{})
-	if err != nil {
-		d.metrics.err.Add("template", 1)
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(msg))
+	req, err := http.NewRequestWithContext(ctx, "POST", d.postURL, bytes.NewReader(msg))
 	if err != nil {
 		d.metrics.err.Add("http", 1)
 		return nil, err

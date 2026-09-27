@@ -99,3 +99,20 @@ func TestCidrDBV4MappedBoundary(t *testing.T) {
 	_, ok = def.Match(net.ParseIP("203.0.113.9"))
 	require.False(t, ok, "::/0 is not a v4 rule")
 }
+
+// A query that matches nothing carries no match, as the name databases already
+// did. It is checked against every address in a response, so a miss is the
+// common case and must not allocate one to throw away.
+func TestCidrDBNoMatchIsNil(t *testing.T) {
+	db, err := NewCidrDB("testlist", NewStaticLoader([]string{"10.0.0.0/8", "2001:db8::/32"}))
+	require.NoError(t, err)
+
+	for _, ip := range []string{"1.2.3.4", "2001:db9::1"} {
+		match, ok := db.Match(net.ParseIP(ip))
+		require.False(t, ok, "ip: %s", ip)
+		require.Nil(t, match, "ip: %s", ip)
+	}
+	match, ok := db.Match(net.ParseIP("10.1.2.3"))
+	require.True(t, ok)
+	require.Equal(t, "10.0.0.0/8", match.Rule)
+}

@@ -214,7 +214,7 @@ func (r *FastestTCP) probe(ctx context.Context, log queryLogger, rrs []dns.RR) <
 				resultCh <- tcpProbeResult{err: err}
 				return
 			}
-			log.With("ip", ip).With("response-time", time.Since(start)).Debug("tcp probe finished")
+			log.Debug("tcp probe finished", "ip", ip, "response-time", time.Since(start))
 			defer c.Close()
 			resultCh <- tcpProbeResult{rr: rr}
 		}(rr)

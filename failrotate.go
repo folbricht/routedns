@@ -53,14 +53,14 @@ func (r *FailRotate) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	)
 	for i := 0; i < len(r.resolvers); i++ {
 		resolver, active := r.current()
-		log.With("resolver", resolver.String()).Debug("forwarding query to resolver")
+		log.Debug("forwarding query to resolver", "resolver", resolver.String())
 		r.metrics.route.Add(resolver.String(), 1)
 		a, err = resolver.Resolve(q, ci)
 		if err == nil && r.isSuccessResponse(a) { // Return immediately if successful
 			return a, err
 		}
-		log.With("resolver", resolver.String()).Debug("resolver returned failure",
-			"error", err)
+		log.Debug("resolver returned failure",
+			"resolver", resolver.String(), "error", err)
 		r.metrics.failure.Add(resolver.String(), 1)
 
 		r.errorFrom(active)
