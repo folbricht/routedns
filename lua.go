@@ -87,6 +87,17 @@ func (r *Lua) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		return nil, fmt.Errorf("invalid return value, expected Error, got %T", ret[1])
 	}
 
+	// Copy the answer on the way out for the reason the query was copied on the
+	// way in, and one more. The state is handed back to the pool as this
+	// returns, while the caller is still reading what it was given: a listener
+	// truncates, pads and packs the answer after the call. A script can keep
+	// anything it was handed, in a global, an upvalue or a table, since the
+	// state lasts as long as the process, so a script holding on to an answer
+	// would be able to write to it from the next query to reach that state.
+	if answer != nil {
+		answer = answer.Copy()
+	}
+
 	return answer, err
 }
 

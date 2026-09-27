@@ -1204,3 +1204,52 @@ func TestLuaTimeoutDefault(t *testing.T) {
 	require.Equal(t, defaultLuaTimeout, s.timeout)
 	r.scripts <- s
 }
+
+// The state goes back into the pool as Resolve returns, while the caller is
+// still reading the answer, and a script can keep anything it was handed for
+// as long as the process lives. Nothing crosses the boundary by reference, so
+// a script that keeps an answer cannot write to the one its caller was given.
+func TestLuaAnswerNotShared(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{Concurrency: 1, Script: `
+function Resolve(msg, ci)
+	if kept ~= nil then
+		kept.rcode = RcodeSERVFAIL
+		kept.id = 99
+	end
+	local a = Message.new()
+	a:set_reply(msg)
+	kept = a
+	return a, nil
+end`})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("first.example.com.", dns.TypeA)
+	first, err := r.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.Equal(t, dns.RcodeSuccess, first.Rcode)
+	id := first.Id
+
+	// A second query, which the script uses to write to the answer it kept.
+	q2 := new(dns.Msg)
+	q2.SetQuestion("second.example.com.", dns.TypeA)
+	_, err = r.Resolve(q2, ClientInfo{})
+	require.NoError(t, err)
+
+	require.Equal(t, dns.RcodeSuccess, first.Rcode, "a later query reached the answer an earlier caller holds")
+	require.Equal(t, id, first.Id, "a later query reached the answer an earlier caller holds")
+}
+
+// A script that drops a query returns no answer, and copying the answer out
+// must not turn that into one.
+func TestLuaAnswerNilPassesThrough(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{Concurrency: 1,
+		Script: `function Resolve(msg, ci) return nil, nil end`})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	a, err := r.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.Nil(t, a)
+}
