@@ -829,7 +829,7 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 		case "random":
 			shuffleFunc = rdns.AnswerShuffleRandom
 		case "round-robin":
-			shuffleFunc = rdns.AnswerShuffleRoundRobin
+			shuffleFunc = rdns.NewAnswerShuffleRoundRobin()
 		default:
 			return fmt.Errorf("unsupported shuffle function %q", g.CacheAnswerShuffle)
 		}

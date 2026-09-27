@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -173,9 +174,11 @@ func TestRoundRobinShuffle(t *testing.T) {
 		},
 	}
 
+	shuffle := NewAnswerShuffleRoundRobin()
+
 	// Shift the A records once
 	msg1 := msg.Copy()
-	AnswerShuffleRoundRobin(msg1)
+	shuffle(msg1)
 
 	require.Equal(t, dns.TypeCNAME, msg.Answer[0].Header().Rrtype)
 	require.Equal(t, dns.TypeA, msg.Answer[1].Header().Rrtype)
@@ -188,7 +191,7 @@ func TestRoundRobinShuffle(t *testing.T) {
 
 	// Shift the A records again
 	msg2 := msg.Copy()
-	AnswerShuffleRoundRobin(msg2)
+	shuffle(msg2)
 
 	a1 = msg2.Answer[1].(*dns.A)
 	a2 = msg2.Answer[2].(*dns.A)
@@ -219,4 +222,60 @@ func TestCacheNoTruncated(t *testing.T) {
 	_, err = c.Resolve(q, ci)
 	require.NoError(t, err)
 	require.Equal(t, 2, r.HitCount())
+}
+
+// Each shuffler counts on its own, so two caches rotate the answers to the
+// same question independently instead of stepping on one another.
+func TestRoundRobinShuffleIndependent(t *testing.T) {
+	answer := func() *dns.Msg {
+		m := new(dns.Msg)
+		m.SetQuestion("example.com.", dns.TypeA)
+		for i := range 3 {
+			m.Answer = append(m.Answer, &dns.A{
+				Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IP{0, 0, 0, byte(i + 1)},
+			})
+		}
+		return m
+	}
+	first := func(shuffle AnswerShuffleFunc) byte {
+		m := answer()
+		shuffle(m)
+		return m.Answer[0].(*dns.A).A[3]
+	}
+
+	// Three addresses come back in turn, the whole rotation before repeating.
+	a := NewAnswerShuffleRoundRobin()
+	require.Equal(t, []byte{3, 2, 1, 3}, []byte{first(a), first(a), first(a), first(a)})
+
+	// A second shuffler has counted nothing and starts the rotation over.
+	b := NewAnswerShuffleRoundRobin()
+	require.Equal(t, []byte{3, 2}, []byte{first(b), first(b)}, "the second shuffler counts on its own")
+}
+
+// The count is kept for a bounded number of questions, so a resolver seeing
+// endless distinct names does not grow a map without end.
+func TestRoundRobinShuffleBounded(t *testing.T) {
+	s := &roundRobinShuffler{reads: make(map[lruKey]*uint64)}
+	for i := range maxShuffleKeys + 5000 {
+		m := new(dns.Msg)
+		m.SetQuestion(fmt.Sprintf("host-%d.example.com.", i), dns.TypeA)
+		m.Answer = []dns.RR{
+			&dns.A{Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IP{0, 0, 0, 1}},
+			&dns.A{Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IP{0, 0, 0, 2}},
+		}
+		s.shuffle(m)
+	}
+	require.Equal(t, maxShuffleKeys, len(s.reads))
+
+	// A question already counted keeps counting rather than displacing another.
+	before := len(s.reads)
+	m := new(dns.Msg)
+	m.SetQuestion("host-0.example.com.", dns.TypeA)
+	m.Answer = []dns.RR{
+		&dns.A{Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IP{0, 0, 0, 1}},
+		&dns.A{Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IP{0, 0, 0, 2}},
+	}
+	s.shuffle(m)
+	require.LessOrEqual(t, len(s.reads), before+1)
 }
