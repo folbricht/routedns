@@ -2,7 +2,6 @@ package rdns
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -133,7 +132,7 @@ func (r *Prefetch) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	// Generate a key for both caches
-	key := fmt.Sprintf("%+v", lruKeyFromQuery(q))
+	key := lruKeyFromQuery(q).string()
 
 	// Update the hit-counter for this query
 	var v *atomic.Uint64

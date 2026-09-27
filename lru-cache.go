@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"hash/maphash"
 	"io"
@@ -282,6 +283,31 @@ func (c *lruCache) deserialize(r io.Reader) error {
 		c.addKey(record.Key, blob)
 	}
 	return nil
+}
+
+// string renders the key as the caches that take a string key need it. The
+// fixed width parts go first and the two that vary in length last, the
+// variable one of them length prefixed, so that no two keys that differ can
+// write the same bytes.
+func (k lruKey) string() string {
+	var fixed [8]byte
+	binary.BigEndian.PutUint16(fixed[0:2], k.Question.Qtype)
+	binary.BigEndian.PutUint16(fixed[2:4], k.Question.Qclass)
+	fixed[4] = k.ECSMask
+	if k.Do {
+		fixed[5] |= 1
+	}
+	if k.CD {
+		fixed[5] |= 2
+	}
+	binary.BigEndian.PutUint16(fixed[6:8], uint16(len(k.Net)))
+
+	var b strings.Builder
+	b.Grow(len(fixed) + len(k.Net) + len(k.Question.Name))
+	b.Write(fixed[:])
+	b.WriteString(k.Net)
+	b.WriteString(k.Question.Name)
+	return b.String()
 }
 
 func lruKeyFromQuery(q *dns.Msg) lruKey {
