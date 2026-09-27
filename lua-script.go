@@ -3,9 +3,11 @@
 package rdns
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
@@ -17,6 +19,9 @@ type ByteCode struct {
 
 type LuaScript struct {
 	L *lua.LState
+
+	// How long the state may run before it is cut off. See LuaOptions.
+	timeout time.Duration
 }
 
 // LuaCompile compiles lua script into bytecode. The returned bytecode can be used
@@ -35,7 +40,9 @@ func LuaCompile(reader io.Reader, name string) (ByteCode, error) {
 
 // NewScriptFromByteCode creates a new lua script from bytecode. When sandbox
 // is true, only safe libraries are loaded (no io, os, debug, package, channel).
-func NewScriptFromByteCode(b ByteCode, sandbox bool) (*LuaScript, error) {
+// The timeout bounds the top level of the script as well as every later call,
+// so a script that never returns fails to load rather than hanging startup.
+func NewScriptFromByteCode(b ByteCode, sandbox bool, timeout time.Duration) (*LuaScript, error) {
 	var L *lua.LState
 	if sandbox {
 		L = lua.NewState(lua.Options{SkipOpenLibs: true})
@@ -43,9 +50,29 @@ func NewScriptFromByteCode(b ByteCode, sandbox bool) (*LuaScript, error) {
 	} else {
 		L = lua.NewState()
 	}
+	s := &LuaScript{L: L, timeout: timeout}
 	lfunc := L.NewFunctionFromProto(b.FunctionProto)
 	L.Push(lfunc)
-	return &LuaScript{L: L}, L.PCall(0, lua.MultRet, nil)
+	return s, s.bounded(func() error { return L.PCall(0, lua.MultRet, nil) })
+}
+
+// bounded runs fn with the state limited to the script's timeout. The
+// interpreter checks for cancellation between instructions, so a loop with no
+// exit is cut off rather than holding its instance for the life of the process.
+// Time spent inside a Go call, an upstream resolver above all, is not
+// interrupted but does count towards the limit.
+//
+// The state is usable again afterwards, which is what lets the instance go back
+// into the pool rather than being thrown away.
+func (s *LuaScript) bounded(fn func() error) error {
+	if s.timeout <= 0 {
+		return fn()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+	s.L.SetContext(ctx)
+	defer s.L.RemoveContext()
+	return fn()
 }
 
 // openSandboxedLibs opens only safe Lua libraries and removes dangerous base functions.
@@ -83,11 +110,13 @@ func (s *LuaScript) Call(fnName string, nret int, params ...any) ([]any, error) 
 	}
 
 	// Call the resolve() function in the lua script
-	if err := s.L.CallByParam(lua.P{
-		Fn:      s.L.GetGlobal(fnName),
-		NRet:    nret,
-		Protect: true,
-	}, args...); err != nil {
+	if err := s.bounded(func() error {
+		return s.L.CallByParam(lua.P{
+			Fn:      s.L.GetGlobal(fnName),
+			NRet:    nret,
+			Protect: true,
+		}, args...)
+	}); err != nil {
 		return nil, fmt.Errorf("failed to call lua: %w", err)
 	}
 

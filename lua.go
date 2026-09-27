@@ -25,6 +25,9 @@ func NewLua(id string, opt LuaOptions, resolvers ...Resolver) (*Lua, error) {
 	if opt.Concurrency == 0 {
 		opt.Concurrency = 4
 	}
+	if opt.Timeout == 0 {
+		opt.Timeout = defaultLuaTimeout
+	}
 
 	// Compile the script
 	bytecode, err := LuaCompile(strings.NewReader(opt.Script), id)
@@ -99,7 +102,7 @@ func (r *Lua) Close() {
 }
 
 func (r *Lua) newScript() (*LuaScript, error) {
-	s, err := NewScriptFromByteCode(r.bytecode, !r.opt.NoSandbox)
+	s, err := NewScriptFromByteCode(r.bytecode, !r.opt.NoSandbox, r.opt.Timeout)
 	if err != nil {
 		return nil, err
 	}
