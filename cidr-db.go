@@ -53,6 +53,8 @@ func NewCidrDB(name string, loader BlocklistLoader) (*CidrDB, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.ip4.compact()
+	db.ip6.compact()
 	return db, nil
 }
 
