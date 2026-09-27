@@ -78,6 +78,29 @@ Building the configuration is what validates it, so `--check` does the same work
 
 It does not bind any listener address and does not write the cache file, so it is safe to run against the configuration of an instance that is currently serving.
 
+## Memory
+
+Two things account for almost everything RouteDNS holds: the blocklists and the cache. Both are bounded by configuration rather than by the machine, so on a router or an appliance they are worth setting deliberately.
+
+A cached answer costs about 214 bytes for a single A record, more for a larger one, so a cache left to grow reaches tens of megabytes on a busy resolver. The memory backend has no limit unless one is given:
+
+```toml
+[groups.cached]
+type = "cache"
+resolvers = ["upstream"]
+backend = {type = "memory", size = 20000}
+```
+
+Blocklist rules cost what the format they are in costs. The domain formats hold a rule in 31.8 bytes and their compact counterparts in 8.8, so a 200,000 rule list is 6.4 MB as `domain` and 1.8 MB as `domain-compact`. Lists written in hosts format cost the same as `domain` for the names they block. See [Compact domain formats](blocklists.md#compact-domain-formats) for what the compact ones trade for it.
+
+Beyond what is held, the collector lets the heap grow to about twice the live data before it runs, so the process usually occupies around twice what it needs. `GOMEMLIMIT` tells the runtime to collect more often as it approaches a figure, which trades CPU for resident size:
+
+```text
+GOMEMLIMIT=96MiB routedns config.toml
+```
+
+It is a soft limit. The runtime will not fail an allocation to stay under it, so a figure below what the lists and the cache actually hold makes it collect continuously and achieves nothing but the CPU cost. Set it above the resident data, with room for the queries in flight, and use the cache `size` and the blocklist format to control the resident data itself.
+
 ## Writable Paths
 
 Three options write to disk: the cache `filename`, the blocklist `cache-dir`, and the query log `output-file`.
