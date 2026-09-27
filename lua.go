@@ -105,13 +105,6 @@ func (r *Lua) String() string {
 	return r.id
 }
 
-func (r *Lua) Close() {
-	close(r.scripts)
-	for s := range r.scripts {
-		s.L.Close()
-	}
-}
-
 func (r *Lua) newScript() (*LuaScript, error) {
 	s, err := NewScriptFromByteCode(r.bytecode, !r.opt.NoSandbox, r.opt.Timeout)
 	if err != nil {
@@ -122,7 +115,9 @@ func (r *Lua) newScript() (*LuaScript, error) {
 	s.RegisterConstants()
 	s.RegisterMessageType()
 	s.RegisterQuestionType()
-	s.RegisterRRTypes()
+	if err := s.RegisterRRTypes(); err != nil {
+		return nil, err
+	}
 	s.RegisterOPTType()
 	s.RegisterEDNS0Types()
 	s.RegisterErrorType()
