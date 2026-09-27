@@ -7,6 +7,14 @@ import (
 )
 
 // Resolver is an interface to resolve DNS queries.
+//
+// The query belongs to the caller. A resolver may read it but must not modify
+// it, nor hold on to it after Resolve returns, since the caller goes on using
+// it: a listener reads the query it passed in to decide UDP truncation and DoT
+// padding once the answer comes back, and elements along the way key their own
+// state on it. One that needs to change a query, or to keep one past the call,
+// works on a copy. Note that packing a message is a modification, as it writes
+// the extended rcode into an OPT record.
 type Resolver interface {
 	Resolve(*dns.Msg, ClientInfo) (*dns.Msg, error)
 	fmt.Stringer

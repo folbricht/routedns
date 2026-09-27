@@ -88,7 +88,7 @@ func (d *DNSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		slog.String("upstream-protocol", d.net),
 	)
 
-	q = setUDPSize(q, d.opt.UDPSize)
+	setUDPSize(q, d.opt.UDPSize)
 
 	// Remove padding before sending over the wire in plain
 	stripPadding(q)

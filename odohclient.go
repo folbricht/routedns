@@ -66,6 +66,9 @@ func NewODoHClient(id, proxy, target, targetConfig string, opt DoHClientOptions)
 
 // Resolve a DNS query.
 func (d *ODoHClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+	// Packing a message is not always a read-only operation, make a copy
+	q = q.Copy()
+
 	// Build the encrypted query. The target key is retrieved on-demand
 	msg, queryContext, err := d.buildTargetQuery(q)
 	if err != nil {

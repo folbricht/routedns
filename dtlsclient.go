@@ -123,7 +123,7 @@ func (d *DTLSClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 		"upstream-protocol", "dtls",
 	)
 
-	q = setUDPSize(q, d.opt.UDPSize)
+	setUDPSize(q, d.opt.UDPSize)
 
 	// Add padding to the query before sending over TLS
 	padQuery(q)

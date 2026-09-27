@@ -59,14 +59,14 @@ func TestPipelineInFlightCleanup(t *testing.T) {
 	}
 	p := NewPipeline("test", "localhost:53", testDialer(df), 50*time.Millisecond, 0)
 
-	q := new(dns.Msg)
-	q.SetQuestion("example.com.", dns.TypeA)
-
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// A query per caller, as every client makes one to pack into.
+			q := new(dns.Msg)
+			q.SetQuestion("example.com.", dns.TypeA)
 			_, err := p.Resolve(q)
 			require.Error(t, err)
 		}()
@@ -202,4 +202,74 @@ func TestPipelineIdleTimeoutDefault(t *testing.T) {
 	}), 0, 0)
 	require.Equal(t, defaultIdleTimeout, p.idle)
 	require.Equal(t, defaultQueryTimeout, p.timeout)
+}
+
+// The queue sends a query out under an ID of its own choosing, since the IDs
+// clients pick collide on a shared connection, and the answer has to come back
+// under the one the client asked with. Two queries carrying the same ID are
+// told apart and each gets its own answer.
+func TestPipelineRestoresQueryID(t *testing.T) {
+	server, client := net.Pipe()
+	upstreamIDs := make(chan uint16, 2)
+	go func() { // upstream answering each query with the name it asked for
+		conn := &dns.Conn{Conn: server}
+		for {
+			query, err := conn.ReadMsg()
+			if err != nil {
+				return
+			}
+			upstreamIDs <- query.Id
+			resp := new(dns.Msg)
+			resp.SetReply(query)
+			resp.Answer = []dns.RR{&dns.TXT{
+				Hdr: dns.RR_Header{Name: query.Question[0].Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60},
+				Txt: []string{query.Question[0].Name},
+			}}
+			_ = conn.WriteMsg(resp)
+		}
+	}()
+	t.Cleanup(func() { server.Close() })
+
+	df := func(address string) (*dns.Conn, error) {
+		return &dns.Conn{Conn: client}, nil
+	}
+	p := NewPipeline("test", "localhost:53", testDialer(df), time.Second, 0)
+
+	// Both queries carry the same ID, which is what a listener serving two
+	// clients at once hands over.
+	const sharedID = 0x1234
+	type result struct {
+		a   *dns.Msg
+		err error
+	}
+	results := make(chan result, 2)
+	for _, name := range []string{"one.example.com.", "two.example.com."} {
+		go func() {
+			q := new(dns.Msg)
+			q.SetQuestion(name, dns.TypeTXT)
+			q.Id = sharedID
+			a, err := p.Resolve(q)
+			results <- result{a, err}
+		}()
+	}
+
+	for range 2 {
+		got := <-results
+		require.NoError(t, got.err)
+		require.Equal(t, uint16(sharedID), got.a.Id, "the answer must carry the ID the client asked with")
+		require.Len(t, got.a.Answer, 1)
+		// The answer has to be the one for the question that was asked, not
+		// the other query's, which is what the queue's own IDs are for.
+		require.Equal(t, got.a.Question[0].Name, got.a.Answer[0].Header().Name)
+	}
+
+	// The IDs on the wire are the queue's, not the one both clients used.
+	close(upstreamIDs)
+	var sawShared int
+	for id := range upstreamIDs {
+		if id == sharedID {
+			sawShared++
+		}
+	}
+	require.LessOrEqual(t, sawShared, 1, "both queries went out under the client's colliding ID")
 }
