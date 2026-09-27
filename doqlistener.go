@@ -278,21 +278,26 @@ func (s *DoQListener) handleStream(stream *quic.Stream, connection *quic.Conn, c
 		return
 	}
 
-	p, err := a.Pack()
+	p, bufPtr, err := packToPool(a)
 	if err != nil {
 		log.Warn("failed to encode response", "error", err)
 		s.metrics.err.Add("encode", 1)
 		return
 	}
+	defer putPackBuf(bufPtr)
 
-	// Add a length prefix
-	out := make([]byte, 2+len(p))
-	binary.BigEndian.PutUint16(out, uint16(len(p)))
-	copy(out[2:], p)
+	// Add a length prefix. That goes in front of what was just packed, so it
+	// needs a buffer of its own rather than room in the one holding the message.
+	outPtr := packBufPool.Get().(*[]byte)
+	out := binary.BigEndian.AppendUint16((*outPtr)[:0], uint16(len(p)))
+	out = append(out, p...)
+	adoptPackBuf(outPtr, out)
 
 	// Send the response
 	_ = stream.SetWriteDeadline(time.Now().Add(time.Second)) // TODO: configurable timeout
-	if _, err = stream.Write(out); err != nil {
+	_, err = stream.Write(out)
+	putPackBufAfterWrite(outPtr, err)
+	if err != nil {
 		s.metrics.err.Add("send", 1)
 		log.Warn("failed to send response", "error", err)
 	}

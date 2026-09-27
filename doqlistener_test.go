@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -212,11 +213,12 @@ func resumableTestTLSConfig(t *testing.T) *tls.Config {
 	return c
 }
 
-// writeDoQQuery opens a stream and writes a length-prefixed DNS message. It
-// does not wait for the response; these tests observe the upstream resolver
+// writeDoQQuery opens a stream and writes a length-prefixed DNS message. The
+// stream is returned for a caller that wants to read the answer back; tests
+// that only need to know the query arrived observe the upstream resolver
 // instead, since a connection whose handshake never completes cannot be read
 // from reliably.
-func writeDoQQuery(t *testing.T, connection *quic.Conn, m *dns.Msg) {
+func writeDoQQuery(t *testing.T, connection *quic.Conn, m *dns.Msg) *quic.Stream {
 	t.Helper()
 	stream, err := connection.OpenStreamSync(context.Background())
 	require.NoError(t, err)
@@ -228,6 +230,50 @@ func writeDoQQuery(t *testing.T, connection *quic.Conn, m *dns.Msg) {
 	_, err = stream.Write(out)
 	require.NoError(t, err)
 	require.NoError(t, stream.Close())
+	return stream
+}
+
+// An answer too large for the buffer the listener packs into comes back whole.
+// The length prefix is built beside the packed message rather than around it,
+// so a message that outgrows that buffer has to arrive with its prefix and its
+// bytes still agreeing.
+func TestDoQListenerLargeAnswer(t *testing.T) {
+	const records = 20
+	upstream := &TestResolver{ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		for i := range records {
+			a.Answer = append(a.Answer, &dns.TXT{
+				Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60},
+				Txt: []string{strings.Repeat(string(rune('a'+i)), 255)},
+			})
+		}
+		return a, nil
+	}}
+
+	addr := startTestDoQListener(t, upstream)
+	connection, err := quic.DialAddr(context.Background(), addr, doqTestClientConfig(t), nil)
+	require.NoError(t, err)
+	defer connection.CloseWithError(0, "")
+
+	q := new(dns.Msg)
+	q.SetQuestion("large.example.com.", dns.TypeTXT)
+	stream := writeDoQQuery(t, connection, q)
+
+	require.NoError(t, stream.SetReadDeadline(time.Now().Add(5*time.Second)))
+	var length [2]byte
+	_, err = io.ReadFull(stream, length[:])
+	require.NoError(t, err)
+	n := binary.BigEndian.Uint16(length[:])
+	require.Greater(t, int(n), 2048, "the answer has to outgrow the pooled buffer to test anything")
+
+	body := make([]byte, n)
+	_, err = io.ReadFull(stream, body)
+	require.NoError(t, err)
+
+	a := new(dns.Msg)
+	require.NoError(t, a.Unpack(body))
+	require.Len(t, a.Answer, records)
 }
 
 // earlyDataRelay is a UDP proxy that can silence the server. Everything the
