@@ -62,9 +62,13 @@ func NewPipeline(id string, addr string, client DNSDialer, timeout, idle time.Du
 //
 // The query is handed over rather than borrowed: it is written to the
 // connection as it stands, under an ID of the connection's choosing, so the
-// caller must own it and must not read it until Resolve returns. Every caller
-// in the tree passes a copy it made for the purpose.
+// caller must own it and must not touch it again. That holds once Resolve has
+// returned as well, since a query reported as timed out may still be on its way
+// to the connection. Every caller in the tree passes a copy it made to pack and
+// lets go of it here.
 func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
+	// Read while the query is still ours, for the same reason.
+	name := qName(q)
 	r := newRequest(q)
 
 	timeout := time.NewTimer(c.timeout)
@@ -75,7 +79,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	case c.requests <- r:
 	case <-timeout.C:
 		c.metrics.err.Add("querytimeout", 1)
-		return nil, QueryTimeoutError{q}
+		return nil, QueryTimeoutError{name}
 	}
 
 	// Wait for the request to complete or time out
@@ -84,7 +88,7 @@ func (c *Pipeline) Resolve(q *dns.Msg) (*dns.Msg, error) {
 	case <-timeout.C:
 		c.inFlight.delete(r)
 		c.metrics.err.Add("querytimeout", 1)
-		return nil, QueryTimeoutError{q}
+		return nil, QueryTimeoutError{name}
 	}
 
 	return r.waitFor()

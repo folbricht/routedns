@@ -210,7 +210,11 @@ func TestPipelineIdleTimeoutDefault(t *testing.T) {
 // told apart and each gets its own answer.
 func TestPipelineRestoresQueryID(t *testing.T) {
 	server, client := net.Pipe()
-	upstreamIDs := make(chan uint16, 2)
+	// Collected rather than sent over a channel: the upstream goroutine outlives
+	// the assertions below, and a query arriving after them must not find a
+	// closed channel or a full one.
+	var mu sync.Mutex
+	var upstreamIDs []uint16
 	go func() { // upstream answering each query with the name it asked for
 		conn := &dns.Conn{Conn: server}
 		for {
@@ -218,7 +222,9 @@ func TestPipelineRestoresQueryID(t *testing.T) {
 			if err != nil {
 				return
 			}
-			upstreamIDs <- query.Id
+			mu.Lock()
+			upstreamIDs = append(upstreamIDs, query.Id)
+			mu.Unlock()
 			resp := new(dns.Msg)
 			resp.SetReply(query)
 			resp.Answer = []dns.RR{&dns.TXT{
@@ -264,9 +270,10 @@ func TestPipelineRestoresQueryID(t *testing.T) {
 	}
 
 	// The IDs on the wire are the queue's, not the one both clients used.
-	close(upstreamIDs)
+	mu.Lock()
+	defer mu.Unlock()
 	var sawShared int
-	for id := range upstreamIDs {
+	for _, id := range upstreamIDs {
 		if id == sharedID {
 			sawShared++
 		}
