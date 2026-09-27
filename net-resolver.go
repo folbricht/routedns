@@ -50,10 +50,11 @@ func newConn(r Resolver, network, address string) *packetConn {
 
 func (c *packetConn) Read(p []byte) (n int, err error) {
 	a := <-c.ch
-	b, err := a.Pack()
+	b, bufPtr, err := packToPool(a)
 	if err != nil {
 		return 0, err
 	}
+	defer putPackBuf(bufPtr)
 	if len(p) < len(b) {
 		return 0, errors.New("read buffer too small")
 	}

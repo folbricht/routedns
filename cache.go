@@ -77,28 +77,6 @@ type CacheOptions struct {
 	Backend CacheBackend
 }
 
-// Buffer pool for encoding cache records to minimize allocations. Shared by
-// the backends, which all encode a message into wire format to store it.
-var packBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 0, 2048)
-		return &b
-	},
-}
-
-func putPackBuf(bufPtr *[]byte) {
-	*bufPtr = (*bufPtr)[:0]
-	packBufPool.Put(bufPtr)
-}
-
-// adoptPackBuf keeps a buffer that outgrew the pooled one, so the pool adapts
-// to the workload rather than reallocating for every large answer.
-func adoptPackBuf(bufPtr *[]byte, encoded []byte) {
-	if cap(encoded) > cap(*bufPtr) {
-		*bufPtr = encoded
-	}
-}
-
 // cacheAge returns how long a record has been in the cache, in seconds, from
 // the time it was stored. Both arguments are unix nanoseconds.
 //

@@ -270,12 +270,15 @@ func (s *ODoHListener) ODoHqueryHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	metrics.response.Add(rCode(a), 1)
-	p, err := a.Pack()
+	// The buffer only has to last until the response is encrypted below, which
+	// copies what it is given.
+	p, bufPtr, err := packToPool(a)
 	if err != nil {
 		metrics.err.Add("pack", 1)
 		log.Error("failed to encode response", "error", err)
 		return
 	}
+	defer putPackBuf(bufPtr)
 
 	response := odoh.CreateObliviousDNSResponse(p, 0)
 	obliviousResponse, err := responseContext.EncryptResponse(response)

@@ -385,12 +385,13 @@ func (s *DoHListener) parseAndRespond(b []byte, w http.ResponseWriter, r *http.R
 	padAnswer(q, a)
 
 	s.metrics.response.Add(rCode(a), 1)
-	out, err := a.Pack()
+	out, bufPtr, err := packToPool(a)
 	if err != nil {
 		s.metrics.err.Add("pack", 1)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("content-type", "application/dns-message")
-	_, _ = w.Write(out)
+	_, err = w.Write(out)
+	putPackBufAfterWrite(bufPtr, err)
 }
