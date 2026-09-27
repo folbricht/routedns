@@ -57,6 +57,16 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # The cache file records what has been looked up, so keep it to the service.
 UMask=0077
 
+# On a machine where memory is tight, GOMEMLIMIT tells the Go runtime to
+# collect more often as it approaches a figure, which trades CPU for resident
+# size. It is a soft limit: set it above what the blocklists and the cache
+# actually hold, or the runtime collects continuously for nothing. Cap those
+# with the cache "size" option and the compact blocklist formats. MemoryMax is
+# the hard limit and stops the service rather than slowing it, so leave room
+# between the two.
+#Environment=GOMEMLIMIT=96MiB
+#MemoryMax=128M
+
 ExecStart=/usr/bin/routedns /etc/routedns/config.toml
 Restart=on-failure
 
