@@ -27,6 +27,14 @@ By default, scripts run in a sandbox that provides access to safe libraries: `ba
 
 Set `lua-no-sandbox = true` to disable the sandbox and allow full access to all Lua libraries. Only use this for trusted scripts.
 
+### State between queries
+
+Each of the `lua-concurrency` instances is a separate interpreter with its own set of globals, and each one lasts as long as the process. A global therefore keeps its value from one query to the next, but only on the instance that set it: with the default of four, a script counting queries in a global counts roughly a quarter of them on each instance, and which one a query lands on is whichever is free. State that has to be exact, or shared between queries, belongs somewhere other than a global.
+
+Nothing is shared between instances, so there is no need to guard a global against other queries running at the same time.
+
+The query a script receives and the answer it returns are copies. A script can hold on to either, in a global or anywhere else, without affecting the components the query came through or the client waiting for the answer, and what it holds cannot be changed by them either.
+
 ### Run time
 
 A script is cut off after `lua-timeout` seconds and the query fails with an error. The pool holds `lua-concurrency` instances, and without a limit a script that never returns, an accidental loop with no exit for instance, holds the instance it runs on for the life of the process; once that has happened to every instance the group answers nothing further and each query that arrives waits for ever. The same limit applies to the top level of the script when it is loaded, so a script that does not return there fails to start rather than hanging startup.
