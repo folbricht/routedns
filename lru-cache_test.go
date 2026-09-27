@@ -3,6 +3,7 @@ package rdns
 import (
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -161,4 +162,59 @@ func TestLRUKeyECSMask(t *testing.T) {
 	require.Nil(t, c.get(queryECS(16)),
 		"ECS query with a different source-prefix length must not collide")
 	require.NotNil(t, c.get(queryECS(24)))
+}
+
+// Two queries that the cache treats as different must not render the same key
+// string, and two it treats as the same must render the same one.
+func TestLRUKeyString(t *testing.T) {
+	query := func(name string, qtype, qclass uint16, do, cd bool, subnet string, mask uint8) *dns.Msg {
+		q := new(dns.Msg)
+		q.SetQuestion(name, qtype)
+		q.Question[0].Qclass = qclass
+		q.CheckingDisabled = cd
+		if do || subnet != "" {
+			q.SetEdns0(4096, do)
+			if subnet != "" {
+				e := q.IsEdns0()
+				s := &dns.EDNS0_SUBNET{Code: dns.EDNS0SUBNET, Address: net.ParseIP(subnet), SourceNetmask: mask}
+				if s.Address.To4() != nil {
+					s.Family = 1
+				} else {
+					s.Family = 2
+				}
+				e.Option = append(e.Option, s)
+			}
+		}
+		return q
+	}
+
+	cases := map[string]*dns.Msg{
+		"base":        query("example.com.", dns.TypeA, dns.ClassINET, false, false, "", 0),
+		"other name":  query("example.org.", dns.TypeA, dns.ClassINET, false, false, "", 0),
+		"other type":  query("example.com.", dns.TypeAAAA, dns.ClassINET, false, false, "", 0),
+		"other class": query("example.com.", dns.TypeA, dns.ClassCHAOS, false, false, "", 0),
+		"do":          query("example.com.", dns.TypeA, dns.ClassINET, true, false, "", 0),
+		"cd":          query("example.com.", dns.TypeA, dns.ClassINET, false, true, "", 0),
+		"subnet":      query("example.com.", dns.TypeA, dns.ClassINET, false, false, "192.0.2.0", 24),
+		"subnet2":     query("example.com.", dns.TypeA, dns.ClassINET, false, false, "198.51.100.0", 24),
+		"mask":        query("example.com.", dns.TypeA, dns.ClassINET, false, false, "192.0.2.0", 16),
+		// A subnet and a name that could run into each other if the two were
+		// simply concatenated.
+		"run-on a":  query("com.", dns.TypeA, dns.ClassINET, false, false, "192.0.2.0", 24),
+		"run-on b":  query("0.com.", dns.TypeA, dns.ClassINET, false, false, "192.0.2.", 24),
+		"long name": query(strings.Repeat("a.", 100)+"com.", dns.TypeA, dns.ClassINET, false, false, "", 0),
+	}
+
+	seen := make(map[string]string, len(cases))
+	for name, q := range cases {
+		key := lruKeyFromQuery(q).string()
+		if other, ok := seen[key]; ok {
+			t.Errorf("%q and %q render the same key", name, other)
+		}
+		seen[key] = name
+	}
+
+	// The name is matched without regard to case, so the key must be too.
+	upper := query("ExAmPlE.CoM.", dns.TypeA, dns.ClassINET, false, false, "", 0)
+	require.Equal(t, lruKeyFromQuery(cases["base"]).string(), lruKeyFromQuery(upper).string())
 }
