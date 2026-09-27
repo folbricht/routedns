@@ -403,72 +403,33 @@ func AnswerShuffleRandom(msg *dns.Msg) {
 	})
 }
 
-// Round Robin shuffling requires keeping state as it's operating on copies
-// of DNS messages so the number of shift operations needs to be remembered.
-type rrShuffleRecord struct {
-	reads  uint64
-	expiry time.Time
+// Round-robin shuffling has to remember how far the answer to each question
+// has been rotated: the cache hands out a copy of what it stored on every hit
+// and never reorders the stored one, so the count cannot live in the answer.
+//
+// A shuffler belongs to the cache it was made for rather than to the process,
+// so two caches rotate their answers independently, and it counts for at most
+// maxShuffleKeys questions. Losing a count only restarts that question's
+// rotation, which costs one client one repeated ordering, so there is nothing
+// to be gained by choosing which one goes.
+const maxShuffleKeys = 10000
+
+type roundRobinShuffler struct {
+	mu    sync.RWMutex
+	reads map[lruKey]*uint64
 }
 
-var (
-	rrShuffleState map[lruKey]*rrShuffleRecord
-	rrShuffleOnce  sync.Once
-	rrShuffleMu    sync.RWMutex
-)
+// NewAnswerShuffleRoundRobin returns a shuffle function that moves the A and
+// AAAA records of an answer one place further along each time it is called for
+// the same question.
+func NewAnswerShuffleRoundRobin() AnswerShuffleFunc {
+	s := &roundRobinShuffler{reads: make(map[lruKey]*uint64)}
+	return s.shuffle
+}
 
-// Shift the answer A/AAAA record order in an answer by one.
-func AnswerShuffleRoundRobin(msg *dns.Msg) {
+func (s *roundRobinShuffler) shuffle(msg *dns.Msg) {
 	if len(msg.Answer) < 2 {
 		return
-	}
-	rrShuffleOnce.Do(func() {
-		rrShuffleState = make(map[lruKey]*rrShuffleRecord)
-
-		// Start a cleanup job
-		go func() {
-			for {
-				time.Sleep(30 * time.Second)
-				rrShuffleMu.RLock()
-
-				// Build a list of expired items
-				var toRemove []lruKey
-				for k, v := range rrShuffleState {
-					now := time.Now()
-					if now.After(v.expiry) {
-						toRemove = append(toRemove, k)
-					}
-				}
-				rrShuffleMu.RUnlock()
-
-				// Remove the expired items
-				rrShuffleMu.Lock()
-				for _, k := range toRemove {
-					delete(rrShuffleState, k)
-				}
-				rrShuffleMu.Unlock()
-			}
-		}()
-	})
-
-	// Lookup how often the results were shifted previously
-	key := lruKeyFromQuery(msg)
-	rrShuffleMu.RLock()
-	rec, ok := rrShuffleState[key]
-	rrShuffleMu.RUnlock()
-	var shiftBy uint64
-	if ok {
-		shiftBy = atomic.AddUint64(&rec.reads, 1)
-	} else {
-		ttl, ok := minTTL(msg)
-		if !ok {
-			return
-		}
-		rec = &rrShuffleRecord{
-			expiry: time.Now().Add(time.Duration(ttl) * time.Second),
-		}
-		rrShuffleMu.Lock()
-		rrShuffleState[key] = rec
-		rrShuffleMu.Unlock()
 	}
 
 	// Build a list of pointers to A/AAAA records in the message
@@ -483,9 +444,8 @@ func AnswerShuffleRoundRobin(msg *dns.Msg) {
 	}
 
 	// Rotate the A/AAAA record pointers
-	shiftBy %= uint64(len(aRecords))
+	shiftBy := s.next(lruKeyFromQuery(msg)) % uint64(len(aRecords))
 	shiftBy++
-
 	for i := uint64(0); i < shiftBy; i++ {
 		last := *aRecords[len(aRecords)-1]
 		for j := len(aRecords) - 1; j > 0; j-- {
@@ -493,4 +453,33 @@ func AnswerShuffleRoundRobin(msg *dns.Msg) {
 		}
 		*aRecords[0] = last
 	}
+}
+
+// next returns how many times the answer to this question has been handed out
+// before, counting this one. A question already being counted is the common
+// case by far and only reads the map, so answers to different questions are
+// shuffled at the same time rather than in turn.
+func (s *roundRobinShuffler) next(key lruKey) uint64 {
+	s.mu.RLock()
+	count, ok := s.reads[key]
+	s.mu.RUnlock()
+	if ok {
+		return atomic.AddUint64(count, 1)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if count, ok := s.reads[key]; ok { // another query got there first
+		return atomic.AddUint64(count, 1)
+	}
+	if len(s.reads) >= maxShuffleKeys {
+		// Make room for it. Every count is worth the same, so the one that goes
+		// is whichever the map hands over first.
+		for k := range s.reads {
+			delete(s.reads, k)
+			break
+		}
+	}
+	s.reads[key] = new(uint64)
+	return 0
 }
