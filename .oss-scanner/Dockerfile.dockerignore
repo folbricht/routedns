@@ -1,0 +1,4 @@
+# Replaces the root .dockerignore for the scanner image, which needs the
+# tests, test data and documentation the release image leaves out.
+dist
+cmd/routedns/routedns
