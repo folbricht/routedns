@@ -44,8 +44,13 @@ linters:
       # options-based one. Migrating is a real change with behaviour risk, so
       # it is tracked separately rather than blocking the linter landing.
       - linters: [staticcheck]
-        text: "SA1019: dtls\\."
+        text: "SA1019: github\\.com/pion/dtls/v3\\."
         path: (dtls|dtlsclient|dtlslistener)\.go
+      # The config keeps the cache-size and gc-period options working by
+      # passing them on in the deprecated CacheOptions fields.
+      - linters: [staticcheck]
+        text: "SA1019: \\(github\\.com/folbricht/routedns\\.CacheOptions\\)\\.(GCPeriod|Capacity)"
+        path: cmd/routedns/main\.go
       # Tests take shortcuts with Start/Stop and Read return values that would
       # only add noise if checked.
       - linters: [errcheck]
