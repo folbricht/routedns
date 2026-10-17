@@ -14,6 +14,10 @@ import (
 // only safe libraries are loaded, with no access to files, the operating
 // system or loading code at run time.
 func newLuaRuntime(sandbox bool, resolvers []Resolver) (*lua.Runtime, error) {
+	db, err := loadRRDB()
+	if err != nil {
+		return nil, err
+	}
 	libs := lua.LibSafe | lua.LibCoroutine
 	if !sandbox {
 		libs |= lua.LibOS | lua.LibIO | lua.LibLoad
@@ -28,7 +32,7 @@ func newLuaRuntime(sandbox bool, resolvers []Resolver) (*lua.Runtime, error) {
 		luaConstants(),
 		luaMessageType(),
 		luaQuestionType(),
-		luaRRType(),
+		luaRRType(db),
 		luaOPTType(),
 		luaEDNS0Types(),
 		luaErrorType(),

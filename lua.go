@@ -85,5 +85,3 @@ func (r *Lua) context() (context.Context, context.CancelFunc) {
 func (r *Lua) String() string {
 	return r.id
 }
-
-func (r *Lua) Close() {}

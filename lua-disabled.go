@@ -29,5 +29,3 @@ func (r *Lua) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 func (r *Lua) String() string {
 	return "lua"
 }
-
-func (r *Lua) Close() {}
