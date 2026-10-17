@@ -30,8 +30,16 @@ func resolverResolve(c *lua.Call) error {
 	msg := c.Arg[*dns.Msg](1)
 	ci := c.Arg[ClientInfo](2)
 
-	// Return the answer and the error
 	resp, err := r.r.Resolve(msg, ci)
+
+	// The upstream query isn't interrupted at the deadline, so end the
+	// script once it returns past it, rather than at the interpreter's next
+	// check, which can be a thousand more queries away.
+	if err := c.Context().Err(); err != nil {
+		return lua.Terminate(err)
+	}
+
+	// Return the answer and the error
 	if err != nil {
 		return c.Return2(resp, &luaError{err})
 	}

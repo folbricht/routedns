@@ -47,7 +47,7 @@ The query a script receives is a copy, so what the script does to it is not seen
 
 A query fails with an error if its script runs longer than `lua-timeout` seconds, or does more work than the interpreter allows for one call (10 million steps, roughly loop iterations and function calls, and 64 MiB allocated). The same limits apply to the top level of the script when it is loaded, so a script that does not return there fails to start rather than hanging startup. A loop with no exit is cut off by the step limit within a fraction of a second.
 
-Time spent waiting on an upstream resolver counts towards the timeout but is not interrupted, so the limit is reached on the next thing the script does rather than in the middle of a query the script sent. A negative `lua-timeout` removes the time limit; the step and allocation limits stay.
+Time spent waiting on an upstream resolver counts towards the timeout. A query the script sent is not interrupted, but the script is cut off as soon as it returns past the limit. Otherwise the limit is checked as the script runs, every thousand steps or so, so a single read that blocks, from a file opened with `lua-no-sandbox` for instance, is not interrupted either. A negative `lua-timeout` removes the time limit; the step and allocation limits stay.
 
 ### Lua version
 

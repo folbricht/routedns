@@ -1114,11 +1114,11 @@ end`,
 	require.True(t, answer.Authoritative)
 }
 
-// A script that runs past the timeout is cut off, and the group goes on
-// answering.
+// A script that runs past the timeout is cut off as the upstream query it is
+// waiting on returns, and the group goes on answering.
 func TestLuaTimeout(t *testing.T) {
 	upstream := &TestResolver{ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
-		time.Sleep(time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		return q, nil
 	}}
 	r, err := NewLua("test-lua", LuaOptions{
@@ -1137,9 +1137,11 @@ end`,
 
 	loop := new(dns.Msg)
 	loop.SetQuestion("loop.example.com.", dns.TypeA)
+	start := time.Now()
 	_, err = r.Resolve(loop, ClientInfo{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
+	require.Less(t, time.Since(start), 2*time.Second, "cut off long after the timeout")
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
