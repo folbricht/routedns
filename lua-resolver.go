@@ -1,67 +1,47 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
+	lua "github.com/folbricht/glua"
 	"github.com/miekg/dns"
-	lua "github.com/yuin/gopher-lua"
 )
 
 // Resolver functions
 
-const luaResolverMetatableName = "Resolver"
+// luaResolver is an upstream resolver as scripts see it.
+type luaResolver struct{ r Resolver }
 
-func (s *LuaScript) InjectResolvers(resolvers []Resolver) {
-	L := s.L
-	mt := L.NewTypeMetatable(luaResolverMetatableName)
-	L.SetGlobal("Resolver", mt)
-
-	// Methods
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"resolve": resolverResolve,
-	}))
-
-	table := L.CreateTable(len(resolvers), 0)
+// luaResolverTypes makes the resolvers available to scripts as the Resolvers
+// array.
+func luaResolverTypes(resolvers []Resolver) []lua.Option {
+	values := make([]*luaResolver, 0, len(resolvers))
 	for _, r := range resolvers {
-		lv := userDataWithMetatable(L, luaResolverMetatableName, r)
-		table.Append(lv)
+		values = append(values, &luaResolver{r})
 	}
-	L.SetGlobal("Resolvers", table)
+	return []lua.Option{
+		lua.Type[luaResolver](lua.Method("resolve", resolverResolve)),
+		lua.Global("Resolvers", values),
+	}
 }
 
-func resolverResolve(L *lua.LState) int {
-	if L.GetTop() != 3 {
-		L.ArgError(1, "expected 2 arguments")
-		return 0
-	}
-	r, ok := getUserDataArg[Resolver](L, 1)
-	if !ok {
-		return 0
-	}
-	msg, ok := getUserDataArg[*dns.Msg](L, 2)
-	if !ok {
-		return 0
-	}
-	ci, ok := getUserDataArg[ClientInfo](L, 3)
-	if !ok {
-		return 0
+func resolverResolve(c *lua.Call) error {
+	r := c.Arg[*luaResolver](0)
+	msg := c.Arg[*dns.Msg](1)
+	ci := c.Arg[ClientInfo](2)
+
+	resp, err := r.r.Resolve(msg, ci)
+
+	// The upstream query isn't interrupted at the deadline, so end the
+	// script once it returns past it, rather than at the interpreter's next
+	// check, which can be a thousand more queries away.
+	if err := c.Context().Err(); err != nil {
+		return lua.Terminate(err)
 	}
 
-	resp, err := r.Resolve(msg, ci)
-
-	// Return the answer
-	if resp == nil {
-		L.Push(lua.LNil)
-	} else {
-		L.Push(userDataWithMetatable(L, luaMessageMetatableName, resp))
-	}
-
-	// Return the error
+	// Return the answer and the error
 	if err != nil {
-		L.Push(userDataWithMetatable(L, luaErrorMetatableName, err))
-	} else {
-		L.Push(lua.LNil)
+		return c.Return2(resp, &luaError{err})
 	}
-
-	return 2
+	return c.Return2(resp, (*luaError)(nil))
 }

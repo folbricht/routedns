@@ -1,123 +1,84 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
 
+	lua "github.com/folbricht/glua"
 	"github.com/miekg/dns"
-	lua "github.com/yuin/gopher-lua"
 )
 
 // OPT record functions
 
-const luaOPTMetatableName = "OPT"
-
-func (s *LuaScript) RegisterOPTType() {
-	L := s.L
-	mt := L.NewTypeMetatable(luaOPTMetatableName)
-	L.SetGlobal(luaOPTMetatableName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(func(L *lua.LState) int {
-		opt := new(dns.OPT)
-		opt.Hdr.Name = "."
-		opt.Hdr.Rrtype = dns.TypeOPT
-		nArgs := L.GetTop()
-		if nArgs >= 1 { // UDP size
-			opt.SetUDPSize(uint16(L.CheckNumber(1)))
-		}
-		if nArgs >= 2 { // DO bit
-			if L.CheckBool(2) {
-				opt.SetDo()
-			}
-		}
-		L.Push(userDataWithMetatable(L, luaOPTMetatableName, opt))
-		return 1
-	}))
-	// methods and fields
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			opt, ok := getUserDataArg[*dns.OPT](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "udp_size":
-				L.Push(lua.LNumber(opt.UDPSize()))
-			case "do_bit":
-				L.Push(lua.LBool(opt.Do()))
-			case "version":
-				L.Push(lua.LNumber(opt.Version()))
-			case "extended_rcode":
-				L.Push(lua.LNumber(uint8(opt.ExtendedRcode())))
-			case "option":
-				table := L.CreateTable(len(opt.Option), 0)
-				for _, v := range opt.Option {
-					mtName := reflect.TypeOf(v).String()
-					if i := strings.LastIndex(mtName, "."); i >= 0 {
-						mtName = mtName[i+1:]
-					}
-					lv := userDataWithMetatable(L, mtName, v)
-					table.Append(lv)
+func luaOPTType() []lua.Option {
+	return []lua.Option{
+		lua.Type[dns.OPT](
+			lua.Hide("Hdr", "Option"),
+			// methods and fields
+			lua.Meta("__index", func(c *lua.Call) error {
+				opt := c.Arg[*dns.OPT](0)
+				switch fieldName := c.Arg[string](1); fieldName {
+				case "udp_size":
+					return c.Return(opt.UDPSize())
+				case "do_bit":
+					return c.Return(opt.Do())
+				case "version":
+					return c.Return(opt.Version())
+				case "extended_rcode":
+					return c.Return(uint8(opt.ExtendedRcode()))
+				case "option":
+					return c.Return(luaTable(opt.Option, luaEDNS0Value))
+				case "name":
+					return c.Return(opt.Hdr.Name)
+				case "rtype":
+					return c.Return(opt.Hdr.Rrtype)
+				default:
+					return c.ArgError(1, fmt.Sprintf("OPT does not have field %q", fieldName))
 				}
-				L.Push(table)
-			case "name":
-				L.Push(lua.LString(opt.Hdr.Name))
-			case "rtype":
-				L.Push(lua.LNumber(opt.Hdr.Rrtype))
-			default:
-				L.ArgError(2, fmt.Sprintf("OPT does not have field %q", fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			opt, ok := getUserDataArg[*dns.OPT](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "udp_size":
-				opt.SetUDPSize(uint16(L.CheckNumber(3)))
-			case "do_bit":
-				if L.CheckBool(3) {
+			}),
+			lua.Meta("__newindex", func(c *lua.Call) error {
+				opt := c.Arg[*dns.OPT](0)
+				switch fieldName := c.Arg[string](1); fieldName {
+				case "udp_size":
+					opt.SetUDPSize(c.Arg[uint16](2))
+				case "do_bit":
+					if c.Arg[bool](2) {
+						opt.SetDo()
+					} else {
+						// Clear the DO bit: mask out bit 15 from the flags in Ttl
+						opt.Hdr.Ttl &^= 1 << 15
+					}
+				case "version":
+					opt.SetVersion(c.Arg[uint8](2))
+				case "extended_rcode":
+					opt.SetExtendedRcode(c.Arg[uint16](2))
+				case "option":
+					options, err := luaEDNS0Array(c.Value(2))
+					if err != nil {
+						return c.ArgError(2, err.Error())
+					}
+					opt.Option = options
+				default:
+					return c.ArgError(1, fmt.Sprintf("OPT does not have settable field %q", fieldName))
+				}
+				return nil
+			}),
+		),
+		// static attributes
+		lua.Module("OPT", lua.Members{
+			"new": lua.GoFunc(func(c *lua.Call) error {
+				opt := new(dns.OPT)
+				opt.Hdr.Name = "."
+				opt.Hdr.Rrtype = dns.TypeOPT
+				if c.Len() >= 1 { // UDP size
+					opt.SetUDPSize(c.Arg[uint16](0))
+				}
+				if c.Len() >= 2 && c.Arg[bool](1) { // DO bit
 					opt.SetDo()
-				} else {
-					// Clear the DO bit: mask out bit 15 from the flags in Ttl
-					opt.Hdr.Ttl &^= 1 << 15
 				}
-			case "version":
-				opt.SetVersion(uint8(L.CheckNumber(3)))
-			case "extended_rcode":
-				opt.SetExtendedRcode(uint16(L.CheckNumber(3)))
-			case "option":
-				table := L.CheckTable(3)
-				n := table.Len()
-				options := make([]dns.EDNS0, 0, n)
-				for i := range n {
-					element := table.RawGetInt(i + 1)
-					ud, ok := element.(*lua.LUserData)
-					if !ok {
-						L.ArgError(3, fmt.Sprintf("expected userdata, got %v", element.Type().String()))
-						return 0
-					}
-					edns0, ok := ud.Value.(dns.EDNS0)
-					if !ok {
-						L.ArgError(3, fmt.Sprintf("expected EDNS0, got %T", ud.Value))
-						return 0
-					}
-					options = append(options, edns0)
-				}
-				opt.Option = options
-			default:
-				L.ArgError(2, fmt.Sprintf("OPT does not have settable field %q", fieldName))
-				return 0
-			}
-			return 0
-		}))
+				return c.Return(opt)
+			}),
+		}),
+	}
 }

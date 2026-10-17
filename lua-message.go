@@ -1,202 +1,115 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
 	"fmt"
 
+	lua "github.com/folbricht/glua"
 	"github.com/miekg/dns"
-	lua "github.com/yuin/gopher-lua"
 )
 
 // Message functions
 
-const luaMessageMetatableName = "Message"
-
-func (s *LuaScript) RegisterMessageType() {
-	L := s.L
-	mt := L.NewTypeMetatable(luaMessageMetatableName)
-	L.SetGlobal(luaMessageMetatableName, mt)
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(func(L *lua.LState) int {
-		L.Push(userDataWithMetatable(L, luaMessageMetatableName, new(dns.Msg)))
-		return 1
-	}))
-	// methods and fields
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			msg, ok := getUserDataArg[*dns.Msg](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "questions":
-				table := L.CreateTable(len(msg.Question), 0)
-				for i := range msg.Question {
-					lv := userDataWithMetatable(L, luaQuestionMetatableName, &msg.Question[i])
-					table.Append(lv)
-				}
-				L.Push(table)
-			case "id":
-				L.Push(lua.LNumber(msg.Id))
-			case "response":
-				L.Push(lua.LBool(msg.Response))
-			case "rcode":
-				L.Push(lua.LNumber(msg.Rcode))
-			case "recursion_desired":
-				L.Push(lua.LBool(msg.RecursionDesired))
-			case "recursion_available":
-				L.Push(lua.LBool(msg.RecursionAvailable))
-			case "authoritative":
-				L.Push(lua.LBool(msg.Authoritative))
-			case "authenticated_data":
-				L.Push(lua.LBool(msg.AuthenticatedData))
-			case "answer":
-				L.Push(rrSliceToTable(L, msg.Answer))
-			case "ns":
-				L.Push(rrSliceToTable(L, msg.Ns))
-			case "extra":
-				L.Push(rrSliceToTable(L, msg.Extra))
-			case "set_reply":
-				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) int {
-						request, ok := getUserDataArg[*dns.Msg](L, 2)
-						if !ok {
-							return 0
-						}
-						msg.SetReply(request)
-						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
-						L.Push(lv)
-						return 1
-					})))
-			case "set_question":
-				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) int {
-						msg.SetQuestion(L.CheckString(2), uint16(L.CheckNumber(3)))
-						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
-						L.Push(lv)
-						return 1
-					})))
-			case "is_edns0":
-				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) int {
-						opt := msg.IsEdns0()
-						if opt == nil {
-							L.Push(lua.LNil)
-							return 1
-						}
-						lv := userDataWithMetatable(L, luaOPTMetatableName, opt)
-						L.Push(lv)
-						return 1
-					})))
-			case "set_edns0":
-				L.Push(L.NewFunction(
-					method(func(L *lua.LState, msg *dns.Msg) int {
-						msg.SetEdns0(uint16(L.CheckNumber(2)), L.CheckBool(3))
-						lv := userDataWithMetatable(L, luaMessageMetatableName, msg)
-						L.Push(lv)
-						return 1
-					})))
-			default:
-				L.ArgError(2, fmt.Sprintf("message does not have field %q", fieldName))
-				return 0
-			}
-			return 1
-		}))
-	L.SetField(mt, "__newindex", L.NewFunction(
-		func(L *lua.LState) int {
-			msg, ok := getUserDataArg[*dns.Msg](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "questions":
-				table := L.CheckTable(3)
-				n := table.Len()
-				questions := make([]dns.Question, 0, n)
-				for i := range n {
-					element := table.RawGetInt(i + 1)
-					if element.Type() != lua.LTUserData {
-						L.ArgError(3, "invalid type, expected userdata")
-						return 0
+func luaMessageType() []lua.Option {
+	return []lua.Option{
+		lua.Type[dns.Msg](
+			// The header flags are fields of their own: id, response, rcode,
+			// recursion_desired, recursion_available, authoritative and
+			// authenticated_data. The sections are converted in __index.
+			lua.Writable("Id", "Response", "Rcode", "RecursionDesired", "RecursionAvailable", "Authoritative", "AuthenticatedData"),
+			lua.Hide("Opcode", "Truncated", "Zero", "CheckingDisabled", "Compress", "Question", "Answer", "Ns", "Extra"),
+			lua.Meta("__index", func(c *lua.Call) error {
+				msg := c.Arg[*dns.Msg](0)
+				switch fieldName := c.Arg[string](1); fieldName {
+				case "questions":
+					// The questions are the message's own, so a script can
+					// change them in place
+					table := lua.NewTable(len(msg.Question), 0)
+					for i := range msg.Question {
+						table.Set(lua.Int(int64(i+1)), lua.ValueOf(&msg.Question[i]))
 					}
-					lq := element.(*lua.LUserData)
-					q, ok := lq.Value.(*dns.Question)
-					if !ok {
-						L.ArgError(3, "invalid type, expected question")
-						return 0
+					return c.Return(table)
+				case "answer":
+					return c.Return(rrSliceToTable(msg.Answer))
+				case "ns":
+					return c.Return(rrSliceToTable(msg.Ns))
+				case "extra":
+					return c.Return(rrSliceToTable(msg.Extra))
+				default:
+					return c.ArgError(1, fmt.Sprintf("message does not have field %q", fieldName))
+				}
+			}),
+			lua.Meta("__newindex", func(c *lua.Call) error {
+				msg := c.Arg[*dns.Msg](0)
+				switch fieldName := c.Arg[string](1); fieldName {
+				case "questions":
+					questions, err := luaArray[*dns.Question](c.Value(2))
+					if err != nil {
+						return c.ArgError(2, err.Error())
 					}
-					questions = append(questions, *q)
+					msg.Question = make([]dns.Question, 0, len(questions))
+					for _, q := range questions {
+						msg.Question = append(msg.Question, *q)
+					}
+				case "answer":
+					return setRRSlice(c, &msg.Answer)
+				case "ns":
+					return setRRSlice(c, &msg.Ns)
+				case "extra":
+					return setRRSlice(c, &msg.Extra)
+				default:
+					return c.ArgError(1, fmt.Sprintf("message does not have field %q", fieldName))
 				}
-				msg.Question = questions
-			case "id":
-				msg.Id = uint16(L.CheckInt(3))
-			case "response":
-				msg.Response = L.CheckBool(3)
-			case "rcode":
-				msg.Rcode = L.CheckInt(3)
-			case "recursion_desired":
-				msg.RecursionDesired = L.CheckBool(3)
-			case "recursion_available":
-				msg.RecursionAvailable = L.CheckBool(3)
-			case "authoritative":
-				msg.Authoritative = L.CheckBool(3)
-			case "authenticated_data":
-				msg.AuthenticatedData = L.CheckBool(3)
-			case "answer":
-				rrs, ok := tableToRRSlice(L, 3)
-				if !ok {
-					return 0
-				}
-				msg.Answer = rrs
-			case "ns":
-				rrs, ok := tableToRRSlice(L, 3)
-				if !ok {
-					return 0
-				}
-				msg.Ns = rrs
-			case "extra":
-				rrs, ok := tableToRRSlice(L, 3)
-				if !ok {
-					return 0
-				}
-				msg.Extra = rrs
-			default:
-				L.ArgError(2, fmt.Sprintf("message does not have field %q", fieldName))
-				return 0
-			}
-			return 0
-		}))
-}
-
-func rrSliceToTable(L *lua.LState, rrs []dns.RR) *lua.LTable {
-	table := L.CreateTable(len(rrs), 0)
-	for _, rr := range rrs {
-		lv := userDataWithMetatable(L, luaRRHeaderMetatableName, rr)
-		table.Append(lv)
+				return nil
+			}),
+			lua.Method("set_reply", func(c *lua.Call) error {
+				msg := c.Arg[*dns.Msg](0)
+				msg.SetReply(c.Arg[*dns.Msg](1))
+				return c.Return(msg)
+			}),
+			lua.Method("set_question", func(c *lua.Call) error {
+				msg := c.Arg[*dns.Msg](0)
+				msg.SetQuestion(c.Arg[string](1), c.Arg[uint16](2))
+				return c.Return(msg)
+			}),
+			lua.Method("is_edns0", func(c *lua.Call) error {
+				return c.Return(c.Arg[*dns.Msg](0).IsEdns0())
+			}),
+			lua.Method("set_edns0", func(c *lua.Call) error {
+				msg := c.Arg[*dns.Msg](0)
+				msg.SetEdns0(c.Arg[uint16](1), c.Arg[bool](2))
+				return c.Return(msg)
+			}),
+		),
+		// static attributes
+		lua.Module("Message", lua.Members{
+			"new": lua.GoFunc(func(c *lua.Call) error {
+				return c.Return(new(dns.Msg))
+			}),
+		}),
 	}
-	return table
 }
 
-func tableToRRSlice(L *lua.LState, n int) ([]dns.RR, bool) {
-	table := L.CheckTable(n)
-	size := table.Len()
-	rrs := make([]dns.RR, 0, size)
-	for i := range size {
-		element := table.RawGetInt(i + 1)
-		if element.Type() != lua.LTUserData {
-			L.ArgError(n, "invalid type, expected RR userdata")
-			return nil, false
-		}
-		ud := element.(*lua.LUserData)
-		rr, ok := ud.Value.(dns.RR)
-		if !ok {
-			L.ArgError(n, fmt.Sprintf("invalid type, expected RR, got %T", ud.Value))
-			return nil, false
+func rrSliceToTable(rrs []dns.RR) *lua.Table {
+	return luaTable(rrs, luaRRValue)
+}
+
+// setRRSlice sets a section of a message to the array of records being
+// assigned to it.
+func setRRSlice(c *lua.Call, section *[]dns.RR) error {
+	values, err := luaArray[lua.Value](c.Value(2))
+	if err != nil {
+		return c.ArgError(2, err.Error())
+	}
+	rrs := make([]dns.RR, 0, len(values))
+	for _, v := range values {
+		rr, err := luaRRArg(v)
+		if err != nil {
+			return c.ArgError(2, err.Error())
 		}
 		rrs = append(rrs, rr)
 	}
-	return rrs, true
+	*section = rrs
+	return nil
 }

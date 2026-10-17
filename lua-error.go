@@ -1,35 +1,30 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
 	"errors"
 
-	lua "github.com/yuin/gopher-lua"
+	lua "github.com/folbricht/glua"
 )
 
 // Error functions
 
-const luaErrorMetatableName = "Error"
+// luaError is an error as scripts see it.
+type luaError struct{ err error }
 
-func (s *LuaScript) RegisterErrorType() {
-	L := s.L
-	mt := L.NewTypeMetatable(luaErrorMetatableName)
-	L.SetGlobal(luaErrorMetatableName, mt)
-
-	// static attributes
-	L.SetField(mt, "new", L.NewFunction(
-		func(L *lua.LState) int {
-			err := errors.New(L.CheckString(1))
-			L.Push(userDataWithMetatable(L, luaErrorMetatableName, err))
-			return 1
-		}))
-
-	// methods
-	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"error": method(func(L *lua.LState, r error) int {
-			L.Push(lua.LString(r.Error()))
-			return 1
+func luaErrorType() []lua.Option {
+	return []lua.Option{
+		lua.Type[luaError](
+			lua.Method("error", func(c *lua.Call) error {
+				return c.Return(c.Arg[*luaError](0).err.Error())
+			}),
+		),
+		// static attributes
+		lua.Module("Error", lua.Members{
+			"new": lua.GoFunc(func(c *lua.Call) error {
+				return c.Return(&luaError{errors.New(c.Arg[string](0))})
+			}),
 		}),
-	}))
+	}
 }

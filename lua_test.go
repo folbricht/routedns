@@ -1,9 +1,10 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -190,7 +191,7 @@ func TestLuaRROperations(t *testing.T) {
 		Script: `
 function Resolve(msg, ci)
 	-- Create a new TXT record and test value set/get operations
-	rr = RR.new({rtype=TypeTXT, name="example.com.", class=ClassIN, ttl=60, txt={"hello", "world"}})
+	local rr = RR.new({rtype=TypeTXT, name="example.com.", class=ClassIN, ttl=60, txt={"hello", "world"}})
 	if rr.txt[1] ~= "hello" then
 		return nil, Error.new("unexpected value")
 	end
@@ -230,7 +231,7 @@ func TestLuaEDNS0Operations(t *testing.T) {
 		Script: `
 function Resolve(msg, ci)
 	-- Create a new EDNS0 COOKIE and test value set/get operations
-	edns0 = EDNS0_COOKIE.new("24a5ac1a012345ff")
+	local edns0 = EDNS0_COOKIE.new("24a5ac1a012345ff")
 	if edns0.cookie ~= "24a5ac1a012345ff" then
 		return nil, Error.new("unexpected value")
 	end
@@ -559,13 +560,13 @@ func TestLuaRREDNS0(t *testing.T) {
 		Script: `
 function Resolve(msg, ci)
 	-- Read the EDNS0 options
-	opt = msg:is_edns0()
+	local opt = msg:is_edns0()
 	if opt == nil then
 		return nil, Error.new("no edns0")
 	end
 
 	-- Grab the options
-	options = opt.option
+	local options = opt.option
 
 	-- The first one should be a cookie
 	if options[1].option ~= EDNS0COOKIE then
@@ -588,7 +589,7 @@ function Resolve(msg, ci)
 	answer:set_reply(msg)
 	answer.rcode = RcodeNXDOMAIN
 	answer:set_edns0(4096, false)
-	edns0 = answer:is_edns0()
+	local edns0 = answer:is_edns0()
 	edns0.option = {
 		EDNS0_EDE.new(15, "totally blocked"),
 	}
@@ -1113,33 +1114,35 @@ end`,
 	require.True(t, answer.Authoritative)
 }
 
-// A script that does not return is cut off, and the instance it ran on goes
-// back into the pool working. Without a limit it would hold that instance for
-// the life of the process, and a query for every instance would stop the group
-// answering anything ever again.
+// A script that runs past the timeout is cut off as the upstream query it is
+// waiting on returns, and the group goes on answering.
 func TestLuaTimeout(t *testing.T) {
+	upstream := &TestResolver{ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		time.Sleep(10 * time.Millisecond)
+		return q, nil
+	}}
 	r, err := NewLua("test-lua", LuaOptions{
-		Concurrency: 1,
-		Timeout:     200 * time.Millisecond,
+		Timeout: 200 * time.Millisecond,
 		Script: `
 function Resolve(msg, ci)
 	if msg.questions[1].name == "loop.example.com." then
-		while true do end
+		while true do Resolvers[1]:resolve(msg, ci) end
 	end
 	local a = Message.new()
 	a:set_reply(msg)
 	return a, nil
 end`,
-	})
+	}, upstream)
 	require.NoError(t, err)
 
 	loop := new(dns.Msg)
 	loop.SetQuestion("loop.example.com.", dns.TypeA)
+	start := time.Now()
 	_, err = r.Resolve(loop, ClientInfo{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
+	require.Less(t, time.Since(start), 2*time.Second, "cut off long after the timeout")
 
-	// The only instance is back, and still works.
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 	a, err := r.Resolve(q, ClientInfo{})
@@ -1148,14 +1151,30 @@ end`,
 	require.True(t, a.Response)
 }
 
+// A loop with no exit is cut off by the step limit long before any timeout.
+func TestLuaStepLimit(t *testing.T) {
+	r, err := NewLua("test-lua", LuaOptions{
+		Timeout: -1,
+		Script: `
+function Resolve(msg, ci)
+	while true do end
+end`,
+	})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err = r.Resolve(q, ClientInfo{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "step limit exceeded")
+}
+
 // The top level of a script runs when it is loaded, so one that does not return
 // there fails to load rather than hanging startup with nothing logged.
-func TestLuaTimeoutAtLoad(t *testing.T) {
+func TestLuaLoopAtLoad(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		_, err := NewLua("test-lua", LuaOptions{
-			Concurrency: 1,
-			Timeout:     200 * time.Millisecond,
 			Script: `
 while true do end
 function Resolve(msg, ci) return nil, nil end`,
@@ -1165,17 +1184,15 @@ function Resolve(msg, ci) return nil, nil end`,
 	select {
 	case err := <-done:
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "context deadline exceeded")
 	case <-time.After(10 * time.Second):
-		t.Fatal("NewLua did not return, so the limit did not apply at load")
+		t.Fatal("NewLua did not return, so no limit applied at load")
 	}
 }
 
 // A negative timeout removes the limit, for a script that is meant to run long.
 func TestLuaTimeoutDisabled(t *testing.T) {
 	r, err := NewLua("test-lua", LuaOptions{
-		Concurrency: 1,
-		Timeout:     -1,
+		Timeout: -1,
 		Script: `
 function Resolve(msg, ci)
 	local a = Message.new()
@@ -1184,9 +1201,6 @@ function Resolve(msg, ci)
 end`,
 	})
 	require.NoError(t, err)
-	s := <-r.scripts
-	require.Nil(t, s.L.Context(), "no deadline should be left on the state")
-	r.scripts <- s
 
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
@@ -1200,50 +1214,89 @@ func TestLuaTimeoutDefault(t *testing.T) {
 	r, err := NewLua("test-lua", LuaOptions{Script: `function Resolve(msg, ci) return nil, nil end`})
 	require.NoError(t, err)
 	require.Equal(t, defaultLuaTimeout, r.opt.Timeout)
-	s := <-r.scripts
-	require.Equal(t, defaultLuaTimeout, s.timeout)
-	r.scripts <- s
 }
 
-// The state goes back into the pool as Resolve returns, while the caller is
-// still reading the answer, and a script can keep anything it was handed for
-// as long as the process lives. Nothing crosses the boundary by reference, so
-// a script that keeps an answer cannot write to the one its caller was given.
-func TestLuaAnswerNotShared(t *testing.T) {
-	r, err := NewLua("test-lua", LuaOptions{Concurrency: 1, Script: `
+// What a script builds when it loads is shared by every query, and frozen, so
+// no query can change it for the next.
+func TestLuaNoStateBetweenQueries(t *testing.T) {
+	for name, script := range map[string]string{
+		"global": `
+count = 0
 function Resolve(msg, ci)
-	if kept ~= nil then
-		kept.rcode = RcodeSERVFAIL
-		kept.id = 99
-	end
-	local a = Message.new()
-	a:set_reply(msg)
-	kept = a
-	return a, nil
+	count = count + 1
+	return nil, nil
+end`,
+		"table": `
+local seen = {}
+function Resolve(msg, ci)
+	seen[msg.questions[1].name] = true
+	return nil, nil
+end`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, err := NewLua("test-lua", LuaOptions{Script: script})
+			require.NoError(t, err)
+
+			q := new(dns.Msg)
+			q.SetQuestion("example.com.", dns.TypeA)
+			_, err = r.Resolve(q, ClientInfo{})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "frozen")
+		})
+	}
+}
+
+// Messages, records and EDNS0 options can be changed, so a script cannot build
+// one when it loads for every query to share.
+func TestLuaNoDNSValueAtLoad(t *testing.T) {
+	for name, value := range map[string]string{
+		"message": `Message.new()`,
+		"rr":      `RR.new({rtype = TypeA, name = "example.com.", class = ClassIN, ttl = 300, a = "192.0.2.1"})`,
+		"opt":     `OPT.new(4096, false)`,
+		"edns0":   `EDNS0_EDE.new(15, "blocked")`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewLua("test-lua", LuaOptions{Script: `
+local shared = ` + value + `
+function Resolve(msg, ci)
+	local _ = shared
+	return nil, nil
 end`})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "cannot be shared")
+		})
+	}
+}
+
+// One group serves queries from any number of goroutines at once.
+func TestLuaConcurrentQueries(t *testing.T) {
+	resolver := new(TestResolver)
+	r, err := NewLua("test-lua", LuaOptions{Script: `
+function Resolve(msg, ci)
+	msg.id = 7
+	return Resolvers[1]:resolve(msg, ci)
+end`}, resolver)
 	require.NoError(t, err)
 
-	q := new(dns.Msg)
-	q.SetQuestion("first.example.com.", dns.TypeA)
-	first, err := r.Resolve(q, ClientInfo{})
-	require.NoError(t, err)
-	require.Equal(t, dns.RcodeSuccess, first.Rcode)
-	id := first.Id
-
-	// A second query, which the script uses to write to the answer it kept.
-	q2 := new(dns.Msg)
-	q2.SetQuestion("second.example.com.", dns.TypeA)
-	_, err = r.Resolve(q2, ClientInfo{})
-	require.NoError(t, err)
-
-	require.Equal(t, dns.RcodeSuccess, first.Rcode, "a later query reached the answer an earlier caller holds")
-	require.Equal(t, id, first.Id, "a later query reached the answer an earlier caller holds")
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			for range 100 {
+				q := new(dns.Msg)
+				q.SetQuestion("example.com.", dns.TypeA)
+				_, err := r.Resolve(q, ClientInfo{})
+				require.NoError(t, err)
+			}
+		})
+	}
+	wg.Wait()
+	require.Equal(t, 1600, resolver.HitCount())
 }
 
 // A script that drops a query returns no answer, and copying the answer out
 // must not turn that into one.
 func TestLuaAnswerNilPassesThrough(t *testing.T) {
-	r, err := NewLua("test-lua", LuaOptions{Concurrency: 1,
+	r, err := NewLua("test-lua", LuaOptions{
 		Script: `function Resolve(msg, ci) return nil, nil end`})
 	require.NoError(t, err)
 

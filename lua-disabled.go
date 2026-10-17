@@ -1,4 +1,4 @@
-//go:build nolua
+//go:build nolua || !(amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
@@ -8,8 +8,9 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Lua replaces the real resolver in builds made with the "nolua" tag, which
-// leave out the Lua interpreter. A configuration using a lua group fails at
+// Lua replaces the real resolver in builds without the Lua interpreter: those
+// made with the "nolua" tag, and those for 32-bit platforms, which the
+// interpreter does not support. A configuration using a lua group fails at
 // startup rather than passing queries through unmodified.
 type Lua struct{}
 

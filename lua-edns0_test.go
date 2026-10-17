@@ -1,4 +1,4 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
@@ -14,7 +14,7 @@ import (
 // Every registered EDNS0 type, with the constructor call a script would write,
 // the option code it must report, and the fields it exposes with a value to
 // assign and read back.
-var luaEDNS0Types = []struct {
+var luaEDNS0TestTypes = []struct {
 	name   string
 	new    string
 	option uint16
@@ -83,7 +83,7 @@ var luaEDNS0Types = []struct {
 
 // The option code a script reads is the one the option carries on the wire.
 func TestLuaEDNS0OptionCode(t *testing.T) {
-	for _, tt := range luaEDNS0Types {
+	for _, tt := range luaEDNS0TestTypes {
 		t.Run(tt.name, func(t *testing.T) {
 			runLuaEDNS0Check(t, fmt.Sprintf(`
 	local e = %s
@@ -96,7 +96,7 @@ func TestLuaEDNS0OptionCode(t *testing.T) {
 
 // Each field assigned through the metatable reads back as it was written.
 func TestLuaEDNS0FieldRoundTrip(t *testing.T) {
-	for _, tt := range luaEDNS0Types {
+	for _, tt := range luaEDNS0TestTypes {
 		t.Run(tt.name, func(t *testing.T) {
 			// A type with neither is one whose fields nothing checks, which
 			// is what this asserts against for types added later.
@@ -115,7 +115,7 @@ func TestLuaEDNS0FieldRoundTrip(t *testing.T) {
 
 // Slice fields come back as a table of numbers, indexed from 1.
 func TestLuaEDNS0SliceFieldRoundTrip(t *testing.T) {
-	for _, tt := range luaEDNS0Types {
+	for _, tt := range luaEDNS0TestTypes {
 		if tt.slice == "" {
 			continue
 		}
@@ -135,7 +135,7 @@ func TestLuaEDNS0SliceFieldRoundTrip(t *testing.T) {
 
 // Reading or writing a field the type doesn't have is an error naming both.
 func TestLuaEDNS0UnknownField(t *testing.T) {
-	for _, tt := range luaEDNS0Types {
+	for _, tt := range luaEDNS0TestTypes {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, script := range []string{
 				fmt.Sprintf("local e = %s\n\tlocal v = e.nosuchfield", tt.new),
@@ -165,7 +165,7 @@ func TestLuaEDNS0SubnetInvalidAddress(t *testing.T) {
 // Options built in a script survive a round trip through the wire format,
 // which is what the option code they carry is for.
 func TestLuaEDNS0AttachedToQuery(t *testing.T) {
-	for _, tt := range luaEDNS0Types {
+	for _, tt := range luaEDNS0TestTypes {
 		t.Run(tt.name, func(t *testing.T) {
 			var got *dns.Msg
 			resolver := &TestResolver{

@@ -1,4 +1,4 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
@@ -6,68 +6,44 @@ import (
 	"fmt"
 	"reflect"
 
-	lua "github.com/yuin/gopher-lua"
+	lua "github.com/folbricht/glua"
 )
 
 // Helper functions
 
-func method[T any](f func(*lua.LState, T) int) func(*lua.LState) int {
-	return func(L *lua.LState) int {
-		if L.GetTop() < 1 {
-			L.ArgError(1, "expected at least 1 argument")
-			return 0
-		}
-		ud := L.CheckUserData(1)
-		r, ok := ud.Value.(T)
-		if !ok {
-			L.ArgError(1, fmt.Sprintf("%v expected", reflect.TypeFor[T]()))
-			return 0
-		}
-		return f(L, r)
+// luaArray reads the elements of a Lua array, each converted to T.
+func luaArray[T any](v lua.Value) ([]T, error) {
+	var table *lua.Table
+	if v.Kind() == lua.KindTable {
+		table, _ = v.As[*lua.Table]()
 	}
+	if table == nil {
+		return nil, fmt.Errorf("expected array, got %v", v.Kind())
+	}
+	values := make([]T, 0, table.Len())
+	for i := range table.Len() {
+		element, err := table.Get(lua.Int(int64(i + 1))).As[T]()
+		if err != nil {
+			return nil, fmt.Errorf("invalid type, expected %v", reflect.TypeFor[T]())
+		}
+		values = append(values, element)
+	}
+	return values, nil
 }
 
-func getUserDataArg[T any](L *lua.LState, n int) (T, bool) {
-	ud := L.CheckUserData(n)
-	v, ok := ud.Value.(T)
-	if !ok {
-		L.ArgError(n, fmt.Sprintf("expected %v, got %T", reflect.TypeFor[T](), ud.Value))
-		return v, false
+// luaTable makes a Lua array of values, each converted by fn.
+func luaTable[T any](values []T, fn func(T) lua.Value) *lua.Table {
+	table := lua.NewTable(len(values), 0)
+	for i, v := range values {
+		table.Set(lua.Int(int64(i+1)), fn(v))
 	}
-	return v, true
-}
-
-func userDataWithMetatable(L *lua.LState, mtName string, value any) *lua.LUserData {
-	ud := L.NewUserData()
-	ud.Value = value
-	L.SetMetatable(ud, L.GetTypeMetatable(mtName))
-	return ud
+	return table
 }
 
 type numbers interface {
 	int | int8 | int16 | int32 | int64 | float32 | float64 | uint | uint8 | uint16 | uint32 | uint64
 }
 
-func getNumberSlice[T numbers](L *lua.LState, n int) ([]T, bool) {
-	table := L.CheckTable(n)
-	size := table.Len()
-	values := make([]T, 0, size)
-	for i := range size {
-		element := table.RawGetInt(i + 1)
-		if element.Type() != lua.LTNumber {
-			L.ArgError(n, "invalid type, expected number")
-			return nil, false
-		}
-		value := T(element.(lua.LNumber))
-		values = append(values, value)
-	}
-	return values, true
-}
-
-func numberSliceToTable[T numbers](L *lua.LState, values []T) *lua.LTable {
-	table := L.CreateTable(len(values), 0)
-	for _, value := range values {
-		table.Append(lua.LNumber(value))
-	}
-	return table
+func numberSliceToTable[T numbers](values []T) *lua.Table {
+	return luaTable(values, func(v T) lua.Value { return lua.Int(int64(v)) })
 }

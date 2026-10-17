@@ -1070,10 +1070,9 @@ func instantiateGroup(id string, g group, resolvers map[string]rdns.Resolver) er
 			return fmt.Errorf("group '%s' of type 'lua' requires 'lua-script' or 'lua-script-source'", id)
 		}
 		opt := rdns.LuaOptions{
-			Script:      script,
-			Concurrency: g.LuaConcurrency,
-			NoSandbox:   g.LuaNoSandbox,
-			Timeout:     time.Duration(g.LuaTimeout) * time.Second,
+			Script:    script,
+			NoSandbox: g.LuaNoSandbox,
+			Timeout:   time.Duration(g.LuaTimeout) * time.Second,
 		}
 		resolvers[id], err = rdns.NewLua(id, opt, gr...)
 		if err != nil {

@@ -98,7 +98,7 @@ Two of the larger dependencies can be left out at build time with Go build tags:
 | `noredis` | The `redis` cache backend |
 | `nolua` | `lua` groups |
 
-Together they take a linux/mipsle binary from 23.5MB to 17.0MB, which matters on a router with 16MB of flash. Releases include `routedns-minimal-linux-*` binaries built with both tags for arm, arm64, mips and mipsle. To build one:
+Together they take a linux/arm64 binary from 20.0MB to 14.2MB, and leaving out Redis takes a linux/mipsle binary from 21.7MB to 16.7MB, which matters on a router with 16MB of flash. Lua needs a 64-bit platform, so 32-bit builds such as arm, mips and mipsle never include it. Releases include `routedns-minimal-linux-*` binaries built with both tags for arm, arm64, mips and mipsle. To build one:
 
 ```text
 go build -tags nolua,noredis -ldflags="-s -w" -o routedns ./cmd/routedns
