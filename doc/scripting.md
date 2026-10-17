@@ -6,7 +6,7 @@
 
 `type = "lua"`
 
-Lua groups allow writing custom query handling logic using Lua 5.4 scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. The `msg` it receives is the script's own copy of the query, so it can be changed freely and passed to a resolver, and what the script does to it is not seen by the components it came through. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
+Lua groups allow writing custom query handling logic using Lua 5.4 scripts ([upgrading from v1.0.1 and earlier](#upgrading-scripts-from-v101-and-earlier)). The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. The `msg` it receives is the script's own copy of the query, so it can be changed freely and passed to a resolver, and what the script does to it is not seen by the components it came through. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
 
 ### Configuration
 
@@ -63,14 +63,38 @@ An upstream lookup over the internet typically takes 10 to 50 milliseconds, thou
 
 The numbers come from `go test -bench Lua`, which runs these scripts against an in-process upstream, less the time that upstream takes on its own.
 
-### Lua version
+### Upgrading scripts from v1.0.1 and earlier
 
-Scripts are Lua 5.4. Scripts written for Lua 5.1, which RouteDNS used up to v1.0.1, may need changes:
+Up to v1.0.1, RouteDNS ran scripts on Lua 5.1, each in a pool of interpreters that kept their own state. Scripts are now Lua 5.4 and share one frozen state, so some need changes. The shipped examples run unchanged.
 
-- `unpack` is `table.unpack`.
-- `setfenv`, `getfenv` and `module` are gone.
-- Integers and floats are separate types. The constants such as `TypeA` are integers, `/` always gives a float, and `//` is integer division. A field that takes a number, such as `ttl`, rejects a float that is not a whole number.
-- Globals can't be assigned while handling a query, see [State between queries](#state-between-queries).
+State:
+
+- Variables used while handling a query must be `local`. `answer, err = Resolvers[1]:resolve(msg, ci)` writes a global and fails the query; write `local answer, err = ...`. The same applies in functions `Resolve` calls.
+- State kept between queries, such as a counter or a table of names seen, isn't possible any more. See [State between queries](#state-between-queries).
+- Messages, questions, records and EDNS0 options can't be kept from the top level of the script. Build them in `Resolve`.
+
+Lua 5.4:
+
+| Lua 5.1 | Lua 5.4 |
+| --- | --- |
+| `unpack(t)` | `table.unpack(t)` |
+| `table.getn(t)`, `table.maxn(t)` | `#t` |
+| `math.pow(a, b)`, `math.mod(a, b)` | `a ^ b`, `a % b` |
+| `string.gfind` | `string.gmatch` |
+| `setfenv`, `getfenv`, `module`, `loadstring` | Not available; `load` only with `lua-no-sandbox` |
+
+- Integers and floats are separate types. `/` always gives a float, so `"ttl " .. 600 / 2` is `"ttl 300.0"`; `//` is integer division and gives `"ttl 300"`. The constants such as `TypeA` are integers.
+- A field that takes a number, such as `ttl`, rejects a float that isn't a whole number, where it used to drop the fraction. Use `math.floor(x)`. `string.format("%d", x)` rejects such a float too.
+
+With `lua-no-sandbox`:
+
+- `os` has only `clock`, `time`, `date` and `difftime`, so `os.execute`, `os.getenv` and the like are gone.
+- `io.popen`, the `debug` library and `require` of files from disk are not available.
+
+Configuration and platforms:
+
+- `lua-concurrency` no longer exists. A config that sets it starts, with a warning.
+- Lua groups need a 64-bit platform. On 32-bit builds (armv6, armv7, mips, mipsle) a config with a lua group fails at startup.
 
 ### Lua API
 
