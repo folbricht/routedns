@@ -1,31 +1,35 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
+	"strings"
+
+	lua "github.com/folbricht/glua"
 	"github.com/miekg/dns"
-	lua "github.com/yuin/gopher-lua"
 )
 
-func (s *LuaScript) RegisterConstants() {
-	L := s.L
-
+func luaConstants() []lua.Option {
 	// Register build version
-	L.SetGlobal("BuildVersion", lua.LString(CurrentBuild().Version))
+	opts := []lua.Option{lua.Global("BuildVersion", CurrentBuild().Version)}
 
-	// Register TypeA, TypeAAAA, etc
+	// Register TypeA, TypeAAAA, etc. Skip the names that can't be Lua
+	// identifiers, like NSAP-PTR.
 	for value, name := range dns.TypeToString {
-		L.SetGlobal("Type"+name, lua.LNumber(value))
+		if strings.Contains(name, "-") {
+			continue
+		}
+		opts = append(opts, lua.Global("Type"+name, int64(value)))
 	}
 
 	// Register ClassIN, etc
 	for value, name := range dns.ClassToString {
-		L.SetGlobal("Class"+name, lua.LNumber(value))
+		opts = append(opts, lua.Global("Class"+name, int64(value)))
 	}
 
 	// Register Rcodes, RcodeNOERROR, RcodeNXDOMAIN, etc
 	for value, name := range dns.RcodeToString {
-		L.SetGlobal("Rcode"+name, lua.LNumber(value))
+		opts = append(opts, lua.Global("Rcode"+name, int64(value)))
 	}
 
 	// Register EDNS0 option codes
@@ -44,6 +48,7 @@ func (s *LuaScript) RegisterConstants() {
 		"EDNS0PADDING":      0xc,
 		"EDNS0EDE":          0xf,
 	} {
-		L.SetGlobal(name, lua.LNumber(value))
+		opts = append(opts, lua.Global(name, int64(value)))
 	}
+	return opts
 }

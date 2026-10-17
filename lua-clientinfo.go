@@ -1,48 +1,33 @@
-//go:build !nolua
+//go:build !nolua && (amd64 || arm64 || loong64 || mips64 || mips64le || ppc64 || ppc64le || riscv64 || s390x)
 
 package rdns
 
 import (
 	"fmt"
 
-	lua "github.com/yuin/gopher-lua"
+	lua "github.com/folbricht/glua"
 )
 
-const luaClientInfoMetatableName = "ClientInfo"
-
-func (s *LuaScript) RegisterClientInfoType() {
-	L := s.L
-	mt := L.NewTypeMetatable(luaClientInfoMetatableName)
-	L.SetGlobal(luaClientInfoMetatableName, mt)
-	// methods and fields
-	L.SetField(mt, "__index", L.NewFunction(
-		func(L *lua.LState) int {
-			ci, ok := getUserDataArg[ClientInfo](L, 1)
-			if !ok {
-				return 0
-			}
-			fieldName := L.CheckString(2)
-			switch fieldName {
-			case "source_ip":
-				if ci.SourceIP != nil {
-					L.Push(lua.LString(ci.SourceIP.String()))
-				} else {
-					L.Push(lua.LNil)
+func luaClientInfoType() []lua.Option {
+	return []lua.Option{
+		// Read-only fields: doh_path, tls_server_name, listener, protocol and
+		// listener_addr. The source IP is converted in __index.
+		lua.Type[ClientInfo](
+			lua.Rename("DoHPath", "doh_path"),
+			lua.Rename("TLSServerName", "tls_server_name"),
+			lua.Hide("SourceIP"),
+			lua.Meta("__index", func(c *lua.Call) error {
+				ci := c.Arg[ClientInfo](0)
+				switch fieldName := c.Arg[string](1); fieldName {
+				case "source_ip":
+					if ci.SourceIP == nil {
+						return nil
+					}
+					return c.Return(ci.SourceIP.String())
+				default:
+					return c.ArgError(1, fmt.Sprintf("clientinfo does not have field %q", fieldName))
 				}
-			case "doh_path":
-				L.Push(lua.LString(ci.DoHPath))
-			case "tls_server_name":
-				L.Push(lua.LString(ci.TLSServerName))
-			case "listener":
-				L.Push(lua.LString(ci.Listener))
-			case "protocol":
-				L.Push(lua.LString(ci.Protocol))
-			case "listener_addr":
-				L.Push(lua.LString(ci.ListenerAddr))
-			default:
-				L.ArgError(2, fmt.Sprintf("clientinfo does not have field %q", fieldName))
-				return 0
-			}
-			return 1
-		}))
+			}),
+		),
+	}
 }

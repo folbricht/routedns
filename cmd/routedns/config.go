@@ -219,7 +219,6 @@ type group struct {
 	// Lua scripting options
 	LuaScript       string `toml:"lua-script"`        // Inline Lua script
 	LuaScriptSource string `toml:"lua-script-source"` // Path to external Lua script file
-	LuaConcurrency  uint   `toml:"lua-concurrency"`   // Number of concurrent Lua instances, default 4
 	LuaNoSandbox    bool   `toml:"lua-no-sandbox"`    // Disable sandbox for trusted scripts
 	LuaTimeout      int    `toml:"lua-timeout"`       // Seconds a script may run, default 30. Negative removes the limit.
 

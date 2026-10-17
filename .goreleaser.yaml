@@ -53,6 +53,8 @@ builds:
   # Raspberry Pis (1/Zero), mips/mipsle cover common OpenWrt routers.
   # Softfloat since most router SoCs have no FPU. These are excluded
   # from the nfpm packages, whose distro arch names don't map cleanly.
+  # Lua needs a 64-bit platform, so these and the armv7 build above
+  # come without it.
   - id: embedded
     binary: routedns
     main: ./cmd/routedns/

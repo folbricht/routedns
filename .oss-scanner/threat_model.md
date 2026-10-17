@@ -72,7 +72,7 @@ internet as a public DoH/DoT endpoint.
   privileges and fails in an unprivileged container. The listener tests use
   loopback and work offline.
 - Build tags `nolua` and `noredis` drop those components; the default build
-  includes both.
+  includes both, except that 32-bit builds never include Lua.
 
 ## Severity
 
@@ -96,7 +96,7 @@ resolver the operator chose to expose are not vulnerabilities in RouteDNS.
 
 - Private keys under `testdata/` and `cmd/routedns/example-config/` are test
   fixtures, not leaked secrets.
-- Issues in dependencies (`miekg/dns`, `quic-go`, `pion/dtls`, `gopher-lua`,
+- Issues in dependencies (`miekg/dns`, `quic-go`, `pion/dtls`, `glua`,
   ...) only matter if they are reachable through RouteDNS; report them with
   that path.
 - Weak settings an operator explicitly configured (no TLS, no `allowed-net`,

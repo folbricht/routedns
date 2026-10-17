@@ -6,7 +6,7 @@
 
 `type = "lua"`
 
-Lua groups allow writing custom query handling logic using Lua scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. The `msg` it receives is the script's own copy of the query, so it can be changed freely and passed to a resolver, and what the script does to it is not seen by the components it came through. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
+Lua groups allow writing custom query handling logic using Lua 5.4 scripts. The script must define a `Resolve(msg, ci)` function that receives the DNS message and client info, and returns a response message and error. The `msg` it receives is the script's own copy of the query, so it can be changed freely and passed to a resolver, and what the script does to it is not seen by the components it came through. Scripts run in a sandboxed environment by default with access to DNS types, message construction, and upstream resolvers. They are not available in binaries built with the `nolua` tag, such as the `routedns-minimal-*` release artifacts.
 
 ### Configuration
 
@@ -17,29 +17,46 @@ Options:
 - `resolvers` - Array of upstream resolvers accessible in the script as `Resolvers[1]`, `Resolvers[2]`, etc.
 - `lua-script` - Inline Lua script (multi-line string in TOML using `"""`).
 - `lua-script-source` - Path to an external `.lua` file. Alternative to `lua-script`.
-- `lua-concurrency` - Number of concurrent Lua VM instances (pool size). Default `4`.
-- `lua-no-sandbox` - Disable the sandbox to allow `io`, `os`, `debug`, and dynamic code loading. Default `false`.
+- `lua-no-sandbox` - Disable the sandbox to allow `io`, `os` and loading code at run time. Default `false`.
 - `lua-timeout` - Seconds a script may run before it is cut off, both for a query and for the top level of the script when it is loaded. Default `30`. A negative value removes the limit. See [Run time](#run-time).
 
 ### Sandbox
 
-By default, scripts run in a sandbox that provides access to safe libraries: `base` (with dangerous functions removed), `string`, `math`, `table`, and `coroutine`. The following functions are blocked in sandbox mode: `dofile`, `loadfile`, `load`, `loadstring`, `module`, `require`. The `io`, `os`, `debug`, and `package` libraries are not loaded.
+By default, scripts run in a sandbox with the `base`, `string`, `table`, `math`, `utf8` and `coroutine` libraries. There is no access to files, the operating system or the network, other than through the resolvers the group is given, and code cannot be loaded at run time: `dofile`, `loadfile` and `load` are not available, and `require` has nothing to load.
 
-Set `lua-no-sandbox = true` to disable the sandbox and allow full access to all Lua libraries. Only use this for trusted scripts.
+Set `lua-no-sandbox = true` to add the `io` library, the `os` library (`clock`, `time`, `date` and `difftime` only) and `load`. Only use this for trusted scripts. The `debug` library is not available either way.
 
 ### State between queries
 
-Each of the `lua-concurrency` instances is a separate interpreter with its own set of globals, and each one lasts as long as the process. A global therefore keeps its value from one query to the next, but only on the instance that set it: with the default of four, a script counting queries in a global counts roughly a quarter of them on each instance, and which one a query lands on is whichever is free. State that has to be exact, or shared between queries, belongs somewhere other than a global.
+Scripts cannot share or keep state between executions. The top level of the script runs once, when it is loaded, and what it sets up there, its globals, tables and local variables, is frozen afterwards and shared by every query. A query that tries to change any of it fails with `attempt to modify a frozen table`. This includes assigning a global inside `Resolve`, so variables used within a query must be declared `local`:
 
-Nothing is shared between instances, so there is no need to guard a global against other queries running at the same time.
+```lua
+function Resolve(msg, ci)
+    local answer, err = Resolvers[1]:resolve(msg, ci)  -- not: answer, err = ...
+    return answer, err
+end
+```
 
-The query a script receives and the answer it returns are copies. A script can hold on to either, in a global or anywhere else, without affecting the components the query came through or the client waiting for the answer, and what it holds cannot be changed by them either.
+Messages, questions, records and EDNS0 options can be changed by scripts, so they can't be built when the script loads, and a script that keeps one from its top level fails to start. Build them in `Resolve` instead. Strings, numbers and tables of them can be set up at the top level, for example a list of names to match.
+
+Since every query sees the same frozen state, nothing needs to be guarded against other queries running at the same time, and a single group serves any number of queries at once.
+
+The query a script receives is a copy, so what the script does to it is not seen by the components the query came through.
 
 ### Run time
 
-A script is cut off after `lua-timeout` seconds and the query fails with an error. The pool holds `lua-concurrency` instances, and without a limit a script that never returns, an accidental loop with no exit for instance, holds the instance it runs on for the life of the process; once that has happened to every instance the group answers nothing further and each query that arrives waits for ever. The same limit applies to the top level of the script when it is loaded, so a script that does not return there fails to start rather than hanging startup.
+A query fails with an error if its script runs longer than `lua-timeout` seconds, or does more work than the interpreter allows for one call (10 million steps, roughly loop iterations and function calls, and 64 MiB allocated). The same limits apply to the top level of the script when it is loaded, so a script that does not return there fails to start rather than hanging startup. A loop with no exit is cut off by the step limit within a fraction of a second.
 
-The default is high enough that no script doing real work reaches it. Time spent waiting on an upstream resolver counts towards it but is not interrupted, so the limit is reached on the next thing the script does rather than in the middle of a query the script sent. A script that is meant to run longer than any limit can set `lua-timeout` to a negative value, which brings back the behaviour described above.
+Time spent waiting on an upstream resolver counts towards the timeout but is not interrupted, so the limit is reached on the next thing the script does rather than in the middle of a query the script sent. A negative `lua-timeout` removes the time limit; the step and allocation limits stay.
+
+### Lua version
+
+Scripts are Lua 5.4. Scripts written for Lua 5.1, which RouteDNS used up to v1.0.1, may need changes:
+
+- `unpack` is `table.unpack`.
+- `setfenv`, `getfenv` and `module` are gone.
+- Integers and floats are separate types. The constants such as `TypeA` are integers, `/` always gives a float, and `//` is integer division. A field that takes a number, such as `ttl`, rejects a float that is not a whole number.
+- Globals can't be assigned while handling a query, see [State between queries](#state-between-queries).
 
 ### Lua API
 
