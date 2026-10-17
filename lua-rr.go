@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	lua "github.com/folbricht/glua"
 	"github.com/miekg/dns"
@@ -35,13 +36,13 @@ func luaRRArg(v lua.Value) (dns.RR, error) {
 	return nil, fmt.Errorf("invalid type, expected RR, got %v", v.Kind())
 }
 
-func luaRRType() []lua.Option {
+func luaRRType(db rrFieldDB) []lua.Option {
 	return []lua.Option{
 		lua.Type[luaRR](
 			// methods
 			lua.Meta("__index", func(c *lua.Call) error {
 				rr := c.Arg[*luaRR](0)
-				v, err := rrDB.get(rr.rr, c.Arg[string](1))
+				v, err := db.get(rr.rr, c.Arg[string](1))
 				if err != nil {
 					return c.ArgError(1, err.Error())
 				}
@@ -49,7 +50,7 @@ func luaRRType() []lua.Option {
 			}),
 			lua.Meta("__newindex", func(c *lua.Call) error {
 				rr := c.Arg[*luaRR](0)
-				if err := rrDB.set(rr.rr, c.Arg[string](1), c.Value(2)); err != nil {
+				if err := db.set(rr.rr, c.Arg[string](1), c.Value(2)); err != nil {
 					return c.ArgError(1, err.Error())
 				}
 				return nil
@@ -81,7 +82,7 @@ func luaRRType() []lua.Option {
 						rr.Header().Rrtype = rtype
 						continue
 					}
-					if err := rrDB.set(rr, name, v); err != nil {
+					if err := db.set(rr, name, v); err != nil {
 						return c.ArgError(0, err.Error())
 					}
 				}
@@ -99,18 +100,26 @@ type rrFieldAccessors struct {
 	set   func(reflect.Value, lua.Value) error
 }
 
-var rrDB = func() rrFieldDB {
-	db := make(map[reflect.Type]map[string]rrFieldAccessors)
+// loadRRDB builds the field database the first time a Lua group asks for it.
+// It walks every record type the dns library knows, 80 of them and 221 fields,
+// which a process that never runs a script has no use for.
+var loadRRDB = sync.OnceValues(buildRRDB)
 
+func buildRRDB() (rrFieldDB, error) {
+	db := make(rrFieldDB, len(dns.TypeToRR))
 	for _, rrFunc := range dns.TypeToRR {
 		rr := rrFunc()
 		typ := reflect.TypeOf(rr)
-		db[typ] = rrFieldsForType(typ.Elem(), nil)
+		fields, err := rrFieldsForType(typ.Elem(), nil)
+		if err != nil {
+			return nil, err
+		}
+		db[typ] = fields
 	}
-	return db
-}()
+	return db, nil
+}
 
-func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors {
+func rrFieldsForType(typ reflect.Type, index []int) (map[string]rrFieldAccessors, error) {
 	fields := make(map[string]rrFieldAccessors)
 	for _, field := range reflect.VisibleFields(typ) {
 		if !field.IsExported() {
@@ -151,12 +160,12 @@ func rrFieldsForType(typ reflect.Type, index []int) map[string]rrFieldAccessors 
 		case reflect.TypeFor[[]dns.EDNS0](): // in OPT
 			a.get, a.set = getEDNS0SliceField, setEDNS0SliceField
 		default:
-			panic(fmt.Errorf("unsupported RR field value type %v in %s", field.Type, typ))
+			return nil, fmt.Errorf("unsupported RR field value type %v in %s", field.Type, typ)
 		}
 
 		fields[strings.ToLower(field.Name)] = a
 	}
-	return fields
+	return fields, nil
 }
 
 func (db rrFieldDB) get(rr dns.RR, name string) (lua.Value, error) {

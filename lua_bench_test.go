@@ -60,7 +60,6 @@ func newLuaBench(b *testing.B, name string) (*Lua, *dns.Msg) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Cleanup(r.Close)
 	q := new(dns.Msg)
 	q.SetQuestion("host.example.com.", dns.TypeA)
 	return r, q
