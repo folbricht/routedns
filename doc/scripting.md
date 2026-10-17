@@ -49,6 +49,20 @@ A query fails with an error if its script runs longer than `lua-timeout` seconds
 
 Time spent waiting on an upstream resolver counts towards the timeout. A query the script sent is not interrupted, but the script is cut off as soon as it returns past the limit. Otherwise the limit is checked as the script runs, every thousand steps or so, so a single read that blocks, from a file opened with `lua-no-sandbox` for instance, is not interrupted either. A negative `lua-timeout` removes the time limit; the step and allocation limits stay.
 
+### Performance
+
+A script adds a few microseconds to a query. Measured on a 2017 laptop CPU (Intel i7-7600U), on top of the upstream lookup itself:
+
+| Script | Added per query |
+| --- | --- |
+| Forward the query unchanged | about 2µs |
+| Choose an upstream by matching the query name | about 3µs |
+| Cap the TTL of each record in a three-record answer | about 5µs |
+
+An upstream lookup over the internet typically takes 10 to 50 milliseconds, thousands of times longer, so a script makes no noticeable difference to how quickly a client gets its answer. One group runs its script for any number of queries at the same time, so queries don't wait for each other either. To run a script only for some queries, put it behind a [router](routing.md); behind a [cache](caching.md), it only runs for queries the cache can't answer.
+
+The numbers come from `go test -bench Lua`, which runs these scripts against an in-process upstream, less the time that upstream takes on its own.
+
 ### Lua version
 
 Scripts are Lua 5.4. Scripts written for Lua 5.1, which RouteDNS used up to v1.0.1, may need changes:
