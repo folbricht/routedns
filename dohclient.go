@@ -22,7 +22,6 @@ import (
 
 	"github.com/jtacoma/uritemplates"
 	"github.com/miekg/dns"
-	"golang.org/x/net/http2"
 )
 
 // defaultDoHIdleTimeout is the default idle connection timeout for DoH TCP transport.
@@ -330,14 +329,12 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		DisableCompression:    true,
 		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       idleTimeout,
+		Protocols:             new(http.Protocols),
 	}
-	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
-	// the HTTP library. Turn it on for this transport.
-	if tr.TLSClientConfig != nil {
-		if err := http2.ConfigureTransport(tr); err != nil {
-			return nil, err
-		}
-	}
+	// With a custom tls.Config, HTTP2 isn't enabled by default in the HTTP
+	// library. Turn it on for this transport.
+	tr.Protocols.SetHTTP1(true)
+	tr.Protocols.SetHTTP2(true)
 
 	// Use a custom dialer if a bootstrap address, local address, proxy, netns, or socket options were provided
 	if opt.BootstrapAddr != "" || opt.LocalAddr != nil || opt.LocalAddrV4 != nil || opt.LocalAddrV6 != nil || opt.Dialer != nil || opt.NetNS.isSet() || opt.SocketOptions.active() {
