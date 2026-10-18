@@ -28,8 +28,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
-github.com/folbricht/glua v0.4.2 h1:msc5jREMFn401rmKAoqR/n5O7cS/u2wI5jFHjLgGDfQ=
-github.com/folbricht/glua v0.4.2/go.mod h1:qPmx7N9nIwG1mqQaBjLFVynDi0Y3vrmtdQuvTFEXdeg=
+github.com/folbricht/glua v1.0.0 h1:ObQMtvLv0/d1zpZ6N1Pt5n+b/J1AHf84IUF+IeIPzu8=
+github.com/folbricht/glua v1.0.0/go.mod h1:qPmx7N9nIwG1mqQaBjLFVynDi0Y3vrmtdQuvTFEXdeg=
 github.com/go-logr/logr v1.4.2 h1:6pFjapn8bFcIbiKo3XT4j/BhANplGihG6tvd+8rYgrY=
 github.com/go-logr/logr v1.4.2/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
 github.com/go-task/slim-sprig/v3 v3.0.0 h1:sUs3vkvUymDpBKi3qH1YSqBQk9+9D/8M2mN1vB6EwHI=
