@@ -113,14 +113,11 @@ func TestKeystoreCaching(t *testing.T) {
 
 	ks.addDNSKEY("example.com.", []*dns.DNSKEY{zskRR.(*dns.DNSKEY), kskRR.(*dns.DNSKEY)})
 
-	zsk, ksk := ks.getDNSKEY("example.com.")
-	require.Len(t, zsk, 1)
-	require.Len(t, ksk, 1)
+	keys := ks.getDNSKEY("example.com.")
+	require.Len(t, keys, 2)
 
 	// Second call should return cached values
-	zsk2, ksk2 := ks.getDNSKEY("example.com.")
-	require.Equal(t, zsk, zsk2)
-	require.Equal(t, ksk, ksk2)
+	require.Equal(t, keys, ks.getDNSKEY("example.com."))
 }
 
 func TestKeystoreTTLExpiry(t *testing.T) {
@@ -132,15 +129,13 @@ func TestKeystoreTTLExpiry(t *testing.T) {
 	ks.addDNSKEY("example.com.", []*dns.DNSKEY{zskRR.(*dns.DNSKEY)})
 
 	// Should be in cache
-	zsk, _ := ks.getDNSKEY("example.com.")
-	require.Len(t, zsk, 1)
+	require.Len(t, ks.getDNSKEY("example.com."), 1)
 
 	// Advance past TTL
 	currentTime = now.Add(61 * time.Second)
 
 	// Should be expired
-	zsk, _ = ks.getDNSKEY("example.com.")
-	require.Nil(t, zsk)
+	require.Nil(t, ks.getDNSKEY("example.com."))
 }
 
 func TestKeystoreDSExpiry(t *testing.T) {
@@ -251,7 +246,7 @@ func TestBuildChainOfTrustCaching(t *testing.T) {
 	v.SetAnchor(".", 20326, dns.RSASHA256, dns.SHA256, "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D")
 
 	// First call will trigger a lookup (and fail due to no DNSKEY)
-	_, _, err := v.buildChainOfTrust(".")
+	_, err := v.buildChainOfTrust(".")
 	require.Error(t, err) // Expected to fail since mock returns no keys
 
 	count1 := lookupCount.Load()
