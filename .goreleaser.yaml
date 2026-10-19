@@ -153,6 +153,9 @@ nfpms:
 # Casks are macOS-only; Linux users have the native packages above.
 homebrew_casks:
   - name: routedns
+    # Only the full builds; the minimal ones share their OS/arch.
+    ids:
+      - default
     repository:
       owner: folbricht
       name: homebrew-tap
