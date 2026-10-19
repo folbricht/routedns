@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"strings"
 	"time"
 
@@ -145,14 +144,14 @@ func (v *Validator) proveNoDS(zone string) (bool, error) {
 		return false, nil
 	}
 	parent := parentZone(zone)
-	parentZSK, _, err := v.buildChainOfTrust(parent)
+	parentKeys, err := v.buildChainOfTrust(parent)
 	if err != nil {
 		if errors.Is(err, ErrInsecureDelegation) {
 			return true, nil
 		}
 		return false, err
 	}
-	if err := verifyDSDenial(resp, zone, parentZSK, v.now()); err != nil {
+	if err := verifyDSDenial(resp, zone, parentKeys, v.now()); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -178,12 +177,12 @@ func (v *Validator) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG) error {
 			lastErr = fmt.Errorf("%w: %s cannot sign %s", ErrSignerOutOfBailiwick, signer, owner)
 			continue
 		}
-		zsk, _, err := v.buildChainOfTrust(signer)
+		keys, err := v.buildChainOfTrust(signer)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		if err := verifyRRSIG(sig, zsk, rrset, v.now()); err != nil {
+		if err := verifyRRSIG(sig, keys, rrset, v.now()); err != nil {
 			lastErr = err
 			continue
 		}
@@ -194,30 +193,34 @@ func (v *Validator) validateRRset(rrset []dns.RR, sigs []*dns.RRSIG) error {
 
 // buildChainOfTrust recursively builds a DNSSEC chain of trust from
 // the root trust anchor down to the specified zone. It returns the
-// validated ZSK and KSK for the zone.
-func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err error) {
+// validated DNSKEY RRset of the zone. RFC 4035 §5.2 forbids using the SEP
+// flag during validation, so any key in the set may sign any RRset in the
+// zone, which is what lets a single combined signing key (CSK) work.
+func (v *Validator) buildChainOfTrust(zone string) ([]*dns.DNSKEY, error) {
 	zone = dns.CanonicalName(zone)
 
 	// Check cache first
-	if zsk, ksk := v.ks.getDNSKEY(zone); zsk != nil || ksk != nil {
-		return zsk, ksk, nil
+	if keys := v.ks.getDNSKEY(zone); keys != nil {
+		return keys, nil
 	}
 
-	// Fetch DNSKEY records for this zone
-	fetchedZSK, fetchedKSK, dnsSigs, err := v.lookupDNSKEY(zone)
+	// Fetch DNSKEY records for this zone. The self-signature covers the
+	// whole RRset, but keys without the Zone flag or with the Revoke flag
+	// (RFC 5011) can't authenticate data.
+	dnskeys, dnsSigs, err := v.lookupDNSKEY(zone)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to lookup DNSKEY for %s: %w", zone, err)
+		return nil, fmt.Errorf("failed to lookup DNSKEY for %s: %w", zone, err)
 	}
-	if len(fetchedKSK) == 0 {
-		return nil, nil, fmt.Errorf("%w: no KSK for %s", ErrNoKey, zone)
+	allKeys := make([]dns.RR, len(dnskeys))
+	var keys []*dns.DNSKEY
+	for i, k := range dnskeys {
+		allKeys[i] = k
+		if k.Flags&dns.ZONE != 0 && k.Flags&dns.REVOKE == 0 {
+			keys = append(keys, k)
+		}
 	}
-
-	allKeys := make([]dns.RR, 0, len(fetchedZSK)+len(fetchedKSK))
-	for _, k := range fetchedZSK {
-		allKeys = append(allKeys, k)
-	}
-	for _, k := range fetchedKSK {
-		allKeys = append(allKeys, k)
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("%w: no DNSKEY for %s", ErrNoKey, zone)
 	}
 
 	// Obtain authenticated DS records for this zone — from the configured
@@ -226,7 +229,7 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 	if zone == "." {
 		dsRecords = v.ks.getDS(".")
 		if len(dsRecords) == 0 {
-			return nil, nil, ErrNoTrustAnchor
+			return nil, ErrNoTrustAnchor
 		}
 	} else {
 		var (
@@ -235,23 +238,23 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		)
 		dsRecords, dsSigs, dsResp, err = v.lookupDS(zone)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to lookup DS for %s: %w", zone, err)
+			return nil, fmt.Errorf("failed to lookup DS for %s: %w", zone, err)
 		}
 
 		parent := parentZone(zone)
-		parentZSK, _, err := v.buildChainOfTrust(parent)
+		parentKeys, err := v.buildChainOfTrust(parent)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to build chain of trust for parent %s: %w", parent, err)
+			return nil, fmt.Errorf("failed to build chain of trust for parent %s: %w", parent, err)
 		}
 
 		if len(dsRecords) == 0 {
-			if err := verifyDSDenial(dsResp, zone, parentZSK, v.now()); err != nil {
-				return nil, nil, err
+			if err := verifyDSDenial(dsResp, zone, parentKeys, v.now()); err != nil {
+				return nil, err
 			}
-			return nil, nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
+			return nil, fmt.Errorf("%w: %s", ErrInsecureDelegation, zone)
 		}
 		if len(dsSigs) == 0 {
-			return nil, nil, fmt.Errorf("%w: DS for %s", ErrNoSignature, zone)
+			return nil, fmt.Errorf("%w: DS for %s", ErrNoSignature, zone)
 		}
 
 		dsRRset := make([]dns.RR, len(dsRecords))
@@ -260,22 +263,22 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 		}
 		var verified bool
 		for _, dsSig := range dsSigs {
-			if err := verifyRRSIG(dsSig, parentZSK, dsRRset, v.now()); err == nil {
+			if err := verifyRRSIG(dsSig, parentKeys, dsRRset, v.now()); err == nil {
 				verified = true
 				break
 			}
 		}
 		if !verified {
-			return nil, nil, fmt.Errorf("%w: DS RRSIG for %s", ErrSignatureInvalid, zone)
+			return nil, fmt.Errorf("%w: DS RRSIG for %s", ErrSignatureInvalid, zone)
 		}
 	}
 
 	// RFC 4035 §5.2: the DNSKEY RRset must be signed by a key that itself
 	// chains to an authenticated DS. Restrict candidate signing keys to
 	// those matching a DS before accepting the self-signature.
-	trustedKSK := filterKeysByDS(fetchedKSK, dsRecords)
-	if len(trustedKSK) == 0 {
-		return nil, nil, fmt.Errorf("KSK doesn't match DS for %s: %w", zone, ErrDSMismatch)
+	trustedKeys := filterKeysByDS(keys, dsRecords)
+	if len(trustedKeys) == 0 {
+		return nil, fmt.Errorf("no DNSKEY matches DS for %s: %w", zone, ErrDSMismatch)
 	}
 
 	var sigSeen, sigVerified bool
@@ -284,48 +287,42 @@ func (v *Validator) buildChainOfTrust(zone string) (zsk, ksk []*dns.DNSKEY, err 
 			continue
 		}
 		sigSeen = true
-		if err := verifyRRSIG(sig, trustedKSK, allKeys, v.now()); err == nil {
+		if err := verifyRRSIG(sig, trustedKeys, allKeys, v.now()); err == nil {
 			sigVerified = true
 			break
 		}
 	}
 	if !sigSeen {
-		return nil, nil, fmt.Errorf("%w: no RRSIG covering DNSKEY for %s", ErrNoSignature, zone)
+		return nil, fmt.Errorf("%w: no RRSIG covering DNSKEY for %s", ErrNoSignature, zone)
 	}
 	if !sigVerified {
-		return nil, nil, fmt.Errorf("DNSKEY self-signature verification failed for %s: %w", zone, ErrSignatureInvalid)
+		return nil, fmt.Errorf("DNSKEY self-signature verification failed for %s: %w", zone, ErrSignatureInvalid)
 	}
 
 	// Cache the validated keys
-	allDNSKEYs := slices.Concat(fetchedZSK, fetchedKSK)
-	v.ks.addDNSKEY(zone, allDNSKEYs)
+	v.ks.addDNSKEY(zone, keys)
 
-	return fetchedZSK, fetchedKSK, nil
+	return keys, nil
 }
 
 // lookupDNSKEY queries for DNSKEY records for the given zone and returns
-// the ZSKs, KSKs, and RRSIGs from the response.
-func (v *Validator) lookupDNSKEY(name string) (zsk, ksk []*dns.DNSKEY, sigs []*dns.RRSIG, err error) {
+// the DNSKEYs and RRSIGs from the response.
+func (v *Validator) lookupDNSKEY(name string) (keys []*dns.DNSKEY, sigs []*dns.RRSIG, err error) {
 	q := new(dns.Msg)
 	q.SetQuestion(dns.CanonicalName(name), dns.TypeDNSKEY)
 	q.SetEdns0(4096, true)
 	q.MsgHdr.CheckingDisabled = true
 	a, err := v.resolver(q)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if a.Rcode != dns.RcodeSuccess {
-		return nil, nil, nil, fmt.Errorf("DNSKEY lookup for %q failed: rcode %s", name, dns.RcodeToString[a.Rcode])
+		return nil, nil, fmt.Errorf("DNSKEY lookup for %q failed: rcode %s", name, dns.RcodeToString[a.Rcode])
 	}
 	for _, rr := range a.Answer {
 		switch r := rr.(type) {
 		case *dns.DNSKEY:
-			switch r.Flags {
-			case 257:
-				ksk = append(ksk, r)
-			case 256:
-				zsk = append(zsk, r)
-			}
+			keys = append(keys, r)
 		case *dns.RRSIG:
 			sigs = append(sigs, r)
 		}

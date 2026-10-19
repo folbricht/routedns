@@ -82,11 +82,11 @@ func (v *Validator) rrsetSignedFromAncestor(rrset []dns.RR, sigs []*dns.RRSIG, q
 		if !dns.IsSubDomain(signer, qname) {
 			continue
 		}
-		zsk, _, err := v.buildChainOfTrust(signer)
+		keys, err := v.buildChainOfTrust(signer)
 		if err != nil {
 			continue
 		}
-		if verifyRRSIG(sig, zsk, rrset, v.now()) == nil {
+		if verifyRRSIG(sig, keys, rrset, v.now()) == nil {
 			return true
 		}
 	}

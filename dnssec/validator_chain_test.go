@@ -122,6 +122,72 @@ func TestBuildChainOfTrustAcceptsSignedDS(t *testing.T) {
 	require.NoError(t, v.Validate(answer))
 }
 
+// TestValidateAcceptsCSKZone covers a zone signed by a single combined signing
+// key (CSK, flags 257) that signs every RRset, including its own answers and
+// the DS RRset of a delegated child.
+func TestValidateAcceptsCSKZone(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, rootZSKpriv := genKey(t, ".", 256)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK})
+
+	csk, cskPriv := genKey(t, "csk.", 257)
+	cskDNSKEYSig := signRRset(t, csk, cskPriv, now, []dns.RR{csk})
+	cskDS := csk.ToDS(dns.SHA256)
+	cskDSSig := signRRset(t, rootZSK, rootZSKpriv, now, []dns.RR{cskDS})
+
+	childKSK, childKSKpriv := genKey(t, "child.csk.", 257)
+	childZSK, childZSKpriv := genKey(t, "child.csk.", 256)
+	childDNSKEYSig := signRRset(t, childKSK, childKSKpriv, now, []dns.RR{childZSK, childKSK})
+	childDS := childKSK.ToDS(dns.SHA256)
+	childDSSig := signRRset(t, csk, cskPriv, now, []dns.RR{childDS})
+
+	cskA, _ := dns.NewRR("csk. 300 IN A 1.2.3.4")
+	cskASig := signRRset(t, csk, cskPriv, now, []dns.RR{cskA})
+	childA, _ := dns.NewRR("child.csk. 300 IN A 5.6.7.8")
+	childASig := signRRset(t, childZSK, childZSKpriv, now, []dns.RR{childA})
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		name := dns.CanonicalName(q.Question[0].Name)
+		switch q.Question[0].Qtype {
+		case dns.TypeDNSKEY:
+			switch name {
+			case ".":
+				a.Answer = []dns.RR{rootZSK, rootKSK, rootDNSKEYSig}
+			case "csk.":
+				a.Answer = []dns.RR{csk, cskDNSKEYSig}
+			case "child.csk.":
+				a.Answer = []dns.RR{childZSK, childKSK, childDNSKEYSig}
+			}
+		case dns.TypeDS:
+			switch name {
+			case "csk.":
+				a.Answer = []dns.RR{cskDS, cskDSSig}
+			case "child.csk.":
+				a.Answer = []dns.RR{childDS, childDSSig}
+			}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	answer := new(dns.Msg)
+	answer.SetQuestion("csk.", dns.TypeA)
+	answer.Answer = []dns.RR{cskA, cskASig}
+	require.NoError(t, v.Validate(answer))
+
+	answer = new(dns.Msg)
+	answer.SetQuestion("child.csk.", dns.TypeA)
+	answer.Answer = []dns.RR{childA, childASig}
+	require.NoError(t, v.Validate(answer))
+}
+
 // TestValidateAcceptsRRsetDuringZSKRollover covers a ZSK rollover where the
 // answer RRset carries two RRSIGs: one from a retired ZSK that is no longer in
 // the published DNSKEY set, and one from the current ZSK. The retired
@@ -606,4 +672,38 @@ func signRRset(t *testing.T, key *dns.DNSKEY, priv crypto.Signer, now time.Time,
 	}
 	require.NoError(t, sig.Sign(priv, rrset))
 	return sig
+}
+
+// TestBuildChainOfTrustRevokedKeyInRRset covers an RFC 5011 rollover where the
+// DNSKEY RRset still carries a revoked key. The self-signature covers the full
+// RRset, so it must verify with the revoked key included, while the revoked
+// key itself must not be usable to sign data.
+func TestBuildChainOfTrustRevokedKeyInRRset(t *testing.T) {
+	now := time.Now()
+
+	rootKSK, rootKSKpriv := genKey(t, ".", 257)
+	rootZSK, _ := genKey(t, ".", 256)
+	revoked, revokedPriv := genKey(t, ".", 257|dns.REVOKE)
+	rootDNSKEYSig := signRRset(t, rootKSK, rootKSKpriv, now, []dns.RR{rootZSK, rootKSK, revoked})
+
+	resolver := func(q *dns.Msg) (*dns.Msg, error) {
+		a := new(dns.Msg)
+		a.SetReply(q)
+		if q.Question[0].Qtype == dns.TypeDNSKEY {
+			a.Answer = []dns.RR{rootZSK, rootKSK, revoked, rootDNSKEYSig}
+		}
+		return a, nil
+	}
+
+	v := NewValidator(WithResolver(resolver), WithTime(func() time.Time { return now }))
+	rootAnchor := rootKSK.ToDS(dns.SHA256)
+	v.SetAnchor(".", rootAnchor.KeyTag, rootAnchor.Algorithm, rootAnchor.DigestType, rootAnchor.Digest)
+
+	keys, err := v.buildChainOfTrust(".")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []*dns.DNSKEY{rootZSK, rootKSK}, keys)
+
+	txt, _ := dns.NewRR(". 300 IN TXT \"forged\"")
+	txtSig := signRRset(t, revoked, revokedPriv, now, []dns.RR{txt})
+	require.Error(t, v.validateRRset([]dns.RR{txt}, []*dns.RRSIG{txtSig}))
 }

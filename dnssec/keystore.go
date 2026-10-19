@@ -28,8 +28,7 @@ func (item *keystoreEntry) setDNSKEY(keys *dnskeySet) {
 
 type dnskeySet struct {
 	expiresAt time.Time
-	zsk       []*dns.DNSKEY
-	ksk       []*dns.DNSKEY
+	keys      []*dns.DNSKEY
 }
 
 type dsSet struct {
@@ -73,45 +72,34 @@ func (s *keystore) addDS(name string, dss ...*dns.DS) {
 }
 
 func (s *keystore) addDNSKEY(name string, keys []*dns.DNSKEY) {
-	var (
-		ttl uint32 = math.MaxUint32
-		zsk []*dns.DNSKEY
-		ksk []*dns.DNSKEY
-	)
+	var ttl uint32 = math.MaxUint32
 	for _, key := range keys {
 		if key.Hdr.Ttl < ttl {
 			ttl = key.Hdr.Ttl
 		}
-		switch key.Flags {
-		case 257:
-			ksk = append(ksk, key)
-		case 256:
-			zsk = append(zsk, key)
-		}
 	}
 	keyset := &dnskeySet{
 		expiresAt: s.now().Add(time.Duration(ttl) * time.Second),
-		zsk:       zsk,
-		ksk:       ksk,
+		keys:      keys,
 	}
 	item := s.getItem(name)
 	item.setDNSKEY(keyset)
 }
 
-func (s *keystore) getDNSKEY(name string) (zsk, ksk []*dns.DNSKEY) {
+func (s *keystore) getDNSKEY(name string) []*dns.DNSKEY {
 	mk := dns.CanonicalName(name)
 	s.mu.RLock()
 	item, ok := s.store[mk]
 	s.mu.RUnlock()
 	if !ok {
-		return nil, nil
+		return nil
 	}
 	item.mu.RLock()
 	defer item.mu.RUnlock()
 	if item.keys == nil || s.now().After(item.keys.expiresAt) {
-		return nil, nil
+		return nil
 	}
-	return item.keys.zsk, item.keys.ksk
+	return item.keys.keys
 }
 
 func (s *keystore) getDS(name string) []*dns.DS {
