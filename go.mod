@@ -9,7 +9,7 @@ require (
 	github.com/cisco/go-hpke v0.0.0-20230407100446-246075f83609
 	github.com/cloudflare/odoh-go v1.0.1-0.20230926114050-f39fa019b017
 	github.com/coreos/go-systemd/v22 v22.7.0
-	github.com/folbricht/glua v1.0.0
+	github.com/folbricht/glua v1.1.0
 	github.com/heimdalr/dag v1.5.1
 	github.com/jtacoma/uritemplates v1.0.0
 	github.com/miekg/dns v1.1.73
@@ -20,7 +20,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/txthinking/socks5 v0.0.0-20260601051520-339b044ab0eb
-	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 )
 
@@ -41,5 +40,6 @@ require (
 	go.uber.org/atomic v1.12.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
