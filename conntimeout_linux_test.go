@@ -1,9 +1,10 @@
 package rdns
 
 import (
-	"context"
+	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 // hangingAddr returns the address of a TCP listener on which connecting hangs:
 // on Linux a full accept queue drops new connection attempts.
 func hangingAddr(t *testing.T) string {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { ln.Close() })
@@ -32,45 +34,48 @@ func hangingAddr(t *testing.T) string {
 	return ""
 }
 
-// A connection attempt to an upstream that drops packets has to end with the
-// query timeout, not run for as long as the kernel keeps retrying it.
+// A connection attempt to an upstream that drops packets has to end at the
+// connect timeout, not run for as long as the kernel keeps retrying it.
 func TestConnectionAttemptTimeout(t *testing.T) {
-	const timeout = 300 * time.Millisecond
-	dot, err := NewDoTClient("test-hang-dot", "127.0.0.1:853", DoTClientOptions{QueryTimeout: timeout})
+	dot, err := NewDoTClient("test-hang-dot", "127.0.0.1:853", DoTClientOptions{})
 	require.NoError(t, err)
-	doh, err := dohTcpTransport(DoHClientOptions{QueryTimeout: timeout})
-	require.NoError(t, err)
-	dohLocal, err := dohTcpTransport(DoHClientOptions{QueryTimeout: timeout, LocalAddr: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	require.Equal(t, timeout, doh.(*http.Transport).TLSHandshakeTimeout)
-
-	// Without a configured query timeout the default applies
 	tcp, err := NewDNSClient("test-hang-tcp", "127.0.0.1:53", "tcp", DNSClientOptions{})
 	require.NoError(t, err)
-	require.Equal(t, defaultQueryTimeout, tcp.pipeline.client.(GenericDNSClient).Timeout)
+	doh, err := dohTcpTransport(DoHClientOptions{})
+	require.NoError(t, err)
+	dohLocal, err := dohTcpTransport(DoHClientOptions{LocalAddr: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	require.Equal(t, dohTLSHandshakeTimeout, doh.(*http.Transport).TLSHandshakeTimeout)
 
-	dialDoH := func(tr http.RoundTripper) func(string) error {
+	get := func(tr http.RoundTripper) func(string) error {
 		return func(addr string) error {
-			_, err := tr.(*http.Transport).DialContext(context.Background(), "tcp", addr)
+			_, err := (&http.Client{Transport: tr}).Get("https://" + addr)
 			return err
 		}
 	}
 	dialers := map[string]func(addr string) error{
 		"dot":               func(addr string) error { _, err := dot.pipeline.client.Dial(addr); return err },
-		"doh":               dialDoH(doh),
-		"doh-local-address": dialDoH(dohLocal),
+		"tcp":               func(addr string) error { _, err := tcp.pipeline.client.Dial(addr); return err },
+		"doh":               get(doh),
+		"doh-local-address": get(dohLocal),
 	}
-	for name, dial := range dialers {
-		t.Run(name, func(t *testing.T) {
-			addr := hangingAddr(t)
+	addr := hangingAddr(t)
+	var wg sync.WaitGroup
+	for name, dial := range dialers { // all at once, each takes the full timeout
+		wg.Go(func() {
+			start := time.Now()
 			done := make(chan error, 1)
 			go func() { done <- dial(addr) }()
 			select {
 			case err := <-done:
-				require.Error(t, err)
-			case <-time.After(5 * timeout):
-				t.Fatal("still connecting long after the timeout")
+				var timedOut net.Error
+				if !errors.As(err, &timedOut) || !timedOut.Timeout() || time.Since(start) < connectTimeout {
+					t.Errorf("%s: want a timeout after %v, got %v after %v", name, connectTimeout, err, time.Since(start))
+				}
+			case <-time.After(connectTimeout + time.Second):
+				t.Errorf("%s: still connecting after the connect timeout", name)
 			}
 		})
 	}
+	wg.Wait()
 }

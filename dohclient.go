@@ -27,6 +27,9 @@ import (
 // defaultDoHIdleTimeout is the default idle connection timeout for DoH TCP transport.
 const defaultDoHIdleTimeout = 30 * time.Second
 
+// dohTLSHandshakeTimeout limits the TLS handshake of a DoH TCP connection.
+const dohTLSHandshakeTimeout = 10 * time.Second
+
 // maxDoHResponseSize is the largest HTTP response body a DoH/ODoH client will
 // buffer before attempting to parse it. A DNS message can't exceed 65535 bytes
 // (the 16-bit length prefix used over TCP); the extra slack covers ODoH
@@ -323,15 +326,12 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	if idleTimeout == 0 {
 		idleTimeout = defaultDoHIdleTimeout
 	}
-	// Connections are set up independently of the query that needs one, so
-	// they need a limit of their own or attempts to a silent upstream pile up.
-	connectTimeout := cmp.Or(opt.QueryTimeout, defaultQueryTimeout)
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
 		DialContext:           (&net.Dialer{Timeout: connectTimeout}).DialContext,
-		TLSHandshakeTimeout:   connectTimeout,
+		TLSHandshakeTimeout:   dohTLSHandshakeTimeout,
 		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       idleTimeout,
 		Protocols:             new(http.Protocols),
