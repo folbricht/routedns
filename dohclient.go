@@ -27,6 +27,9 @@ import (
 // defaultDoHIdleTimeout is the default idle connection timeout for DoH TCP transport.
 const defaultDoHIdleTimeout = 30 * time.Second
 
+// dohTLSHandshakeTimeout limits the TLS handshake of a DoH TCP connection.
+const dohTLSHandshakeTimeout = 10 * time.Second
+
 // maxDoHResponseSize is the largest HTTP response body a DoH/ODoH client will
 // buffer before attempting to parse it. A DNS message can't exceed 65535 bytes
 // (the 16-bit length prefix used over TCP); the extra slack covers ODoH
@@ -327,6 +330,8 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
+		DialContext:           (&net.Dialer{Timeout: connectTimeout}).DialContext,
+		TLSHandshakeTimeout:   dohTLSHandshakeTimeout,
 		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       idleTimeout,
 		Protocols:             new(http.Protocols),
@@ -368,9 +373,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
 			if opt.NetNS.usesXSocket() {
-				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, 0)
+				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, connectTimeout)
 			}
-			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
+			d := net.Dialer{Timeout: connectTimeout, LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {
 				var e error

@@ -56,6 +56,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 
 	client := GenericDNSClient{
 		Net:           "tcp-tls",
+		Timeout:       connectTimeout,
 		TLSConfig:     opt.TLSConfig,
 		Dialer:        opt.Dialer,
 		LocalAddr:     opt.LocalAddr,

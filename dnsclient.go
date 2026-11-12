@@ -65,7 +65,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		LocalAddr:     opt.LocalAddr,
 		LocalAddrV4:   opt.LocalAddrV4,
 		LocalAddrV6:   opt.LocalAddrV6,
-		Timeout:       opt.QueryTimeout,
+		Timeout:       connectTimeout,
 		NetNS:         opt.NetNS,
 		SocketOptions: opt.SocketOptions,
 	}

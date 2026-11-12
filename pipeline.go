@@ -14,6 +14,10 @@ import (
 // Defines how long to wait for a response from the resolver if no other timeout is given.
 const defaultQueryTimeout = 2 * time.Second
 
+// Limit on a connection attempt to an upstream. It doesn't follow the query
+// timeout, since a connection outlives the query that asked for it.
+const connectTimeout = 5 * time.Second
+
 // Tear down an upstream connection if nothing has been received for this long,
 // unless the resolver configures its own.
 const defaultIdleTimeout = 10 * time.Second
