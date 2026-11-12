@@ -323,10 +323,15 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 	if idleTimeout == 0 {
 		idleTimeout = defaultDoHIdleTimeout
 	}
+	// Connections are set up independently of the query that needs one, so
+	// they need a limit of their own or attempts to a silent upstream pile up.
+	connectTimeout := cmp.Or(opt.QueryTimeout, defaultQueryTimeout)
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       opt.TLSConfig,
 		DisableCompression:    true,
+		DialContext:           (&net.Dialer{Timeout: connectTimeout}).DialContext,
+		TLSHandshakeTimeout:   connectTimeout,
 		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       idleTimeout,
 		Protocols:             new(http.Protocols),
@@ -368,9 +373,9 @@ func dohTcpTransport(opt DoHClientOptions) (http.RoundTripper, error) {
 			addr = resolveEndpointAddr(addr)
 			localAddr := selectLocalAddr(addr, opt.LocalAddr, opt.LocalAddrV4, opt.LocalAddrV6)
 			if opt.NetNS.usesXSocket() {
-				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, 0)
+				return dialXSocket(opt.NetNS.XSocket, network, addr, opt.SocketOptions, localAddr, connectTimeout)
 			}
-			d := net.Dialer{LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
+			d := net.Dialer{Timeout: connectTimeout, LocalAddr: &net.TCPAddr{IP: localAddr}, Control: opt.SocketOptions.dialerControl()}
 			var conn net.Conn
 			err := RunInNetNS(opt.NetNS, func() error {
 				var e error

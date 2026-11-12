@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"cmp"
 	"crypto/tls"
 	"net"
 	"strings"
@@ -65,7 +66,7 @@ func NewDNSClient(id, endpoint, network string, opt DNSClientOptions) (*DNSClien
 		LocalAddr:     opt.LocalAddr,
 		LocalAddrV4:   opt.LocalAddrV4,
 		LocalAddrV6:   opt.LocalAddrV6,
-		Timeout:       opt.QueryTimeout,
+		Timeout:       cmp.Or(opt.QueryTimeout, defaultQueryTimeout),
 		NetNS:         opt.NetNS,
 		SocketOptions: opt.SocketOptions,
 	}

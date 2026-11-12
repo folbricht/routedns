@@ -1,6 +1,7 @@
 package rdns
 
 import (
+	"cmp"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -56,6 +57,7 @@ func NewDoTClient(id, endpoint string, opt DoTClientOptions) (*DoTClient, error)
 
 	client := GenericDNSClient{
 		Net:           "tcp-tls",
+		Timeout:       cmp.Or(opt.QueryTimeout, defaultQueryTimeout),
 		TLSConfig:     opt.TLSConfig,
 		Dialer:        opt.Dialer,
 		LocalAddr:     opt.LocalAddr,
