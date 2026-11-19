@@ -3,6 +3,7 @@ package rdns
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -259,4 +260,33 @@ func TestDoQClientIdleTimeout(t *testing.T) {
 			require.Equal(t, tc.want, c.connection.config.MaxIdleTimeout)
 		})
 	}
+}
+
+// Queries to an upstream that does not answer must each fail after about the
+// query timeout, not queue up behind one another's connection attempts.
+func TestDOQDeadUpstream(t *testing.T) {
+	const timeout = 300 * time.Millisecond
+	dead, err := net.ListenPacket("udp", "127.0.0.1:0") // never answers
+	require.NoError(t, err)
+	defer dead.Close()
+	d, err := NewDoQClient("test-doq-dead", dead.LocalAddr().String(), DoQClientOptions{QueryTimeout: timeout})
+	require.NoError(t, err)
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Go(func() {
+			_, err := d.Resolve(q, ClientInfo{})
+			var timedOut net.Error
+			if !errors.As(err, &timedOut) || !timedOut.Timeout() {
+				t.Errorf("expected a timeout, got %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+	require.GreaterOrEqual(t, elapsed, timeout)
+	require.Less(t, elapsed, 3*timeout) // one at a time takes 6x
 }
