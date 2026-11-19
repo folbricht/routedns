@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"log/slog"
@@ -184,6 +183,8 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 
 	deadlineTime := time.Now().Add(d.DoQClientOptions.QueryTimeout)
+	ctx, cancel := context.WithDeadline(context.Background(), deadlineTime)
+	defer cancel()
 
 	// Encode the query
 	p, err := qc.Pack()
@@ -211,7 +212,7 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			conn = d.connectionV6
 		}
 	}
-	stream, err := conn.getStream(d.endpoint, isReplayableOpcode(qc.Opcode), d.log)
+	stream, err := conn.getStream(ctx, d.endpoint, isReplayableOpcode(qc.Opcode), d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
@@ -290,7 +291,7 @@ type quicConnection struct {
 	lAddr     net.IP
 	tlsConfig *tls.Config
 	config    *quic.Config
-	mu        sync.Mutex
+	mu        chan struct{} // a mutex that a query can stop waiting for
 	udpConn   *net.UDPConn
 	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 }
@@ -313,6 +314,7 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 		lAddr:     lAddr,
 		tlsConfig: tlsConfig,
 		config:    config,
+		mu:        make(chan struct{}, 1),
 		udpConn:   udpConn,
 		dialFunc:  dialFunc,
 	}, nil
@@ -322,16 +324,21 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 // needed. Callers about to write something that must not be replayed pass
 // replaySafe=false, and the stream is then not handed out until the
 // connection's handshake has completed. That wait holds the lock, so it also
-// stalls other queries on the same connection, but only for as long as the
-// handshake takes, and those queries have nowhere else to go in the meantime.
-func (s *quicConnection) getStream(endpoint string, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
+// stalls other queries on the same connection, until the handshake ends or
+// their own deadline passes. ctx bounds the wait for the lock, not the dial:
+// a connection outlives the query that asked for it.
+func (s *quicConnection) getStream(ctx context.Context, endpoint string, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
 	rAddr, err := net.ResolveUDPAddr("udp", endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	select {
+	case s.mu <- struct{}{}:
+		defer func() { <-s.mu }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	// If we don't have a connection yet, make one
 	if s.Conn == nil {
