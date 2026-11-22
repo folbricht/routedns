@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/netip"
 	"sync"
 	"time"
 
@@ -293,18 +292,20 @@ func resolveUDPAddr(ctx context.Context, endpoint string) (*net.UDPAddr, error) 
 	if err != nil {
 		return nil, err
 	}
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	// LookupIPAddr rather than LookupNetIP, which drops the zone of a
+	// link-local literal.
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, err
 	}
-	ip := ips[0].Unmap()
-	for _, a := range ips {
-		if a.Unmap().Is4() {
-			ip = a.Unmap()
+	addr := addrs[0]
+	for _, a := range addrs {
+		if a.IP.To4() != nil {
+			addr = a
 			break
 		}
 	}
-	return net.UDPAddrFromAddrPort(netip.AddrPortFrom(ip, uint16(portNum))), nil
+	return &net.UDPAddr{IP: addr.IP, Port: portNum, Zone: addr.Zone}, nil
 }
 
 // QUIC connection that automatically restarts when it's used after having
@@ -400,21 +401,24 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, stale *quic.Conn, log *slog.Logger) (*quic.Conn, error) {
 	s.mu.Lock()
 	dial := s.dial
+	var broken *quic.Conn
 	if dial == nil {
 		if s.conn != nil && s.conn != stale {
 			conn := s.conn
 			s.mu.Unlock()
 			return conn, nil
 		}
-		if s.conn != nil {
-			_ = s.conn.CloseWithError(DOQNoError, "")
-			s.conn = nil
-		}
+		broken, s.conn = s.conn, nil
 		dial = &quicDial{done: make(chan struct{})}
 		s.dial = dial
 		go s.runDial(dial, rAddr, log)
 	}
 	s.mu.Unlock()
+
+	// Closing waits for the connection to shut down, so do it outside the lock.
+	if broken != nil {
+		_ = broken.CloseWithError(DOQNoError, "")
+	}
 
 	select {
 	case <-dial.done:
