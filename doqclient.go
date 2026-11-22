@@ -124,11 +124,11 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 	// When both V4 and V6 local addresses are specified, create two QUIC connections
 	// since a UDP socket bound to an IPv4 address cannot reach IPv6 endpoints and vice versa.
 	if opt.LocalAddrV4 != nil && opt.LocalAddrV6 != nil {
-		qConn4, err := newQuicConnection(opt.LocalAddrV4, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		qConn4, err := newQuicConnection(opt.LocalAddrV4, tlsConfig, config, opt.Use0RTT, opt.QueryTimeout, opt.NetNS, opt.SocketOptions)
 		if err != nil {
 			return nil, err
 		}
-		qConn6, err := newQuicConnection(opt.LocalAddrV6, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		qConn6, err := newQuicConnection(opt.LocalAddrV6, tlsConfig, config, opt.Use0RTT, opt.QueryTimeout, opt.NetNS, opt.SocketOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func NewDoQClient(id, endpoint string, opt DoQClientOptions) (*DoQClient, error)
 		if opt.LocalAddrV6 != nil {
 			lAddr = opt.LocalAddrV6
 		}
-		qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT, opt.NetNS, opt.SocketOptions)
+		qConn, err := newQuicConnection(lAddr, tlsConfig, config, opt.Use0RTT, opt.QueryTimeout, opt.NetNS, opt.SocketOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -359,9 +359,14 @@ type quicConnection struct {
 	udpConn   *net.UDPConn
 	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 
-	mu   sync.Mutex
-	conn *quic.Conn
-	dial *quicDial // the attempt in progress, if any
+	// A connection that hasn't given out a stream for this long, while a
+	// query waited for one, is considered stuck.
+	queryTimeout time.Duration
+
+	mu       sync.Mutex
+	conn     *quic.Conn
+	lastOpen time.Time // when conn was dialled or last gave out a stream
+	dial     *quicDial // the attempt in progress, if any
 }
 
 // quicDial is one connection attempt, shared by every query that needs a
@@ -372,7 +377,7 @@ type quicDial struct {
 	err  error
 }
 
-func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool, netns *NetNS, sockOpts SocketOptions) (*quicConnection, error) {
+func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool, queryTimeout time.Duration, netns *NetNS, sockOpts SocketOptions) (*quicConnection, error) {
 	// Initialize the local UDP connection, it'll be re-used for all connections
 	udpConn, err := ListenUDPInNetNS(context.Background(), netns, "udp", &net.UDPAddr{IP: lAddr, Port: 0}, sockOpts)
 	if err != nil {
@@ -387,11 +392,12 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 	}
 
 	return &quicConnection{
-		lAddr:     lAddr,
-		tlsConfig: tlsConfig,
-		config:    config,
-		udpConn:   udpConn,
-		dialFunc:  dialFunc,
+		lAddr:        lAddr,
+		tlsConfig:    tlsConfig,
+		config:       config,
+		udpConn:      udpConn,
+		dialFunc:     dialFunc,
+		queryTimeout: queryTimeout,
 	}, nil
 }
 
@@ -404,7 +410,7 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 	if err != nil {
 		return nil, err
 	}
-	stream, err := openStream(ctx, conn, replaySafe)
+	stream, err := s.openStream(ctx, conn, rAddr, replaySafe, log)
 	if err == nil || ctx.Err() != nil {
 		return stream, err
 	}
@@ -416,7 +422,7 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 	if conn, err = s.connection(ctx, rAddr, conn, log); err != nil {
 		return nil, err
 	}
-	stream, err = openStream(ctx, conn, replaySafe)
+	stream, err = s.openStream(ctx, conn, rAddr, replaySafe, log)
 	if err != nil {
 		log.Warn("failed to open stream",
 			"error", err,
@@ -473,6 +479,7 @@ func (s *quicConnection) runDial(dial *quicDial, rAddr *net.UDPAddr, log *slog.L
 	}
 	s.mu.Lock()
 	s.conn, s.dial = dial.conn, nil
+	s.lastOpen = time.Now()
 	s.mu.Unlock()
 	close(dial.done)
 }
@@ -481,7 +488,7 @@ func (s *quicConnection) runDial(dial *quicDial, rAddr *net.UDPAddr, log *slog.L
 // peer's stream limit to leave room, and for the handshake when the caller's
 // data must not be replayed or the server rejected 0-RTT. Any error other than
 // ctx's means conn is unusable.
-func openStream(ctx context.Context, conn *quic.Conn, replaySafe bool) (*quic.Stream, error) {
+func (s *quicConnection) openStream(ctx context.Context, conn *quic.Conn, rAddr *net.UDPAddr, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
 	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
 		return nil, err
 	}
@@ -492,7 +499,28 @@ func openStream(ctx context.Context, conn *quic.Conn, replaySafe bool) (*quic.St
 		}
 		stream, err = conn.OpenStreamSync(ctx)
 	}
-	return stream, err
+	if err == nil {
+		s.mu.Lock()
+		s.lastOpen = time.Now()
+		s.mu.Unlock()
+		return stream, nil
+	}
+
+	// Out of time waiting for the server to allow another stream. If it
+	// hasn't allowed one for a whole query timeout, every query holding a
+	// stream has timed out and cancelled it by now, so the server isn't
+	// handing streams back. Replace the connection in the background; this
+	// query is out of time either way.
+	if ctx.Err() != nil {
+		s.mu.Lock()
+		stuck := s.conn == conn && time.Since(s.lastOpen) >= s.queryTimeout
+		s.mu.Unlock()
+		if stuck {
+			log.Warn("server stopped allowing new streams, replacing connection")
+			_, _ = s.connection(ctx, rAddr, conn, log)
+		}
+	}
+	return nil, err
 }
 
 // awaitReplaySafe blocks until nothing written to conn can go out as
