@@ -135,13 +135,20 @@ func TestDoQClient0RTTHoldsNonReplayableOpcode(t *testing.T) {
 
 // doqEarlyRecorder is a minimal DoQ server that answers queries and records
 // whether each one arrived before its connection finished the handshake, ie.
-// as 0-RTT data.
+// as 0-RTT data. It never answers queries for doqHangName, and reports why
+// their streams ended on hangEnded.
 type doqEarlyRecorder struct {
-	addr string
-	conn atomic.Pointer[quic.Conn]
-	mu   sync.Mutex
-	seen []doqRecordedQuery
+	addr      string
+	transport *quic.Transport
+	ln        *quic.EarlyListener
+	conn      atomic.Pointer[quic.Conn]
+	accepted  atomic.Int32
+	hangEnded chan error
+	mu        sync.Mutex
+	seen      []doqRecordedQuery
 }
+
+const doqHangName = "hang.example."
 
 type doqRecordedQuery struct {
 	opcode int
@@ -150,20 +157,38 @@ type doqRecordedQuery struct {
 
 func startDoQEarlyRecorder(t *testing.T) *doqEarlyRecorder {
 	t.Helper()
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	require.NoError(t, err)
+	r := &doqEarlyRecorder{
+		addr:      udpConn.LocalAddr().String(),
+		transport: &quic.Transport{Conn: udpConn},
+		hangEnded: make(chan error, 10),
+	}
+	t.Cleanup(func() { r.ln.Close(); r.transport.Close(); udpConn.Close() })
+	r.listen(t)
+	return r
+}
+
+// listen accepts connections with a new TLS config, and so new session ticket
+// keys: tickets issued by an earlier listener can't be resumed.
+func (r *doqEarlyRecorder) listen(t *testing.T) {
+	t.Helper()
 	tlsServerConfig, err := TLSServerConfig("", "testdata/server.crt", "testdata/server.key", false)
 	require.NoError(t, err)
 	tlsServerConfig.NextProtos = []string{"doq"}
-
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	ln, err := r.transport.ListenEarly(tlsServerConfig, &quic.Config{Allow0RTT: true, MaxIdleTimeout: time.Minute})
 	require.NoError(t, err)
-	transport := &quic.Transport{Conn: udpConn}
-	ln, err := transport.ListenEarly(tlsServerConfig, &quic.Config{Allow0RTT: true, MaxIdleTimeout: time.Minute})
-	require.NoError(t, err)
-
-	r := &doqEarlyRecorder{addr: udpConn.LocalAddr().String()}
-	t.Cleanup(func() { ln.Close(); transport.Close(); udpConn.Close() })
+	r.ln = ln
 	go r.accept(ln)
-	return r
+}
+
+// restart replaces the listener on the same socket, as if the server had
+// restarted, and resets the count of accepted connections.
+func (r *doqEarlyRecorder) restart(t *testing.T) {
+	t.Helper()
+	require.NoError(t, r.ln.Close())
+	r.accepted.Store(0)
+	r.listen(t)
 }
 
 func (r *doqEarlyRecorder) accept(ln *quic.EarlyListener) {
@@ -173,6 +198,7 @@ func (r *doqEarlyRecorder) accept(ln *quic.EarlyListener) {
 			return
 		}
 		r.conn.Store(conn)
+		r.accepted.Add(1)
 		go r.handleConn(conn)
 	}
 }
@@ -210,6 +236,11 @@ func (r *doqEarlyRecorder) handleStream(stream *quic.Stream, early bool) {
 	r.mu.Lock()
 	r.seen = append(r.seen, doqRecordedQuery{opcode: q.Opcode, early: early})
 	r.mu.Unlock()
+	if len(q.Question) > 0 && q.Question[0].Name == doqHangName {
+		<-stream.Context().Done()
+		r.hangEnded <- context.Cause(stream.Context())
+		return
+	}
 
 	a := new(dns.Msg)
 	a.SetReply(q)
@@ -231,7 +262,8 @@ func (r *doqEarlyRecorder) closeCurrentConn(t *testing.T) {
 	require.NotNil(t, conn, "no connection has been accepted yet")
 	require.NoError(t, conn.CloseWithError(DOQNoError, ""))
 	// Give the CONNECTION_CLOSE time to reach the client, so that its next
-	// OpenStream fails and triggers the redial rather than racing it.
+	// attempt to open a stream fails and triggers the redial rather than
+	// racing it.
 	time.Sleep(200 * time.Millisecond)
 }
 
@@ -304,9 +336,87 @@ func TestDOQDeadUpstream(t *testing.T) {
 }
 
 // A link-local literal, as given in bootstrap-address, must keep its zone or
-// it can't be dialled.
-func TestDoQResolveUDPAddrZone(t *testing.T) {
-	a, err := resolveUDPAddr(context.Background(), "[fe80::1%lo]:853")
+// it can't be dialled. A socket bound to a specific address can only reach an
+// upstream of the same family, so anything else is an error up front rather
+// than a failed dial.
+func TestDoQResolveUDPAddr(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint string
+		local    string
+		want     string // empty for an error
+	}{
+		{"[fe80::1%lo]:853", "", "[fe80::1%lo]:853"},
+		{"192.0.2.1:853", "0.0.0.0", "192.0.2.1:853"},
+		{"[2001:db8::1]:853", "0.0.0.0", "[2001:db8::1]:853"},
+		{"192.0.2.1:853", "2001:db8::10", ""},
+		{"[2001:db8::1]:853", "192.0.2.10", ""},
+	} {
+		a, err := resolveUDPAddr(context.Background(), tc.endpoint, net.ParseIP(tc.local))
+		if tc.want == "" {
+			require.Error(t, err, "%s from %s", tc.endpoint, tc.local)
+			continue
+		}
+		require.NoError(t, err, "%s from %s", tc.endpoint, tc.local)
+		require.Equal(t, tc.want, a.String())
+	}
+}
+
+// When the server rejects 0-RTT, here because it restarted and can't read the
+// client's session ticket any more, the queries sent as early data were
+// discarded and have to be sent again once the handshake completes, on the
+// same connection.
+func TestDoQClient0RTTRejected(t *testing.T) {
+	server := startDoQEarlyRecorder(t)
+
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
-	require.Equal(t, "[fe80::1%lo]:853", a.String())
+	d, err := NewDoQClient("test-doq", server.addr, DoQClientOptions{TLSConfig: tlsClientConfig, Use0RTT: true})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	// Pick up a session ticket, and prove with a redial that the client
+	// uses it for 0-RTT. Without that the query below would pass the same
+	// way after a plain handshake.
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	server.closeCurrentConn(t)
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.True(t, server.last(t).early, "QUERY was not sent as 0-RTT; this test cannot prove anything about the rejection below")
+
+	server.closeCurrentConn(t)
+	server.restart(t)
+
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.False(t, server.last(t).early)
+	require.Equal(t, int32(1), server.accepted.Load(), "the rejected connection was replaced instead of kept")
+}
+
+// A query that times out must tell the server it gave up (RFC 9250 4.3), so
+// the server can drop it and free its stream.
+func TestDoQClientCancelsTimedOutQuery(t *testing.T) {
+	server := startDoQEarlyRecorder(t)
+
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq", server.addr, DoQClientOptions{TLSConfig: tlsClientConfig, QueryTimeout: 300 * time.Millisecond})
+	require.NoError(t, err)
+
+	q := new(dns.Msg)
+	q.SetQuestion(doqHangName, dns.TypeA)
+	_, err = d.Resolve(q, ClientInfo{})
+	require.Error(t, err)
+
+	select {
+	case cause := <-server.hangEnded:
+		var streamErr *quic.StreamError
+		require.ErrorAs(t, cause, &streamErr)
+		require.True(t, streamErr.Remote)
+		require.Equal(t, quic.StreamErrorCode(DOQRequestCancelled), streamErr.ErrorCode)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the server's stream for the timed-out query is still open")
+	}
 }
