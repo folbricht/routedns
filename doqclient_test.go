@@ -447,3 +447,26 @@ func TestDoQClientCancelsTimedOutQuery(t *testing.T) {
 		t.Fatal("the server's stream for the timed-out query is still open")
 	}
 }
+
+// Only the last doqMaxReplaced replaced connections are left open.
+func TestDOQReplacedLimit(t *testing.T) {
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq-replaced", startTestDoQListener(t, new(TestResolver)), DoQClientOptions{TLSConfig: tlsConfig, QueryTimeout: time.Minute})
+	require.NoError(t, err)
+	ctx := context.Background()
+	rAddr, err := resolveUDPAddr(ctx, d.endpoint, nil)
+	require.NoError(t, err)
+
+	first, err := d.connection.connection(ctx, rAddr, nil, d.log)
+	require.NoError(t, err)
+	stale := first
+	for range doqMaxReplaced {
+		stale, err = d.connection.connection(ctx, rAddr, stale, d.log)
+		require.NoError(t, err)
+	}
+	require.NoError(t, first.Context().Err())
+	_, err = d.connection.connection(ctx, rAddr, stale, d.log)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return first.Context().Err() != nil }, time.Second, 10*time.Millisecond)
+}
