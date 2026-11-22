@@ -336,11 +336,29 @@ func TestDOQDeadUpstream(t *testing.T) {
 }
 
 // A link-local literal, as given in bootstrap-address, must keep its zone or
-// it can't be dialled.
-func TestDoQResolveUDPAddrZone(t *testing.T) {
-	a, err := resolveUDPAddr(context.Background(), "[fe80::1%lo]:853", false)
-	require.NoError(t, err)
-	require.Equal(t, "[fe80::1%lo]:853", a.String())
+// it can't be dialled. A socket bound to a specific address can only reach an
+// upstream of the same family, so anything else is an error up front rather
+// than a failed dial.
+func TestDoQResolveUDPAddr(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint string
+		local    string
+		want     string // empty for an error
+	}{
+		{"[fe80::1%lo]:853", "", "[fe80::1%lo]:853"},
+		{"192.0.2.1:853", "0.0.0.0", "192.0.2.1:853"},
+		{"[2001:db8::1]:853", "0.0.0.0", "[2001:db8::1]:853"},
+		{"192.0.2.1:853", "2001:db8::10", ""},
+		{"[2001:db8::1]:853", "192.0.2.10", ""},
+	} {
+		a, err := resolveUDPAddr(context.Background(), tc.endpoint, net.ParseIP(tc.local))
+		if tc.want == "" {
+			require.Error(t, err, "%s from %s", tc.endpoint, tc.local)
+			continue
+		}
+		require.NoError(t, err, "%s from %s", tc.endpoint, tc.local)
+		require.Equal(t, tc.want, a.String())
+	}
 }
 
 // When the server rejects 0-RTT, here because it restarted and can't read the

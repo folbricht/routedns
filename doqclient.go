@@ -200,9 +200,11 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	binary.BigEndian.PutUint16(b, uint16(len(p)))
 	copy(b[2:], p)
 
-	// A connection bound to a specific IPv6 address can only reach IPv6 upstreams
-	want6 := d.connection != nil && d.connection.lAddr.To4() == nil && !d.connection.lAddr.IsUnspecified()
-	rAddr, err := resolveUDPAddr(ctx, d.endpoint, want6)
+	var local net.IP
+	if d.connection != nil {
+		local = d.connection.lAddr
+	}
+	rAddr, err := resolveUDPAddr(ctx, d.endpoint, local)
 	if err != nil {
 		d.metrics.err.Add("resolve", 1)
 		return nil, err
@@ -311,8 +313,10 @@ func (d *DoQClient) exchange(ctx context.Context, conn *quicConnection, rAddr *n
 }
 
 // resolveUDPAddr is net.ResolveUDPAddr bounded by ctx. Like it, it picks an
-// IPv4 address when the name has both, unless want6 asks for IPv6.
-func resolveUDPAddr(ctx context.Context, endpoint string, want6 bool) (*net.UDPAddr, error) {
+// IPv4 address when the name has both. A socket bound to a specific local
+// address can only reach upstreams of the same family though, so with one of
+// those only an address of that family will do.
+func resolveUDPAddr(ctx context.Context, endpoint string, local net.IP) (*net.UDPAddr, error) {
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		return nil, err
@@ -330,6 +334,8 @@ func resolveUDPAddr(ctx context.Context, endpoint string, want6 bool) (*net.UDPA
 	if len(addrs) == 0 {
 		return nil, &net.AddrError{Err: "no suitable address found", Addr: host}
 	}
+	bound := local != nil && !local.IsUnspecified()
+	want6 := bound && local.To4() == nil
 	addr := addrs[0]
 	for _, a := range addrs {
 		if (a.IP.To4() == nil) == want6 {
@@ -337,8 +343,12 @@ func resolveUDPAddr(ctx context.Context, endpoint string, want6 bool) (*net.UDPA
 			break
 		}
 	}
-	if want6 && addr.IP.To4() != nil {
-		return nil, &net.AddrError{Err: "no IPv6 address for a connection bound to an IPv6 address", Addr: host}
+	if bound && (addr.IP.To4() == nil) != want6 {
+		family := "IPv4"
+		if want6 {
+			family = "IPv6"
+		}
+		return nil, &net.AddrError{Err: "no " + family + " address for a connection bound to an " + family + " address", Addr: host}
 	}
 	return &net.UDPAddr{IP: addr.IP, Port: portNum, Zone: addr.Zone}, nil
 }
