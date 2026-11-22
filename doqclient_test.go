@@ -263,7 +263,9 @@ func TestDoQClientIdleTimeout(t *testing.T) {
 }
 
 // Queries to an upstream that does not answer must each fail after about the
-// query timeout, not queue up behind one another's connection attempts.
+// query timeout, not queue up behind one another's connection attempts. That
+// includes the query that started the attempt, even when the attempt itself
+// runs longer.
 func TestDOQDeadUpstream(t *testing.T) {
 	const timeout = 300 * time.Millisecond
 	dead, err := net.ListenPacket("udp", "127.0.0.1:0") // never answers
@@ -271,6 +273,16 @@ func TestDOQDeadUpstream(t *testing.T) {
 	defer dead.Close()
 	d, err := NewDoQClient("test-doq-dead", dead.LocalAddr().String(), DoQClientOptions{QueryTimeout: timeout})
 	require.NoError(t, err)
+	d.connection.config.HandshakeIdleTimeout = 5 * timeout
+	t.Cleanup(func() {
+		// Let the dial the queries gave up on finish, so it doesn't outlive the test.
+		d.connection.mu.Lock()
+		dial := d.connection.dial
+		d.connection.mu.Unlock()
+		if dial != nil {
+			<-dial.done
+		}
+	})
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 
@@ -289,4 +301,12 @@ func TestDOQDeadUpstream(t *testing.T) {
 	elapsed := time.Since(start)
 	require.GreaterOrEqual(t, elapsed, timeout)
 	require.Less(t, elapsed, 3*timeout) // one at a time takes 6x
+}
+
+// A link-local literal, as given in bootstrap-address, must keep its zone or
+// it can't be dialled.
+func TestDoQResolveUDPAddrZone(t *testing.T) {
+	a, err := resolveUDPAddr(context.Background(), "[fe80::1%lo]:853")
+	require.NoError(t, err)
+	require.Equal(t, "[fe80::1%lo]:853", a.String())
 }
