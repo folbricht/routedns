@@ -448,25 +448,40 @@ func TestDoQClientCancelsTimedOutQuery(t *testing.T) {
 	}
 }
 
-// Only the last doqMaxReplaced replaced connections are left open.
+// A replaced connection takes queries again when the current one is full.
+// Only the last doqMaxReplaced are kept, not counting those that have closed.
 func TestDOQReplacedLimit(t *testing.T) {
 	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
 	require.NoError(t, err)
-	d, err := NewDoQClient("test-doq-replaced", startTestDoQListener(t, new(TestResolver)), DoQClientOptions{TLSConfig: tlsConfig, QueryTimeout: time.Minute})
+	d, err := NewDoQClient("test-doq-replaced", startTestDoQListener(t, new(TestResolver)), DoQClientOptions{TLSConfig: tlsConfig})
 	require.NoError(t, err)
 	ctx := context.Background()
 	rAddr, err := resolveUDPAddr(ctx, d.endpoint, nil)
 	require.NoError(t, err)
-
-	first, err := d.connection.connection(ctx, rAddr, nil, d.log)
-	require.NoError(t, err)
-	stale := first
-	for range doqMaxReplaced {
-		stale, err = d.connection.connection(ctx, rAddr, stale, d.log)
+	replace := func(stale *quic.Conn) *quic.Conn {
+		conn, err := d.connection.connection(ctx, rAddr, stale, d.log)
 		require.NoError(t, err)
+		return conn
 	}
-	require.NoError(t, first.Context().Err())
-	_, err = d.connection.connection(ctx, rAddr, stale, d.log)
+
+	first := replace(nil)
+	second := replace(first)
+	for err == nil { // fill the current connection
+		_, err = second.OpenStream()
+	}
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err = d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
+	require.Same(t, second, d.connection.conn, "the query should have gone to the replaced connection")
+
+	stale := second
+	for range doqMaxReplaced - 1 {
+		stale = replace(stale)
+	}
+	require.NoError(t, second.CloseWithError(DOQNoError, ""))
+	stale = replace(stale) // takes the place of the closed one
+	require.NoError(t, first.Context().Err())
+	replace(stale)
 	require.Eventually(t, func() bool { return first.Context().Err() != nil }, time.Second, 10*time.Millisecond)
 }
