@@ -335,6 +335,33 @@ func TestDOQDeadUpstream(t *testing.T) {
 	require.Less(t, elapsed, 3*timeout) // one at a time takes 6x
 }
 
+// Queries beyond the upstream's stream limit go to a new connection. That
+// must not close the full one under the queries still in flight on it.
+func TestDOQStreamLimit(t *testing.T) {
+	upstream := &TestResolver{ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		time.Sleep(200 * time.Millisecond) // hold the streams open
+		a := new(dns.Msg)
+		a.SetReply(q)
+		return a, nil
+	}}
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq-limit", startTestDoQListener(t, upstream), DoQClientOptions{TLSConfig: tlsConfig})
+	require.NoError(t, err)
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	var wg sync.WaitGroup
+	for range 150 { // the listener allows 100 streams
+		wg.Go(func() {
+			if _, err := d.Resolve(q, ClientInfo{}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
 // A link-local literal, as given in bootstrap-address, must keep its zone or
 // it can't be dialled. A socket bound to a specific address can only reach an
 // upstream of the same family, so anything else is an error up front rather

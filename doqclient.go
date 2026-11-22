@@ -220,9 +220,10 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	}
 	replaySafe := isReplayableOpcode(qc.Opcode)
 	resp, stage, err := d.exchange(ctx, conn, rAddr, b, replaySafe)
-	if errors.Is(err, quic.Err0RTTRejected) {
+	for errors.Is(err, quic.Err0RTTRejected) {
 		// The server discarded the query along with the rest of the 0-RTT
-		// data, so it is safe to send again.
+		// data, so it is safe to send again. More than once if the
+		// query moves off a full connection onto another that is rejected.
 		resp, stage, err = d.exchange(ctx, conn, rAddr, b, replaySafe)
 	}
 	if err != nil {
@@ -455,10 +456,11 @@ func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, sta
 	}
 	s.mu.Unlock()
 
-	// Closing waits for the connection to shut down, which no query should
-	// have to sit through.
+	// A replaced connection has either closed already or is full, at the
+	// server's stream limit, and still carries queries. Close it once they
+	// have all timed out: the handshake timeout is the query timeout.
 	if broken != nil {
-		go func() { _ = broken.CloseWithError(DOQNoError, "") }()
+		time.AfterFunc(s.config.HandshakeIdleTimeout, func() { _ = broken.CloseWithError(DOQNoError, "") })
 	}
 
 	select {
