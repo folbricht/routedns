@@ -263,7 +263,9 @@ func TestDoQClientIdleTimeout(t *testing.T) {
 }
 
 // Queries to an upstream that does not answer must each fail after about the
-// query timeout, not queue up behind one another's connection attempts.
+// query timeout, not queue up behind one another's connection attempts. That
+// includes the query that started the attempt, even when the attempt itself
+// runs longer.
 func TestDOQDeadUpstream(t *testing.T) {
 	const timeout = 300 * time.Millisecond
 	dead, err := net.ListenPacket("udp", "127.0.0.1:0") // never answers
@@ -271,6 +273,7 @@ func TestDOQDeadUpstream(t *testing.T) {
 	defer dead.Close()
 	d, err := NewDoQClient("test-doq-dead", dead.LocalAddr().String(), DoQClientOptions{QueryTimeout: timeout})
 	require.NoError(t, err)
+	d.connection.config.HandshakeIdleTimeout = 10 * timeout
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -198,21 +200,21 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	binary.BigEndian.PutUint16(b, uint16(len(p)))
 	copy(b[2:], p)
 
+	rAddr, err := resolveUDPAddr(ctx, d.endpoint)
+	if err != nil {
+		d.metrics.err.Add("resolve", 1)
+		return nil, err
+	}
+
 	// Get a new stream in the connection, selecting the right one for dual-stack
 	conn := d.connection
 	if conn == nil {
-		// Dual-stack mode: resolve the endpoint and pick the right connection
-		rAddr, err := net.ResolveUDPAddr("udp", d.endpoint)
-		if err != nil {
-			d.metrics.err.Add("resolve", 1)
-			return nil, err
-		}
 		conn = d.connectionV4
 		if rAddr.IP.To4() == nil {
 			conn = d.connectionV6
 		}
 	}
-	stream, err := conn.getStream(ctx, d.endpoint, isReplayableOpcode(qc.Opcode), d.log)
+	stream, err := conn.getStream(ctx, rAddr, isReplayableOpcode(qc.Opcode), d.log)
 	if err != nil {
 		d.metrics.err.Add("getstream", 1)
 		return nil, err
@@ -280,20 +282,54 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
+// resolveUDPAddr is net.ResolveUDPAddr bounded by ctx. Like it, it picks an
+// IPv4 address when the name has both.
+func resolveUDPAddr(ctx context.Context, endpoint string) (*net.UDPAddr, error) {
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	portNum, err := net.DefaultResolver.LookupPort(ctx, "udp", port)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
+	}
+	ip := ips[0].Unmap()
+	for _, a := range ips {
+		if a.Unmap().Is4() {
+			ip = a.Unmap()
+			break
+		}
+	}
+	return net.UDPAddrFromAddrPort(netip.AddrPortFrom(ip, uint16(portNum))), nil
+}
+
 // QUIC connection that automatically restarts when it's used after having
 // timed out. Needed since the quic.Transport doesn't have any connection
 // management and timed out connections aren't restarted. This one uses
 // EarlyConnection so we can use 0-RTT if the server supports it (lower
 // latency)
 type quicConnection struct {
-	*quic.Conn
-
 	lAddr     net.IP
 	tlsConfig *tls.Config
 	config    *quic.Config
-	mu        chan struct{} // a mutex that a query can stop waiting for
 	udpConn   *net.UDPConn
 	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
+
+	mu   sync.Mutex
+	conn *quic.Conn
+	dial *quicDial // the attempt in progress, if any
+}
+
+// quicDial is one connection attempt, shared by every query that needs a
+// connection while it runs. conn and err are set before done is closed.
+type quicDial struct {
+	done chan struct{}
+	conn *quic.Conn
+	err  error
 }
 
 func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config, use0RTT bool, netns *NetNS, sockOpts SocketOptions) (*quicConnection, error) {
@@ -314,7 +350,6 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 		lAddr:     lAddr,
 		tlsConfig: tlsConfig,
 		config:    config,
-		mu:        make(chan struct{}, 1),
 		udpConn:   udpConn,
 		dialFunc:  dialFunc,
 	}, nil
@@ -323,91 +358,102 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 // getStream opens a new stream, dialling or restarting the connection if
 // needed. Callers about to write something that must not be replayed pass
 // replaySafe=false, and the stream is then not handed out until the
-// connection's handshake has completed. That wait holds the lock, so it also
-// stalls other queries on the same connection, until the handshake ends or
-// their own deadline passes. ctx bounds the wait for the lock, not the dial:
-// a connection outlives the query that asked for it.
-func (s *quicConnection) getStream(ctx context.Context, endpoint string, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
-	rAddr, err := net.ResolveUDPAddr("udp", endpoint)
+// connection's handshake has completed. ctx bounds every wait in here.
+func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
+	conn, err := s.connection(ctx, rAddr, nil, log)
 	if err != nil {
 		return nil, err
 	}
-
-	select {
-	case s.mu <- struct{}{}:
-		defer func() { <-s.mu }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
+		return nil, err
 	}
-
-	// If we don't have a connection yet, make one
-	if s.Conn == nil {
-		var err error
-		s.Conn, err = s.dialFunc(context.Background(), rAddr, s.tlsConfig, s.config)
-		if err != nil {
-			log.Warn("failed to open connection",
-				"hostname", endpoint,
-				"error", err,
-			)
-			return nil, err
-		}
+	stream, err := conn.OpenStream()
+	if err == nil {
+		return stream, nil
 	}
-	s.awaitReplaySafe(replaySafe)
 
 	// If we can't get a stream then restart the connection and try again once
-	stream, err := s.Conn.OpenStream()
+	log.Debug("temporary fail when trying to open stream, attempting new connection",
+		"error", err,
+	)
+	if conn, err = s.connection(ctx, rAddr, conn, log); err != nil {
+		return nil, err
+	}
+	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
+		return nil, err
+	}
+	stream, err = conn.OpenStream()
 	if err != nil {
-		log.Debug("temporary fail when trying to open stream, attempting new connection",
+		log.Warn("failed to open stream",
 			"error", err,
 		)
-		if err = s.restart(rAddr); err != nil {
-			log.Warn("failed to open connection", "hostname", endpoint, "error", err)
-			return nil, err
-		}
-		s.awaitReplaySafe(replaySafe)
-		stream, err = s.Conn.OpenStream()
-		if err != nil {
-			log.Warn("failed to open stream",
-				"error", err,
-			)
-		}
 	}
 	return stream, err
 }
 
-// awaitReplaySafe blocks until nothing written to the connection can go out as
+// connection returns the current QUIC connection, dialling one if there is
+// none or the caller found the current one broken and passes it as stale. The
+// dial runs in the background and is shared by every caller that arrives while
+// it is in progress. ctx bounds only the caller's wait: a connection outlives
+// the query that asked for it, so an attempt keeps going after its callers
+// gave up and serves the queries after them.
+func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, stale *quic.Conn, log *slog.Logger) (*quic.Conn, error) {
+	s.mu.Lock()
+	dial := s.dial
+	if dial == nil {
+		if s.conn != nil && s.conn != stale {
+			conn := s.conn
+			s.mu.Unlock()
+			return conn, nil
+		}
+		if s.conn != nil {
+			_ = s.conn.CloseWithError(DOQNoError, "")
+			s.conn = nil
+		}
+		dial = &quicDial{done: make(chan struct{})}
+		s.dial = dial
+		go s.runDial(dial, rAddr, log)
+	}
+	s.mu.Unlock()
+
+	select {
+	case <-dial.done:
+		return dial.conn, dial.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *quicConnection) runDial(dial *quicDial, rAddr *net.UDPAddr, log *slog.Logger) {
+	dial.conn, dial.err = s.dialFunc(context.Background(), rAddr, s.tlsConfig, s.config)
+	if dial.err != nil {
+		log.Warn("failed to open connection",
+			"remote", rAddr.String(),
+			"local", s.lAddr.String(),
+			"error", dial.err,
+		)
+	}
+	s.mu.Lock()
+	s.conn, s.dial = dial.conn, nil
+	s.mu.Unlock()
+	close(dial.done)
+}
+
+// awaitReplaySafe blocks until nothing written to conn can go out as
 // replayable 0-RTT data, either because the handshake completed or because the
 // connection is gone. A dead connection is left for the caller's OpenStream to
 // discover and restart; failing here instead would break the retry. It returns
 // at once when the caller's data is replay-safe anyway, and for connections
-// dialled without 0-RTT, which are only handed out post-handshake. Call with
-// the mutex held.
-func (s *quicConnection) awaitReplaySafe(replaySafe bool) {
+// dialled without 0-RTT, which are only handed out post-handshake.
+func awaitReplaySafe(ctx context.Context, conn *quic.Conn, replaySafe bool) error {
 	if replaySafe {
-		return
+		return nil
 	}
 	select {
-	case <-s.HandshakeComplete():
-	case <-s.Context().Done():
+	case <-conn.HandshakeComplete():
+	case <-conn.Context().Done():
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-}
-
-// Try to open a new connection. This function should be called with the mutex
-// locked.
-func (s *quicConnection) restart(rAddr *net.UDPAddr) error {
-	_ = s.Conn.CloseWithError(DOQNoError, "")
-
-	Log.Debug("attempt reconnect", slog.String("upstream-protocol", "quic"),
-		slog.String("local", s.lAddr.String()),
-		slog.String("remote", rAddr.String()),
-	)
-	conn, err := s.dialFunc(context.TODO(), rAddr, s.tlsConfig, s.config)
-	if err != nil {
-		Log.Warn("couldn't restart quic connection", "upstream-protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String(), "error", err)
-		return err
-	}
-	Log.Debug("restarted quic connection", "upstream-protocol", "quic", "remote", rAddr.String(), "local", s.lAddr.String())
-
-	s.Conn = conn
 	return nil
 }
