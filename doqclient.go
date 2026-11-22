@@ -267,17 +267,18 @@ func (d *DoQClient) String() string {
 // response without its prefix. On failure it also returns the stage that
 // failed, for the error metric.
 func (d *DoQClient) exchange(ctx context.Context, conn *quicConnection, rAddr *net.UDPAddr, query []byte, replaySafe bool) (resp []byte, stage string, err error) {
-	stream, err := conn.getStream(ctx, rAddr, replaySafe, d.log)
+	stream, early, err := conn.getStream(ctx, rAddr, replaySafe, d.log)
 	if err != nil {
 		return nil, "getstream", err
 	}
 	defer func() {
 		// Tell the server to drop a query that failed, which frees its stream
-		// for another one. Not for a stream that went with rejected 0-RTT
-		// data: quic-go reuses its ID for the next stream, and since this one
-		// had finished writing, CancelWrite would still send a RESET_STREAM,
-		// which the server applies to the replacement.
-		if err != nil && !errors.Is(err, quic.Err0RTTRejected) {
+		// for another one. Not for a stream opened before the handshake
+		// completed: if the server rejects 0-RTT, quic-go reuses its ID for a
+		// later stream, and since this one had finished writing, CancelWrite
+		// would still send a RESET_STREAM, which the server applies to that
+		// later stream.
+		if err != nil && !early {
 			stream.CancelWrite(DOQRequestCancelled)
 			stream.CancelRead(DOQRequestCancelled)
 		}
@@ -336,6 +337,9 @@ func resolveUDPAddr(ctx context.Context, endpoint string, want6 bool) (*net.UDPA
 			break
 		}
 	}
+	if want6 && addr.IP.To4() != nil {
+		return nil, &net.AddrError{Err: "no IPv6 address for a connection bound to an IPv6 address", Addr: host}
+	}
 	return &net.UDPAddr{IP: addr.IP, Port: portNum, Zone: addr.Zone}, nil
 }
 
@@ -390,15 +394,16 @@ func newQuicConnection(lAddr net.IP, tlsConfig *tls.Config, config *quic.Config,
 // getStream opens a new stream, dialling or restarting the connection if
 // needed. Callers about to write something that must not be replayed pass
 // replaySafe=false, and the stream is then not handed out until the
-// connection's handshake has completed. ctx bounds every wait in here.
-func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, replaySafe bool, log *slog.Logger) (*quic.Stream, error) {
+// connection's handshake has completed. early reports a stream opened before
+// the handshake completed. ctx bounds every wait in here.
+func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, replaySafe bool, log *slog.Logger) (stream *quic.Stream, early bool, err error) {
 	conn, err := s.connection(ctx, rAddr, nil, log)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	stream, err := openStream(ctx, conn, replaySafe)
+	stream, early, err = openStream(ctx, conn, replaySafe)
 	if err == nil || ctx.Err() != nil {
-		return stream, err
+		return stream, early, err
 	}
 
 	// If we can't get a stream then restart the connection and try again once
@@ -406,15 +411,15 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 		"error", err,
 	)
 	if conn, err = s.connection(ctx, rAddr, conn, log); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	stream, err = openStream(ctx, conn, replaySafe)
+	stream, early, err = openStream(ctx, conn, replaySafe)
 	if err != nil {
 		log.Warn("failed to open stream",
 			"error", err,
 		)
 	}
-	return stream, err
+	return stream, early, err
 }
 
 // connection returns the current QUIC connection, dialling one if there is
@@ -471,19 +476,26 @@ func (s *quicConnection) runDial(dial *quicDial, rAddr *net.UDPAddr, log *slog.L
 
 // openStream opens a stream on conn, first waiting for the handshake when the
 // caller's data must not be replayed, or when the server rejected 0-RTT and
-// the connection is only usable once the handshake completes.
-func openStream(ctx context.Context, conn *quic.Conn, replaySafe bool) (*quic.Stream, error) {
+// the connection is only usable once the handshake completes. early reports
+// that the handshake hadn't completed when the stream was opened.
+func openStream(ctx context.Context, conn *quic.Conn, replaySafe bool) (stream *quic.Stream, early bool, err error) {
 	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	stream, err := conn.OpenStream()
+	select {
+	case <-conn.HandshakeComplete():
+	default:
+		early = true
+	}
+	stream, err = conn.OpenStream()
 	if errors.Is(err, quic.Err0RTTRejected) {
 		if _, err := conn.NextConnection(ctx); err != nil {
-			return nil, err
+			return nil, false, err
 		}
+		early = false
 		stream, err = conn.OpenStream()
 	}
-	return stream, err
+	return stream, early, err
 }
 
 // awaitReplaySafe blocks until nothing written to conn can go out as
