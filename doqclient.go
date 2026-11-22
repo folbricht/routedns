@@ -199,13 +199,15 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	binary.BigEndian.PutUint16(b, uint16(len(p)))
 	copy(b[2:], p)
 
-	rAddr, err := resolveUDPAddr(ctx, d.endpoint)
+	// A connection bound to a specific IPv6 address can only reach IPv6 upstreams
+	want6 := d.connection != nil && d.connection.lAddr.To4() == nil && !d.connection.lAddr.IsUnspecified()
+	rAddr, err := resolveUDPAddr(ctx, d.endpoint, want6)
 	if err != nil {
 		d.metrics.err.Add("resolve", 1)
 		return nil, err
 	}
 
-	// Get a new stream in the connection, selecting the right one for dual-stack
+	// Select the right connection for dual-stack
 	conn := d.connection
 	if conn == nil {
 		conn = d.connectionV4
@@ -213,42 +215,21 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 			conn = d.connectionV6
 		}
 	}
-	stream, err := conn.getStream(ctx, rAddr, isReplayableOpcode(qc.Opcode), d.log)
+	replaySafe := isReplayableOpcode(qc.Opcode)
+	resp, stage, err := d.exchange(ctx, conn, rAddr, b, replaySafe)
+	if errors.Is(err, quic.Err0RTTRejected) {
+		// The server discarded the query along with the rest of the 0-RTT
+		// data, so it is safe to send again.
+		resp, stage, err = d.exchange(ctx, conn, rAddr, b, replaySafe)
+	}
 	if err != nil {
-		d.metrics.err.Add("getstream", 1)
-		return nil, err
-	}
-
-	// Write the query into the stream and close it. Only one stream per query/response
-	_ = stream.SetWriteDeadline(deadlineTime)
-	if _, err = stream.Write(b); err != nil {
-		d.metrics.err.Add("write", 1)
-		return nil, err
-	}
-	if err = stream.Close(); err != nil {
-		d.metrics.err.Add("close", 1)
-		return nil, err
-	}
-
-	_ = stream.SetReadDeadline(deadlineTime)
-
-	// DoQ requires a length prefix, like TCP
-	var length uint16
-	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
-		d.metrics.err.Add("read", 1)
-		return nil, err
-	}
-
-	// Read the response
-	b = make([]byte, length)
-	if _, err = io.ReadFull(stream, b); err != nil {
-		d.metrics.err.Add("read", 1)
+		d.metrics.err.Add(stage, 1)
 		return nil, err
 	}
 
 	// Decode the response and restore the ID
 	a := new(dns.Msg)
-	if err := a.Unpack(b); err != nil {
+	if err := a.Unpack(resp); err != nil {
 		d.metrics.err.Add("unpack", 1)
 		return nil, err
 	}
@@ -281,9 +262,44 @@ func (d *DoQClient) String() string {
 	return d.id
 }
 
+// exchange sends the length-prefixed query on a new stream and returns the
+// response without its prefix. On failure it also returns the stage that
+// failed, for the error metric.
+func (d *DoQClient) exchange(ctx context.Context, conn *quicConnection, rAddr *net.UDPAddr, query []byte, replaySafe bool) ([]byte, string, error) {
+	stream, err := conn.getStream(ctx, rAddr, replaySafe, d.log)
+	if err != nil {
+		return nil, "getstream", err
+	}
+	deadline, _ := ctx.Deadline()
+
+	// Write the query into the stream and close it. Only one stream per query/response
+	_ = stream.SetWriteDeadline(deadline)
+	if _, err = stream.Write(query); err != nil {
+		return nil, "write", err
+	}
+	if err = stream.Close(); err != nil {
+		return nil, "close", err
+	}
+
+	_ = stream.SetReadDeadline(deadline)
+
+	// DoQ requires a length prefix, like TCP
+	var length uint16
+	if err := binary.Read(stream, binary.BigEndian, &length); err != nil {
+		return nil, "read", err
+	}
+
+	// Read the response
+	b := make([]byte, length)
+	if _, err = io.ReadFull(stream, b); err != nil {
+		return nil, "read", err
+	}
+	return b, "", nil
+}
+
 // resolveUDPAddr is net.ResolveUDPAddr bounded by ctx. Like it, it picks an
-// IPv4 address when the name has both.
-func resolveUDPAddr(ctx context.Context, endpoint string) (*net.UDPAddr, error) {
+// IPv4 address when the name has both, unless want6 asks for IPv6.
+func resolveUDPAddr(ctx context.Context, endpoint string, want6 bool) (*net.UDPAddr, error) {
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		return nil, err
@@ -303,7 +319,7 @@ func resolveUDPAddr(ctx context.Context, endpoint string) (*net.UDPAddr, error) 
 	}
 	addr := addrs[0]
 	for _, a := range addrs {
-		if a.IP.To4() != nil {
+		if (a.IP.To4() == nil) == want6 {
 			addr = a
 			break
 		}
@@ -368,25 +384,19 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 	if err != nil {
 		return nil, err
 	}
-	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
-		return nil, err
-	}
-	stream, err := conn.OpenStream()
-	if err == nil {
-		return stream, nil
+	stream, err := openStream(ctx, conn, replaySafe)
+	if err == nil || ctx.Err() != nil {
+		return stream, err
 	}
 
-	// If we can't get a stream then restart the connection and try again once
-	log.Debug("temporary fail when trying to open stream, attempting new connection",
+	// Any other error means the connection is gone, restart it and try again once
+	log.Debug("connection lost, attempting new connection",
 		"error", err,
 	)
 	if conn, err = s.connection(ctx, rAddr, conn, log); err != nil {
 		return nil, err
 	}
-	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
-		return nil, err
-	}
-	stream, err = conn.OpenStream()
+	stream, err = openStream(ctx, conn, replaySafe)
 	if err != nil {
 		log.Warn("failed to open stream",
 			"error", err,
@@ -447,10 +457,28 @@ func (s *quicConnection) runDial(dial *quicDial, rAddr *net.UDPAddr, log *slog.L
 	close(dial.done)
 }
 
+// openStream opens a stream on conn, waiting as long as ctx allows for the
+// peer's stream limit to leave room, and for the handshake when the caller's
+// data must not be replayed or the server rejected 0-RTT. Any error other than
+// ctx's means conn is unusable.
+func openStream(ctx context.Context, conn *quic.Conn, replaySafe bool) (*quic.Stream, error) {
+	if err := awaitReplaySafe(ctx, conn, replaySafe); err != nil {
+		return nil, err
+	}
+	stream, err := conn.OpenStreamSync(ctx)
+	if errors.Is(err, quic.Err0RTTRejected) {
+		if _, err := conn.NextConnection(ctx); err != nil {
+			return nil, err
+		}
+		stream, err = conn.OpenStreamSync(ctx)
+	}
+	return stream, err
+}
+
 // awaitReplaySafe blocks until nothing written to conn can go out as
 // replayable 0-RTT data, either because the handshake completed or because the
-// connection is gone. A dead connection is left for the caller's OpenStream to
-// discover and restart; failing here instead would break the retry. It returns
+// connection is gone. A dead connection is left for OpenStreamSync to discover
+// and getStream to restart; failing here instead would break the retry. It returns
 // at once when the caller's data is replay-safe anyway, and for connections
 // dialled without 0-RTT, which are only handed out post-handshake.
 func awaitReplaySafe(ctx context.Context, conn *quic.Conn, replaySafe bool) error {
