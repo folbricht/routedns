@@ -298,6 +298,9 @@ func resolveUDPAddr(ctx context.Context, endpoint string) (*net.UDPAddr, error) 
 	if err != nil {
 		return nil, err
 	}
+	if len(addrs) == 0 {
+		return nil, &net.AddrError{Err: "no suitable address found", Addr: host}
+	}
 	addr := addrs[0]
 	for _, a := range addrs {
 		if a.IP.To4() != nil {
@@ -415,9 +418,10 @@ func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, sta
 	}
 	s.mu.Unlock()
 
-	// Closing waits for the connection to shut down, so do it outside the lock.
+	// Closing waits for the connection to shut down, which no query should
+	// have to sit through.
 	if broken != nil {
-		_ = broken.CloseWithError(DOQNoError, "")
+		go func() { _ = broken.CloseWithError(DOQNoError, "") }()
 	}
 
 	select {
