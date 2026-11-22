@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	DOQNoError = 0x00
+	DOQNoError          = 0x00
+	DOQRequestCancelled = 0x03
 )
 
 // DoQClient is a DNS-over-QUIC resolver.
@@ -265,11 +266,30 @@ func (d *DoQClient) String() string {
 // exchange sends the length-prefixed query on a new stream and returns the
 // response without its prefix. On failure it also returns the stage that
 // failed, for the error metric.
-func (d *DoQClient) exchange(ctx context.Context, conn *quicConnection, rAddr *net.UDPAddr, query []byte, replaySafe bool) ([]byte, string, error) {
+func (d *DoQClient) exchange(ctx context.Context, conn *quicConnection, rAddr *net.UDPAddr, query []byte, replaySafe bool) (resp []byte, stage string, err error) {
 	stream, err := conn.getStream(ctx, rAddr, replaySafe, d.log)
 	if err != nil {
 		return nil, "getstream", err
 	}
+	defer func() {
+		if errors.Is(err, quic.Err0RTTRejected) {
+			// The stream went with the rejected 0-RTT data, and its ID is
+			// reused on the connection, so a cancel would hit the stream
+			// that replaces it.
+			return
+		}
+		if err != nil {
+			// Tell the server to drop the query, which frees its stream for
+			// another one.
+			stream.CancelWrite(DOQRequestCancelled)
+			stream.CancelRead(DOQRequestCancelled)
+			return
+		}
+		// The stream only completes once EOF is read, which reading exactly
+		// the response skips when the FIN comes in a later frame. This
+		// completes it, and does nothing if EOF was read.
+		stream.CancelRead(DOQNoError)
+	}()
 	deadline, _ := ctx.Deadline()
 
 	// Write the query into the stream and close it. Only one stream per query/response

@@ -139,6 +139,7 @@ func TestDoQClient0RTTHoldsNonReplayableOpcode(t *testing.T) {
 type doqEarlyRecorder struct {
 	addr     string
 	delay    time.Duration
+	hang     string
 	conn     atomic.Pointer[quic.Conn]
 	accepted atomic.Int32
 	mu       sync.Mutex
@@ -150,6 +151,7 @@ type doqRecorderOptions struct {
 	addr       string        // listen address, a random local port if empty
 	maxStreams int64         // concurrent streams per connection, 0 for the quic-go default
 	delay      time.Duration // before answering each query
+	hang       string        // never answer queries for this name
 }
 
 type doqRecordedQuery struct {
@@ -178,7 +180,7 @@ func startDoQEarlyRecorder(t *testing.T, opt doqRecorderOptions) *doqEarlyRecord
 	})
 	require.NoError(t, err)
 
-	r := &doqEarlyRecorder{addr: udpConn.LocalAddr().String(), delay: opt.delay}
+	r := &doqEarlyRecorder{addr: udpConn.LocalAddr().String(), delay: opt.delay, hang: opt.hang}
 	var once sync.Once
 	r.stop = func() { once.Do(func() { ln.Close(); transport.Close(); udpConn.Close() }) }
 	t.Cleanup(r.stop)
@@ -231,6 +233,10 @@ func (r *doqEarlyRecorder) handleStream(stream *quic.Stream, early bool) {
 	r.mu.Lock()
 	r.seen = append(r.seen, doqRecordedQuery{opcode: q.Opcode, early: early})
 	r.mu.Unlock()
+	if len(q.Question) > 0 && q.Question[0].Name == r.hang {
+		<-stream.Context().Done() // until the client gives up on it
+		return
+	}
 	time.Sleep(r.delay)
 
 	a := new(dns.Msg)
@@ -372,9 +378,15 @@ func TestDoQClient0RTTRejected(t *testing.T) {
 	q := new(dns.Msg)
 	q.SetQuestion("example.com.", dns.TypeA)
 
-	// Pick up a session ticket
+	// Pick up a session ticket, and prove with a redial that the client
+	// uses it for 0-RTT. Without that the query below would pass the same
+	// way after a plain handshake.
 	_, err = d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
+	server.closeCurrentConn(t)
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.True(t, server.last(t).early, "QUERY was not sent as 0-RTT; this test cannot prove anything about the rejection below")
 
 	server.closeCurrentConn(t)
 	server.stop()
@@ -383,4 +395,35 @@ func TestDoQClient0RTTRejected(t *testing.T) {
 	_, err = d.Resolve(q, ClientInfo{})
 	require.NoError(t, err)
 	require.False(t, server.last(t).early)
+	require.Equal(t, int32(1), server.accepted.Load(), "the rejected connection was replaced instead of kept")
+}
+
+// A query the server never answers must give its stream back when it times
+// out, or enough of them use up the server's stream limit and every query
+// after waits in vain.
+func TestDoQClientCancelsTimedOutStream(t *testing.T) {
+	server := startDoQEarlyRecorder(t, doqRecorderOptions{maxStreams: 2, hang: "hang.example."})
+
+	tlsClientConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq", server.addr, DoQClientOptions{TLSConfig: tlsClientConfig, QueryTimeout: 300 * time.Millisecond})
+	require.NoError(t, err)
+
+	hang := new(dns.Msg)
+	hang.SetQuestion("hang.example.", dns.TypeA)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			_, err := d.Resolve(hang, ClientInfo{})
+			if err == nil {
+				t.Error("unanswered query succeeded")
+			}
+		})
+	}
+	wg.Wait()
+
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
 }
