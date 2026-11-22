@@ -335,6 +335,33 @@ func TestDOQDeadUpstream(t *testing.T) {
 	require.Less(t, elapsed, 3*timeout) // one at a time takes 6x
 }
 
+// Queries beyond the upstream's stream limit go to a new connection. That
+// must not close the full one under the queries still in flight on it.
+func TestDOQStreamLimit(t *testing.T) {
+	upstream := &TestResolver{ResolveFunc: func(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
+		time.Sleep(200 * time.Millisecond) // hold the streams open
+		a := new(dns.Msg)
+		a.SetReply(q)
+		return a, nil
+	}}
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq-limit", startTestDoQListener(t, upstream), DoQClientOptions{TLSConfig: tlsConfig})
+	require.NoError(t, err)
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+
+	var wg sync.WaitGroup
+	for range 150 { // the listener allows 100 streams
+		wg.Go(func() {
+			if _, err := d.Resolve(q, ClientInfo{}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
 // A link-local literal, as given in bootstrap-address, must keep its zone or
 // it can't be dialled. A socket bound to a specific address can only reach an
 // upstream of the same family, so anything else is an error up front rather
@@ -419,4 +446,42 @@ func TestDoQClientCancelsTimedOutQuery(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the server's stream for the timed-out query is still open")
 	}
+}
+
+// A replaced connection takes queries again when the current one is full.
+// Only the last doqMaxReplaced are kept, not counting those that have closed.
+func TestDOQReplacedLimit(t *testing.T) {
+	tlsConfig, err := TLSClientConfig("testdata/ca.crt", "", "", "")
+	require.NoError(t, err)
+	d, err := NewDoQClient("test-doq-replaced", startTestDoQListener(t, new(TestResolver)), DoQClientOptions{TLSConfig: tlsConfig})
+	require.NoError(t, err)
+	ctx := context.Background()
+	rAddr, err := resolveUDPAddr(ctx, d.endpoint, nil)
+	require.NoError(t, err)
+	replace := func(stale *quic.Conn) *quic.Conn {
+		conn, err := d.connection.connection(ctx, rAddr, stale, d.log)
+		require.NoError(t, err)
+		return conn
+	}
+
+	first := replace(nil)
+	second := replace(first)
+	for err == nil { // fill the current connection
+		_, err = second.OpenStream()
+	}
+	q := new(dns.Msg)
+	q.SetQuestion("example.com.", dns.TypeA)
+	_, err = d.Resolve(q, ClientInfo{})
+	require.NoError(t, err)
+	require.Same(t, second, d.connection.conn, "the query should have gone to the replaced connection")
+
+	stale := second
+	for range doqMaxReplaced - 1 {
+		stale = replace(stale)
+	}
+	require.NoError(t, second.CloseWithError(DOQNoError, ""))
+	stale = replace(stale) // takes the place of the closed one
+	require.NoError(t, first.Context().Err())
+	replace(stale)
+	require.Eventually(t, func() bool { return first.Context().Err() != nil }, time.Second, 10*time.Millisecond)
 }

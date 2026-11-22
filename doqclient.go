@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -222,8 +223,10 @@ func (d *DoQClient) Resolve(q *dns.Msg, ci ClientInfo) (*dns.Msg, error) {
 	resp, stage, err := d.exchange(ctx, conn, rAddr, b, replaySafe)
 	if errors.Is(err, quic.Err0RTTRejected) {
 		// The server discarded the query along with the rest of the 0-RTT
-		// data, so it is safe to send again.
-		resp, stage, err = d.exchange(ctx, conn, rAddr, b, replaySafe)
+		// data, so it is safe to send again. After the handshake this time:
+		// the query may move off a full connection onto a new one, which
+		// could reject 0-RTT data too.
+		resp, stage, err = d.exchange(ctx, conn, rAddr, b, false)
 	}
 	if err != nil {
 		d.metrics.err.Add(stage, 1)
@@ -365,10 +368,17 @@ type quicConnection struct {
 	udpConn   *net.UDPConn
 	dialFunc  func(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 
-	mu   sync.Mutex
-	conn *quic.Conn
-	dial *quicDial // the attempt in progress, if any
+	mu       sync.Mutex
+	conn     *quic.Conn
+	dial     *quicDial    // the attempt in progress, if any
+	replaced []*quic.Conn // connections replaced while still open, oldest first
 }
+
+// doqMaxReplaced is how many connections a socket keeps open after replacing
+// them at the server's stream limit. They finish the queries in flight on
+// them and take new ones when the current connection is full. Replacing one
+// more closes the oldest at once, failing any query still on it.
+const doqMaxReplaced = 4
 
 // quicDial is one connection attempt, shared by every query that needs a
 // connection while it runs. conn and err are set before done is closed.
@@ -416,6 +426,23 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 		return stream, early, err
 	}
 
+	// A connection replaced when it was full may have free streams again.
+	// Only one past its handshake, which no query should wait for here.
+	if errors.As(err, new(*quic.StreamLimitReachedError)) {
+		s.mu.Lock()
+		replaced := slices.Clone(s.replaced)
+		s.mu.Unlock()
+		for _, c := range replaced {
+			select {
+			case <-c.HandshakeComplete():
+				if stream, early, err := openStream(ctx, c, replaySafe); err == nil {
+					return stream, early, nil
+				}
+			default:
+			}
+		}
+	}
+
 	// If we can't get a stream then restart the connection and try again once
 	log.Debug("temporary fail when trying to open stream, attempting new connection",
 		"error", err,
@@ -441,14 +468,24 @@ func (s *quicConnection) getStream(ctx context.Context, rAddr *net.UDPAddr, repl
 func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, stale *quic.Conn, log *slog.Logger) (*quic.Conn, error) {
 	s.mu.Lock()
 	dial := s.dial
-	var broken *quic.Conn
+	var evicted *quic.Conn
 	if dial == nil {
 		if s.conn != nil && s.conn != stale {
 			conn := s.conn
 			s.mu.Unlock()
 			return conn, nil
 		}
-		broken, s.conn = s.conn, nil
+		// Keep the connection if it is open, which means it is only full.
+		// Those that have closed since give up their place.
+		if s.conn != nil {
+			s.replaced = append(s.replaced, s.conn)
+		}
+		s.conn = nil
+		s.replaced = slices.DeleteFunc(s.replaced, func(c *quic.Conn) bool { return c.Context().Err() != nil })
+		if len(s.replaced) > doqMaxReplaced {
+			evicted = s.replaced[0]
+			s.replaced = slices.Delete(s.replaced, 0, 1)
+		}
 		dial = &quicDial{done: make(chan struct{})}
 		s.dial = dial
 		go s.runDial(dial, rAddr, log)
@@ -457,8 +494,8 @@ func (s *quicConnection) connection(ctx context.Context, rAddr *net.UDPAddr, sta
 
 	// Closing waits for the connection to shut down, which no query should
 	// have to sit through.
-	if broken != nil {
-		go func() { _ = broken.CloseWithError(DOQNoError, "") }()
+	if evicted != nil {
+		go func() { _ = evicted.CloseWithError(DOQNoError, "") }()
 	}
 
 	select {
